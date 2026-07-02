@@ -160,9 +160,55 @@ td.right.red{color:var(--red);} td.right.gold{color:var(--gold2);} td.right.gree
 .pdf-stat{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;text-align:center;}
 .pdf-stat-val{font-size:20px;font-weight:700;margin-bottom:4px;}
 .pdf-stat-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;}
+
+/* ── API KEY MODAL ── */
+.apikey-modal{position:fixed;inset:0;background:rgba(5,12,22,0.92);z-index:600;display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;pointer-events:none;transition:opacity 0.25s;}
+.apikey-modal.open{opacity:1;pointer-events:all;}
+.apikey-box{background:#152233;border:1px solid rgba(212,168,67,0.3);border-radius:16px;width:100%;max-width:500px;padding:28px 32px;box-shadow:0 24px 80px rgba(0,0,0,0.6);}
+.apikey-title{font-size:16px;font-weight:700;color:var(--gold2);margin-bottom:6px;display:flex;align-items:center;gap:10px;}
+.apikey-sub{font-size:12px;color:var(--muted);margin-bottom:20px;line-height:1.7;}
+.apikey-input-wrap{position:relative;margin-bottom:16px;}
+.apikey-input{width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(212,168,67,0.3);color:var(--text);padding:12px 44px 12px 14px;border-radius:10px;font-family:'Sarabun',sans-serif;font-size:13px;outline:none;transition:border-color 0.2s;}
+.apikey-input:focus{border-color:var(--gold);}
+.apikey-input::placeholder{color:var(--muted);}
+.apikey-toggle{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:4px;}
+.apikey-save-btn{width:100%;background:linear-gradient(135deg,var(--gold),var(--gold2));color:var(--navy);border:none;padding:12px;border-radius:10px;font-family:'Sarabun',sans-serif;font-size:14px;font-weight:700;cursor:pointer;transition:opacity 0.2s;margin-bottom:10px;}
+.apikey-save-btn:hover{opacity:0.88;}
+.apikey-cancel-btn{width:100%;background:transparent;border:1px solid var(--border);color:var(--muted);padding:10px;border-radius:10px;font-family:'Sarabun',sans-serif;font-size:13px;cursor:pointer;transition:all 0.2s;}
+.apikey-cancel-btn:hover{border-color:rgba(255,255,255,0.2);color:var(--text);}
+.apikey-status{font-size:12px;margin-bottom:14px;padding:8px 12px;border-radius:8px;display:none;}
+.apikey-status.ok{background:rgba(76,175,125,0.12);color:var(--green);border:1px solid rgba(76,175,125,0.2);display:block;}
+.apikey-status.err{background:rgba(224,92,92,0.12);color:var(--red);border:1px solid rgba(224,92,92,0.2);display:block;}
+.apikey-indicator{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;}
+.apikey-indicator.set{background:var(--green);}
+.apikey-indicator.notset{background:var(--red);}
+.api-key-btn{background:rgba(212,168,67,0.1);border:1px solid rgba(212,168,67,0.3);color:var(--gold2);padding:5px 12px;border-radius:8px;font-size:11px;font-family:'Sarabun',sans-serif;cursor:pointer;transition:all 0.2s;display:inline-flex;align-items:center;gap:5px;font-weight:600;}
+.api-key-btn:hover{background:rgba(212,168,67,0.2);}
 </style>
 </head>
 <body>
+
+
+<!-- API KEY MODAL -->
+<div class="apikey-modal" id="apikeyModal">
+  <div class="apikey-box">
+    <div class="apikey-title">&#128273; ตั้งค่า Anthropic API Key</div>
+    <div class="apikey-sub">
+      API Key ใช้สำหรับให้ Claude AI อ่าน PDF Bank Statement<br>
+      &#128274; เก็บไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น ไม่ส่งไปที่อื่น<br>
+      &#128279; สมัครได้ที่ <a href="https://console.anthropic.com" target="_blank" style="color:var(--gold2)">console.anthropic.com</a>
+    </div>
+    <div class="apikey-status" id="apikeyStatus"></div>
+    <div class="apikey-input-wrap">
+      <input class="apikey-input" type="password" id="apikeyInput"
+        placeholder="sk-ant-api03-XXXXXXXXXXXXXXXX"
+        onkeydown="if(event.key==='Enter')saveApiKey()">
+      <button class="apikey-toggle" onclick="toggleApiKeyVis()" id="apikeyToggle">&#128065;</button>
+    </div>
+    <button class="apikey-save-btn" onclick="saveApiKey()">&#128190; บันทึก API Key</button>
+    <button class="apikey-cancel-btn" onclick="closeApiKeyModal()">ยกเลิก</button>
+  </div>
+</div>
 
 <div id="loadingOverlay">
   <div class="loading-logo">TD</div>
@@ -190,6 +236,10 @@ td.right.red{color:var(--red);} td.right.gold{color:var(--gold2);} td.right.gree
   <div class="header-right">
     <div><span class="live-dot"></span><span class="live-text" id="liveText">กำลังโหลด&#8230;</span></div>
     <div class="date-badge" id="dateBadge">&#128197; &#8212;</div>
+    <button class="api-key-btn" id="apikeyHeaderBtn" onclick="openApiKeyModal()">
+      <span class="apikey-indicator notset" id="apikeyDot"></span>
+      <span id="apikeyBtnText">API Key</span>
+    </button>
     <a class="sheet-btn" href="https://docs.google.com/spreadsheets/d/1n5f-YtXaLaiU0PNMd8gzN_Xm5olqat5BOIUAbMOrUXw" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z"/></svg>เปิด Google Sheet</a>
     <button class="refresh-btn" onclick="loadAllData()">&#128260; รีเฟรช</button>
   </div>
@@ -875,6 +925,102 @@ function renderRecon() {
 
 
 // ════════════════════════════════════════
+//  API KEY MANAGER
+// ════════════════════════════════════════
+const STORAGE_KEY = 'ratchaothai_anthropic_key';
+
+function getApiKey() {
+  return localStorage.getItem(STORAGE_KEY) || '';
+}
+
+function openApiKeyModal() {
+  const modal = document.getElementById('apikeyModal');
+  const input = document.getElementById('apikeyInput');
+  const status = document.getElementById('apikeyStatus');
+  const existing = getApiKey();
+  if(existing) {
+    input.value = existing;
+    status.className = 'apikey-status ok';
+    status.textContent = '\u2705 \u0e15\u0e31\u0e49\u0e07\u0e04\u0e48\u0e32\u0e41\u0e25\u0e49\u0e27 — \u0e04\u0e25\u0e34\u0e01\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e2d\u0e31\u0e1b\u0e40\u0e14\u0e15';
+  } else {
+    input.value = '';
+    status.className = 'apikey-status';
+    status.textContent = '';
+  }
+  modal.classList.add('open');
+  setTimeout(()=>input.focus(), 200);
+}
+
+function closeApiKeyModal() {
+  document.getElementById('apikeyModal').classList.remove('open');
+}
+
+function toggleApiKeyVis() {
+  const input = document.getElementById('apikeyInput');
+  const btn = document.getElementById('apikeyToggle');
+  if(input.type === 'password') {
+    input.type = 'text';
+    btn.textContent = '\ud83d\ude48';
+  } else {
+    input.type = 'password';
+    btn.textContent = '\ud83d\udc41\ufe0f';
+  }
+}
+
+function saveApiKey() {
+  const input = document.getElementById('apikeyInput');
+  const status = document.getElementById('apikeyStatus');
+  const key = input.value.trim();
+
+  if(!key) {
+    status.className = 'apikey-status err';
+    status.textContent = '\u274c \u0e01\u0e23\u0e38\u0e13\u0e32\u0e01\u0e23\u0e2d\u0e01 API Key \u0e01\u0e48\u0e2d\u0e19\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01';
+    return;
+  }
+  if(!key.startsWith('sk-ant-')) {
+    status.className = 'apikey-status err';
+    status.textContent = '\u274c API Key \u0e44\u0e21\u0e48\u0e16\u0e39\u0e01\u0e15\u0e49\u0e2d\u0e07 — \u0e15\u0e49\u0e2d\u0e07\u0e02\u0e36\u0e49\u0e19\u0e15\u0e49\u0e19\u0e14\u0e49\u0e27\u0e22 sk-ant-';
+    return;
+  }
+
+  localStorage.setItem(STORAGE_KEY, key);
+  status.className = 'apikey-status ok';
+  status.textContent = '\u2705 \u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08! \u0e1e\u0e23\u0e49\u0e2d\u0e21\u0e43\u0e0a\u0e49\u0e07\u0e32\u0e19\u0e41\u0e25\u0e49\u0e27';
+  updateApiKeyIndicator();
+  setTimeout(closeApiKeyModal, 1200);
+}
+
+function clearApiKey() {
+  localStorage.removeItem(STORAGE_KEY);
+  updateApiKeyIndicator();
+}
+
+function updateApiKeyIndicator() {
+  const hasKey = !!getApiKey();
+  const dot = document.getElementById('apikeyDot');
+  const txt = document.getElementById('apikeyBtnText');
+  if(dot) {
+    dot.className = 'apikey-indicator ' + (hasKey ? 'set' : 'notset');
+  }
+  if(txt) {
+    txt.textContent = hasKey ? 'API Key \u2705' : 'API Key';
+  }
+}
+
+// Close modal on backdrop click
+document.addEventListener('click', e => {
+  const modal = document.getElementById('apikeyModal');
+  if(e.target === modal) closeApiKeyModal();
+});
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape') closeApiKeyModal();
+});
+
+// Init indicator on load
+document.addEventListener('DOMContentLoaded', updateApiKeyIndicator);
+setTimeout(updateApiKeyIndicator, 500);
+
+// ════════════════════════════════════════
 //  PDF BANK READER MODULE
 // ════════════════════════════════════════
 let pdfFiles = [];       // {file, id, bank, status, result}
@@ -983,9 +1129,19 @@ async function pdfReadOne(pf) {
   const prompt = 'You are a bank statement parser. Read this Bangkok Bank / Thai bank transaction report PDF and extract ALL transaction data.\n\nReturn ONLY a JSON object (no markdown, no explanation) with this exact structure:\n{\n  "bank": "BBL",\n  "account_number": "1424xxx847",\n  "account_name": "THAI DRILL CO LTD",\n  "period": "01/01/2026-31/01/2026",\n  "closing_balance": 12086.38,\n  "currency": "THB",\n  "transactions": [\n    {"date": "13/01/2026", "description": "BAHTNET", "debit": 0, "credit": 40323518.40, "balance": 40323518.40},\n    {"date": "13/01/2026", "description": "PAYMENT ON GOODS", "debit": 40311432.02, "credit": 0, "balance": 12086.38}\n  ]\n}\n\nRules:\n- date format: DD/MM/YYYY\n- debit = money going OUT (negative flow), credit = money coming IN\n- If no transactions found, return empty array []\n- closing_balance = last ledger balance shown\n- Detect bank name from header (BBL=Bangkok Bank, KBANK=Kasikorn, TTB=TMB Thanachart, etc.)';
 
   try {
+    const apiKey = getApiKey();
+    if(!apiKey) {
+      pf.status = 'error';
+      pf.errorMsg = 'ไม่พบ API Key — กรุณากด "API Key" ที่ Header เพื่อตั้งค่า';
+      pdfRenderQueue();
+      pdfUpdateStats();
+      // Open API key modal
+      openApiKeyModal();
+      return;
+    }
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: {'Content-Type':'application/json'},
+      headers: {'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 4000,
