@@ -785,7 +785,16 @@ function renderRecon(){
   }
   window.reconShowDiff=function(){
     var rows=sapList.map(function(a){
-      var ba=hasData?bd.accounts.find(function(x){return x.acctNo.replace(/x/gi,'').replace(/[^0-9]/g,'').slice(-4)===a.code.replace(/[^0-9]/g,'').slice(-4);}):null;
+      var ba=hasData?bd.accounts.find(function(x){
+          var bankDig=x.acctNo.replace(/[^0-9]/g,'');
+          var sapNameDig=a.name.replace(/[^0-9]/g,'');
+          var matched=false;
+          for(var l=Math.min(bankDig.length,sapNameDig.length,10);l>=6;l--){
+            if(bankDig.slice(-l)===sapNameDig.slice(-l)){matched=true;break;}
+          }
+          if(!matched){var sn=a.name.replace(/^[^0-9]*/,'').replace(/[^0-9\-]/g,'');if(sn.length>4&&(x.acctNo.includes(sn)||(x.name&&x.name.includes(sn))))matched=true;}
+          return matched;
+        }):null;
       var bb=ba?ba.bal:null;
       var d2=bb!==null?bb-a.bal:null;
       var cls=d2===null?'var(--muted)':Math.abs(d2)<1?'var(--green)':'var(--red)';
@@ -820,7 +829,16 @@ function renderRecon(){
   // Detail table
   var tbody=document.getElementById('reconDetailBody');tbody.innerHTML='';
   sapList.forEach(function(acct,i){
-    var bankBal=hasData?bd.accounts.reduce(function(s,a){var match=a.acctNo.replace(/x/gi,'').replace(/[^0-9]/g,'').slice(-4)===acct.code.replace(/[^0-9]/g,'').slice(-4);return match?s+a.bal:s;},null):null;
+    var bankBal=hasData?bd.accounts.reduce(function(s,a){
+          var bankDig=a.acctNo.replace(/[^0-9]/g,'');
+          var sapNameDig=acct.name.replace(/[^0-9]/g,'');
+          var matched=false;
+          for(var l=Math.min(bankDig.length,sapNameDig.length,10);l>=6;l--){
+            if(bankDig.slice(-l)===sapNameDig.slice(-l)){matched=true;break;}
+          }
+          if(!matched){var sn=acct.name.replace(/^[^0-9]*/,'').replace(/[^0-9\-]/g,'');if(sn.length>4&&(a.acctNo.includes(sn)||(a.name&&a.name.includes(sn))))matched=true;}
+          return matched?s+a.bal:s;
+        },null):null;
     var realBankBal=bankBal===0?null:bankBal;
     var d2=realBankBal!==null?realBankBal-acct.bal:null;
     var ok=d2!==null&&Math.abs(d2)<1;
@@ -832,7 +850,16 @@ function renderRecon(){
 
   // Charts
   if(chartInstances['reconCompareBar'])chartInstances['reconCompareBar'].destroy();
-  chartInstances['reconCompareBar']=new Chart(document.getElementById('reconCompareBar'),{type:'bar',data:{labels:sapList.map(function(a){return a.code;}),datasets:[{label:'SAP',data:sapList.map(function(a){return +(a.bal/1e6).toFixed(2);}),backgroundColor:'rgba(91,143,249,0.7)',borderRadius:4},{label:'Bank',data:sapList.map(function(a){if(!hasData)return 0;var ba=bd.accounts.find(function(x){return x.acctNo.replace(/x/gi,'').replace(/[^0-9]/g,'').slice(-4)===a.code.replace(/[^0-9]/g,'').slice(-4);});return ba?+(ba.bal/1e6).toFixed(2):0;}),backgroundColor:'rgba(43,191,179,0.7)',borderRadius:4}]},options:{plugins:{legend:{labels:{color:'#8FA3B8',boxWidth:10}}},scales:{x:{grid:{color:gc},ticks:{color:'#8FA3B8',font:{size:9}}},y:{grid:{color:gc},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}}}}}});
+  chartInstances['reconCompareBar']=new Chart(document.getElementById('reconCompareBar'),{type:'bar',data:{labels:sapList.map(function(a){return a.code;}),datasets:[{label:'SAP',data:sapList.map(function(a){return +(a.bal/1e6).toFixed(2);}),backgroundColor:'rgba(91,143,249,0.7)',borderRadius:4},{label:'Bank',data:sapList.map(function(a){if(!hasData)return 0;var ba=bd.accounts.find(function(x){
+          var bankDig=x.acctNo.replace(/[^0-9]/g,'');
+          var sapNameDig=a.name.replace(/[^0-9]/g,'');
+          var matched=false;
+          for(var l=Math.min(bankDig.length,sapNameDig.length,10);l>=6;l--){
+            if(bankDig.slice(-l)===sapNameDig.slice(-l)){matched=true;break;}
+          }
+          if(!matched){var sn=a.name.replace(/^[^0-9]*/,'').replace(/[^0-9\-]/g,'');if(sn.length>4&&(x.acctNo.includes(sn)||(x.name&&x.name.includes(sn))))matched=true;}
+          return matched;
+        });return ba?+(ba.bal/1e6).toFixed(2):0;}),backgroundColor:'rgba(43,191,179,0.7)',borderRadius:4}]},options:{plugins:{legend:{labels:{color:'#8FA3B8',boxWidth:10}}},scales:{x:{grid:{color:gc},ticks:{color:'#8FA3B8',font:{size:9}}},y:{grid:{color:gc},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}}}}}});
 
   if(hasData){
     var allTxns=bd.accounts.reduce(function(arr,a){return arr.concat(a.txns||[]);;},[]);
