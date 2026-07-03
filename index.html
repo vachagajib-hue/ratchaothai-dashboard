@@ -365,7 +365,14 @@ function mStat(label,val,color){return '<div class="modal-stat"><div class="moda
 
 async function fetchSheet(name){
   var url=APPS_URL+'?sheet='+encodeURIComponent(name);
-  var res=await fetch(url);if(!res.ok)throw new Error('HTTP '+res.status);
+  var res=await fetch(url,{
+    method:'GET',
+    redirect:'follow',
+    mode:'cors',
+    credentials:'omit',
+    headers:{'Accept':'application/json'}
+  });
+  if(!res.ok)throw new Error('HTTP '+res.status);
   var json=await res.json();
   if(json.error)throw new Error(json.error);
   var rows=json.rows||[];
