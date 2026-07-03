@@ -948,9 +948,21 @@ async function pdfReadOne(pf){
     var bk=pf.result.bank||pf.bank;
     if(!RBANK_DATA[bk])RBANK_DATA[bk]={uploaded:true,period:pf.result.period,accounts:[]};
     RBANK_DATA[bk].uploaded=true;
+    var newTxns=pf.result.txns.map(function(t){return{date:normDate(t.date),desc:t.description,debit:t.debit,credit:t.credit,bal:t.balance};});
     var existIdx=RBANK_DATA[bk].accounts.findIndex(function(a){return a.acctNo===pf.result.accountNumber;});
-    var acctData={acctNo:pf.result.accountNumber,name:pf.result.accountName+' '+pf.result.accountNumber,bal:pf.result.closingBalance,txns:pf.result.txns.map(function(t){return{date:t.date,desc:t.description,debit:t.debit,credit:t.credit,bal:t.balance};})};
-    if(existIdx>=0)RBANK_DATA[bk].accounts[existIdx]=acctData;else RBANK_DATA[bk].accounts.push(acctData);
+    if(existIdx>=0){
+      // MERGE transactions - append new ones, avoid duplicates by date+desc+amount
+      var existing=RBANK_DATA[bk].accounts[existIdx];
+      var existKeys=new Set(existing.txns.map(function(t){return (t.date||'')+'|'+(t.desc||'')+'|'+(t.debit||0)+'|'+(t.credit||0);}));
+      var newOnly=newTxns.filter(function(t){return !existKeys.has((t.date||'')+'|'+(t.desc||'')+'|'+(t.debit||0)+'|'+(t.credit||0));});
+      existing.txns=existing.txns.concat(newOnly).sort(function(a,b){return (a.date||'').localeCompare(b.date||'');});
+      // Update closing balance to latest
+      existing.bal=pf.result.closingBalance;
+      console.log('Merged '+newOnly.length+' new txns into '+pf.result.accountNumber+', total: '+existing.txns.length);
+    } else {
+      var acctData={acctNo:pf.result.accountNumber,name:pf.result.accountName+' '+pf.result.accountNumber,bal:pf.result.closingBalance,txns:newTxns};
+      RBANK_DATA[bk].accounts.push(acctData);
+    }
   }catch(err){
     pf.status='error';
     pf.errorMsg=err.message;
