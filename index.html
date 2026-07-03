@@ -579,6 +579,21 @@ function showModalExp(){
     rows.map(function(r){var pct=G.et>0?(r.amt/G.et*100).toFixed(1):0,cls=r.amt>50e6?'red':r.amt>20e6?'gold':'teal';return'<tr><td style="color:var(--muted);font-size:12px">'+r.code+'</td><td>'+r.name+'</td><td class="right '+cls+'">'+fmtFull(r.amt)+'</td><td class="right" style="color:var(--muted)">'+pct+'%</td></tr>';}).join('')+'</tbody></table>');
 }
 
+function normDate(d){
+  if(!d)return d;
+  var s=String(d);
+  var m=s.match(/^(\d{2}\/\d{2}\/)(\d{4})$/);
+  if(m){var yr=parseInt(m[2]);if(yr>2400)return m[1]+(yr-543);}
+  var m2=s.match(/^(\d{4})(-\d{2}-\d{2})$/);
+  if(m2){var yr2=parseInt(m2[1]);if(yr2>2400)return(yr2-543)+m2[2];}
+  return d;
+}
+function getMonth(dateStr){
+  var d=normDate(dateStr)||'';
+  if(d.match(/^\d{2}\//))return d.slice(3,5);
+  if(d.match(/^\d{4}-/))return d.slice(5,7);
+  return d.slice(3,5);
+}
 function renderDashboard(d){
   var fm=ACTIVE_MONTHS.length?ACTIVE_MONTHS:d.allMonths;
   var last6=fm.slice(-6);
@@ -742,6 +757,8 @@ function selBank(b){RACTIVE=b;document.querySelectorAll('.recon-bank-btn').forEa
 
 function renderRecon(){
   var bank=RACTIVE;
+  // Expose modal functions globally for KPI onclick handlers
+  window._rShowSAP=null;window._rShowBank=null;window._rShowDiff=null;
   var sapList=bank==='ALL'?SAP_Q03.filter(function(a){return a.bank!=='CASH';}):SAP_Q03.filter(function(a){return a.bank===bank;});
   var sapTotal=sapList.reduce(function(s,a){return s+a.bal;},0);
   var bd=RBANK_DATA[bank];
@@ -753,20 +770,20 @@ function renderRecon(){
 
   function sf(n){var neg=n<0;var s=Math.abs(n).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});return'<strong style="color:'+(neg?'var(--red)':'var(--green)')+'">&#3647; '+(neg?'('+s+')':s)+'</strong>';}
 
-  function showSAPDetail(){
+  window.reconShowSAP=function(){
     openModal('\ud83d\udcca SAP Q03 \u2014 '+bank,
       '<div class="modal-summary">'+mStat('\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21',fmt(sapTotal),sapTotal>=0?'var(--green)':'var(--red)')+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e1a\u0e31\u0e0d\u0e0a\u0e35',sapList.length+' \u0e1a\u0e31\u0e0d\u0e0a\u0e35','var(--blue)')+'</div>'+
       '<table><thead><tr><th>\u0e23\u0e2b\u0e31\u0e2a SAP</th><th>\u0e0a\u0e37\u0e48\u0e2d\u0e1a\u0e31\u0e0d\u0e0a\u0e35</th><th style="text-align:right">\u0e22\u0e2d\u0e14\u0e04\u0e07\u0e40\u0e2b\u0e25\u0e37\u0e2d (\u0e1a\u0e32\u0e17)</th></tr></thead><tbody>'+
       sapList.map(function(a){return'<tr style="background:rgba(255,255,255,0.02)"><td style="color:var(--teal);font-size:11px;padding:6px 8px">'+a.code+'</td><td style="padding:6px 8px;font-size:12px">'+a.name+'</td><td style="text-align:right;padding:6px 8px;font-weight:700;color:'+(a.bal>=0?'var(--green)':'var(--red)')+'">'+fmtFull(a.bal)+'</td></tr>';}).join('')+'</tbody></table>');
   }
-  function showBankDetail(){
+  window.reconShowBank=function(){
     if(!hasData){alert('\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49\u0e2d\u0e31\u0e1b\u0e42\u0e2b\u0e25\u0e14 Bank Statement \u2014 \u0e43\u0e0a\u0e49 Tab "\u0e2d\u0e48\u0e32\u0e19 PDF Bank" \u0e01\u0e48\u0e2d\u0e19\u0e04\u0e23\u0e31\u0e1a');return;}
     openModal('\ud83c\udfe6 Bank Statement \u2014 '+bank,
       '<div class="modal-summary">'+mStat('\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21',fmt(bankTotal),'var(--teal)')+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e1a\u0e31\u0e0d\u0e0a\u0e35',bd.accounts.length+' \u0e1a\u0e31\u0e0d\u0e0a\u0e35','var(--blue)')+mStat('\u0e0a\u0e48\u0e27\u0e07\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25',updDate,'var(--gold2)')+'</div>'+
       '<table><thead><tr><th>\u0e40\u0e25\u0e02\u0e1a\u0e31\u0e0d\u0e0a\u0e35</th><th>\u0e0a\u0e37\u0e48\u0e2d</th><th style="text-align:right">\u0e22\u0e2d\u0e14\u0e04\u0e07\u0e40\u0e2b\u0e25\u0e37\u0e2d (\u0e1a\u0e32\u0e17)</th></tr></thead><tbody>'+
       bd.accounts.map(function(a){return'<tr style="background:rgba(255,255,255,0.02)"><td style="padding:6px 8px;font-size:12px">'+a.acctNo+'</td><td style="padding:6px 8px;font-size:12px">'+a.name+'</td><td style="text-align:right;padding:6px 8px;font-weight:700;color:var(--teal)">'+fmtFull(a.bal)+'</td></tr>';}).join('')+'</tbody></table>');
   }
-  function showDiffDetail(){
+  window.reconShowDiff=function(){
     var rows=sapList.map(function(a){
       var ba=hasData?bd.accounts.find(function(x){return x.acctNo.replace(/x/gi,'').replace(/[^0-9]/g,'').slice(-4)===a.code.replace(/[^0-9]/g,'').slice(-4);}):null;
       var bb=ba?ba.bal:null;
@@ -786,10 +803,10 @@ function renderRecon(){
 
   // KPI with detail buttons
   document.getElementById('reconKpiRow').innerHTML=
-    kpi('blue','\ud83c\udfe6','rgba(91,143,249,0.18)','\u0e18\u0e19\u0e32\u0e04\u0e32\u0e23\u0e17\u0e35\u0e48\u0e40\u0e25\u0e37\u0e2d\u0e01',bank,'blue',sapList.length+' \u0e1a\u0e31\u0e0d\u0e0a\u0e35 | \u0e2d\u0e31\u0e1b\u0e40\u0e14\u0e15: '+updDate,'showDiffDetail()')+
-    kpi('blue','\ud83d\udcca','rgba(91,143,249,0.18)','\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21 SAP',fmt(sapTotal),sapTotal>=0?'green':'red',sapList.length+' \u0e1a\u0e31\u0e0d\u0e0a\u0e35 | \u0e04\u0e25\u0e34\u0e01\u0e14\u0e39\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','showSAPDetail()')+
-    kpi(hasData?'teal':'gold','\ud83c\udfe6','rgba(43,191,179,0.18)','\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21 Bank',hasData?fmt(bankTotal):'\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e2d\u0e31\u0e1b\u0e42\u0e2b\u0e25\u0e14',hasData?'teal':'gold',hasData?(bd.accounts.length+' \u0e1a\u0e31\u0e0d\u0e0a\u0e35 | \u0e04\u0e25\u0e34\u0e01\u0e14\u0e39\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23'):'\u0e2d\u0e31\u0e1b\u0e42\u0e2b\u0e25\u0e14 CSV \u0e2b\u0e23\u0e37\u0e2d\u0e2d\u0e48\u0e32\u0e19 PDF','showBankDetail()')+
-    kpi(diff===null?'gold':Math.abs(diff||0)<1?'green':'red',diff===null?'\u2753':Math.abs(diff||0)<1?'\u2705':'\u274c','rgba(224,92,92,0.18)','\u0e2a\u0e48\u0e27\u0e19\u0e15\u0e48\u0e32\u0e07 Bank \u2212 SAP',diff===null?'\u2014':fmt(diff),diff===null?'gold':Math.abs(diff||0)<1?'green':'red',diff===null?'\u0e23\u0e2d\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25 Bank':Math.abs(diff||0)<1?'\u2705 \u0e01\u0e23\u0e30\u0e17\u0e1a\u0e41\u0e25\u0e49\u0e27':'\u26a0\ufe0f \u0e04\u0e25\u0e34\u0e01\u0e14\u0e39\u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14','showDiffDetail()');
+    kpi('blue','\ud83c\udfe6','rgba(91,143,249,0.18)','\u0e18\u0e19\u0e32\u0e04\u0e32\u0e23\u0e17\u0e35\u0e48\u0e40\u0e25\u0e37\u0e2d\u0e01',bank,'blue',sapList.length+' \u0e1a\u0e31\u0e0d\u0e0a\u0e35 | \u0e2d\u0e31\u0e1b\u0e40\u0e14\u0e15: '+updDate,'reconShowDiff&&reconShowDiff()')+
+    kpi('blue','\ud83d\udcca','rgba(91,143,249,0.18)','\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21 SAP',fmt(sapTotal),sapTotal>=0?'green':'red',sapList.length+' \u0e1a\u0e31\u0e0d\u0e0a\u0e35 | \u0e04\u0e25\u0e34\u0e01\u0e14\u0e39\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','reconShowSAP&&reconShowSAP()')+
+    kpi(hasData?'teal':'gold','\ud83c\udfe6','rgba(43,191,179,0.18)','\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21 Bank',hasData?fmt(bankTotal):'\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e2d\u0e31\u0e1b\u0e42\u0e2b\u0e25\u0e14',hasData?'teal':'gold',hasData?(bd.accounts.length+' \u0e1a\u0e31\u0e0d\u0e0a\u0e35 | \u0e04\u0e25\u0e34\u0e01\u0e14\u0e39\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23'):'\u0e2d\u0e31\u0e1b\u0e42\u0e2b\u0e25\u0e14 CSV \u0e2b\u0e23\u0e37\u0e2d\u0e2d\u0e48\u0e32\u0e19 PDF','reconShowBank&&reconShowBank()')+
+    kpi(diff===null?'gold':Math.abs(diff||0)<1?'green':'red',diff===null?'\u2753':Math.abs(diff||0)<1?'\u2705':'\u274c','rgba(224,92,92,0.18)','\u0e2a\u0e48\u0e27\u0e19\u0e15\u0e48\u0e32\u0e07 Bank \u2212 SAP',diff===null?'\u2014':fmt(diff),diff===null?'gold':Math.abs(diff||0)<1?'green':'red',diff===null?'\u0e23\u0e2d\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25 Bank':Math.abs(diff||0)<1?'\u2705 \u0e01\u0e23\u0e30\u0e17\u0e1a\u0e41\u0e25\u0e49\u0e27':'\u26a0\ufe0f \u0e04\u0e25\u0e34\u0e01\u0e14\u0e39\u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14','reconShowDiff&&reconShowDiff()');
 
   // Formula box
   var fb='';
@@ -821,8 +838,8 @@ function renderRecon(){
     var allTxns=bd.accounts.reduce(function(arr,a){return arr.concat(a.txns||[]);;},[]);
     var months=['01','02','03','04','05','06'];
     var mlbls=['\u0e21.\u0e04.','\u0e01.\u0e1e.','\u0e21\u0e35.\u0e04.','\u0e40\u0e21.\u0e22.','\u0e1e.\u0e04.','\u0e21\u0e34.\u0e22.'];
-    var cr=months.map(function(m){return allTxns.filter(function(t){return (t.date||'').slice(3,5)===m;}).reduce(function(s,t){return s+(t.credit||0);},0)/1e6;});
-    var dr=months.map(function(m){return allTxns.filter(function(t){return (t.date||'').slice(3,5)===m;}).reduce(function(s,t){return s+(t.debit||0);},0)/1e6;});
+    var cr=months.map(function(m){return allTxns.filter(function(t){return getMonth(t.date||'')===m;}).reduce(function(s,t){return s+(t.credit||0);},0)/1e6;});
+    var dr=months.map(function(m){return allTxns.filter(function(t){return getMonth(t.date||'')===m;}).reduce(function(s,t){return s+(t.debit||0);},0)/1e6;});
     if(chartInstances['reconMonthlyBar'])chartInstances['reconMonthlyBar'].destroy();
     chartInstances['reconMonthlyBar']=new Chart(document.getElementById('reconMonthlyBar'),{type:'bar',data:{labels:mlbls,datasets:[{label:'\u0e23\u0e31\u0e1a (Credit)',data:cr,backgroundColor:'rgba(76,175,125,0.8)',borderRadius:4},{label:'\u0e08\u0e48\u0e32\u0e22 (Debit)',data:dr,backgroundColor:'rgba(224,92,92,0.8)',borderRadius:4}]},options:{plugins:{legend:{labels:{color:'#8FA3B8',boxWidth:10}}},scales:{x:{grid:{color:gc},ticks:{color:'#8FA3B8'}},y:{grid:{color:gc},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}},afterDataLimits:function(a){a.max=a.max*1.15;}}}},plugins:[barLblPlugin]});
     document.getElementById('reconTxnSection').style.display='block';
@@ -888,7 +905,7 @@ async function pdfReadOne(pf){
   var apiKey=getApiKey();
   if(!apiKey){pf.status='error';pf.errorMsg='\u0e44\u0e21\u0e48\u0e1e\u0e1a API Key \u2014 \u0e01\u0e14\u0e1b\u0e38\u0e48\u0e21 "API Key" \u0e17\u0e35\u0e48 Header';openApiModal();pdfRenderQueue();pdfUpdateStats();return;}
   var base64=await new Promise(function(res,rej){var reader=new FileReader();reader.onload=function(e){res(e.target.result.split(',')[1]);};reader.onerror=rej;reader.readAsDataURL(pf.file);});
-  var prompt='Read this Thai bank statement PDF and extract transaction data. Return ONLY compact JSON (no spaces, no markdown):\n{"bank":"BBL","account_number":"1424xxx847","account_name":"THAI DRILL CO LTD","period":"01/01/2026-31/01/2026","closing_balance":12086.38,"currency":"THB","transactions":[{"date":"13/01/2026","description":"BAHTNET","debit":0,"credit":40323518.40,"balance":40323518.40}]}\nRules: date=DD/MM/YYYY, debit=OUT, credit=IN, closing_balance=last balance. Detect bank from header. If no transactions return [].';
+  var prompt='Read this Thai bank statement PDF and extract transaction data. Return ONLY compact JSON (no spaces, no markdown):\n{"bank":"BBL","account_number":"1424xxx847","account_name":"THAI DRILL CO LTD","period":"01/01/2026-31/01/2026","closing_balance":12086.38,"currency":"THB","transactions":[{"date":"13/01/2026","description":"BAHTNET","debit":0,"credit":40323518.40,"balance":40323518.40}]}\nRules: date format MUST be DD/MM/YYYY in CE (Christian Era), convert BE years (2569) to CE (2026), debit=OUT, credit=IN, closing_balance=last balance. Detect bank from header. If no transactions return [].';
   try{
     var response=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
