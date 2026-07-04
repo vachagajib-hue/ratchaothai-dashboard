@@ -313,15 +313,16 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 
 <!-- CSV to Sheets Uploader -->
 <div style="margin-top:24px;border-top:1px solid var(--border);padding-top:20px">
-  <div style="font-size:14px;font-weight:700;color:var(--gold2);margin-bottom:6px">&#128228; \u0e2d\u0e31\u0e1b\u0e42\u0e2b\u0e25\u0e14 CSV \u0e40\u0e02\u0e49\u0e32 Google Sheets \u2014 \u0e44\u0e21\u0e48\u0e40\u0e2a\u0e35\u0e22 API Credit</div>
-  <div style="font-size:12px;color:var(--muted);margin-bottom:14px">\u0e25\u0e32\u0e01 CSV \u0e17\u0e35\u0e48\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e44\u0e27\u0e49\u0e21\u0e32\u0e27\u0e32\u0e07 \u2014 \u0e23\u0e30\u0e1a\u0e1a\u0e08\u0e30\u0e08\u0e33\u0e40\u0e25\u0e02\u0e1a\u0e31\u0e0d\u0e0a\u0e35\u0e41\u0e25\u0e30\u0e0a\u0e37\u0e48\u0e2d\u0e18\u0e19\u0e32\u0e04\u0e32\u0e23\u0e08\u0e32\u0e01\u0e0a\u0e37\u0e48\u0e2d\u0e44\u0e1f\u0e25\u0e4c\u0e2d\u0e31\u0e15\u0e42\u0e19\u0e21\u0e31\u0e15\u0e34</div>
+  <div style="font-size:14px;font-weight:700;color:var(--gold2);margin-bottom:6px">&#128228; อัปโหลด CSV เข้า Google Sheets — ไม่เสีย API Credit</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:14px">ลาก CSV ที่บันทึกไว้มาวาง — ระบบจะจำเลขบัญชีและชื่อธนาคารจากชื่อไฟล์อัตโนมัติ</div>
   <div id="csvSheetQueue" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px"></div>
   <div class="recon-upload-zone" style="margin-bottom:0" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="csvSheetDrop(event)">
     <input type="file" accept=".csv,.txt" multiple onchange="csvSheetHandle(this.files)" style="position:absolute;inset:0;opacity:0;cursor:pointer">
     <div style="font-size:28px;margin-bottom:8px">&#128228;</div>
-    <div style="font-size:13px;font-weight:700;color:var(--gold2);margin-bottom:4px">\u0e04\u0e25\u0e34\u0e01\u0e2b\u0e23\u0e37\u0e2d\u0e25\u0e32\u0e01 CSV \u0e21\u0e32\u0e27\u0e32\u0e07</div>
-    <div style="font-size:12px;color:var(--muted)">\u0e0a\u0e37\u0e48\u0e2d\u0e44\u0e1f\u0e25\u0e4c\u0e15\u0e49\u0e2d\u0e07\u0e21\u0e35\u0e0a\u0e37\u0e48\u0e2d\u0e18\u0e19\u0e32\u0e04\u0e32\u0e23 \u0e40\u0e0a\u0e48\u0e19 KBANK_054-3-72482-3_2026.csv</div>
+    <div style="font-size:13px;font-weight:700;color:var(--gold2);margin-bottom:4px">คลิกหรือลาก CSV มาวาง</div>
+    <div style="font-size:12px;color:var(--muted)">ชื่อไฟล์ต้องมีชื่อธนาคาร เช่น KBANK_054-3-72482-3_2026.csv</div>
   </div>
+</div>
 </div>
 </div>
 <script>
@@ -332,10 +333,7 @@ let ACTIVE_MONTHS=[];
 // Utilities
 function fmt(n){if(Math.abs(n)>=1e6)return (n/1e6).toFixed(2)+' ล้าน';return n.toLocaleString('th-TH');}
 function fmtKPI(n){
-  // Show full number with comma: 137,843,838 or -2,117,070
-  if(n===null||n===undefined)return '—';
-  var abs=Math.abs(n);
-  if(abs>=1e9)return (n<0?'-':'')+(abs/1e9).toFixed(2)+' พันล้าน';
+  if(n===null||n===undefined)return '\u2014';
   return Math.round(n).toLocaleString('th-TH');
 }
 function fmtM(n){return (n/1e6).toFixed(2);}
@@ -537,9 +535,9 @@ var lineLblPlugin={id:'lineLbl',afterDatasetsDraw:function(chart){
 function showModalBank(){
   var rows=G.bankRows||[],pos=rows.filter(function(r){return r.bal>0;}).sort(function(a,b){return b.bal-a.bal;}),neg=rows.filter(function(r){return r.bal<0;}).sort(function(a,b){return a.bal-b.bal;});
   openModal('\ud83c\udfe6 \u0e22\u0e2d\u0e14\u0e40\u0e07\u0e34\u0e19\u0e2a\u0e14 & \u0e18\u0e19\u0e32\u0e04\u0e32\u0e23',
-    '<div class="modal-summary">'+mStat('\u0e22\u0e2d\u0e14\u0e1a\u0e27\u0e01\u0e23\u0e27\u0e21',fmt(pos.reduce(function(s,r){return s+r.bal;},0)),'var(--green)')+
-    mStat('\u0e22\u0e2d\u0e14\u0e25\u0e1a\u0e23\u0e27\u0e21',fmt(neg.reduce(function(s,r){return s+r.bal;},0)),'var(--red)')+
-    mStat('\u0e22\u0e2d\u0e14\u0e2a\u0e38\u0e17\u0e18\u0e34',fmt(G.bankNet),'var(--red)')+
+    '<div class="modal-summary">'+mStat('\u0e22\u0e2d\u0e14\u0e1a\u0e27\u0e01\u0e23\u0e27\u0e21',fmtKPI(pos.reduce(function(s,r){return s+r.bal;},0)),'var(--green)')+
+    mStat('\u0e22\u0e2d\u0e14\u0e25\u0e1a\u0e23\u0e27\u0e21',fmtKPI(neg.reduce(function(s,r){return s+r.bal;},0)),'var(--red)')+
+    mStat('\u0e22\u0e2d\u0e14\u0e2a\u0e38\u0e17\u0e18\u0e34',fmtKPI(G.bankNet),'var(--red)')+
     mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e1a\u0e31\u0e0d\u0e0a\u0e35',rows.length+' \u0e1a\u0e31\u0e0d\u0e0a\u0e35','var(--blue)')+'</div>'+
     '<div class="section-sep">\ud83d\udfe2 \u0e1a\u0e31\u0e0d\u0e0a\u0e35\u0e22\u0e2d\u0e14\u0e1a\u0e27\u0e01 ('+pos.length+')</div>'+
     '<table><thead><tr><th>\u0e23\u0e2b\u0e31\u0e2a</th><th>\u0e0a\u0e37\u0e48\u0e2d\u0e1a\u0e31\u0e0d\u0e0a\u0e35</th><th style="text-align:right">\u0e22\u0e2d\u0e14\u0e04\u0e07\u0e40\u0e2b\u0e25\u0e37\u0e2d</th></tr></thead><tbody>'+
@@ -551,7 +549,7 @@ function showModalBank(){
 function showModalReceipt(){
   var rows=(G.recRows||[]).slice(0,50);
   openModal('\ud83d\udce5 \u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14\u0e40\u0e07\u0e34\u0e19\u0e23\u0e31\u0e1a',
-    '<div class="modal-summary">'+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14',(G.recRows||[]).length+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','var(--gold2)')+mStat('\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21 50 \u0e25\u0e48\u0e32\u0e2a\u0e38\u0e14',fmt(rows.reduce(function(s,r){return s+r.amt;},0)),'var(--green)')+'</div>'+
+    '<div class="modal-summary">'+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14',(G.recRows||[]).length+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','var(--gold2)')+mStat('\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21 50 \u0e25\u0e48\u0e32\u0e2a\u0e38\u0e14',fmtKPI(rows.reduce(function(s,r){return s+r.amt;},0)),'var(--green)')+'</div>'+
     '<input class="modal-search" placeholder="\ud83d\udd0d \u0e04\u0e49\u0e19\u0e2b\u0e32\u0e0a\u0e37\u0e48\u0e2d\u0e25\u0e39\u0e01\u0e04\u0e49\u0e32\u2026" oninput="filterTbl(this,\'rTbl\')">'+
     '<table id="rTbl"><thead><tr><th>\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48</th><th>\u0e40\u0e25\u0e02\u0e17\u0e35\u0e48\u0e40\u0e2d\u0e01\u0e2a\u0e32\u0e23</th><th>\u0e25\u0e39\u0e01\u0e04\u0e49\u0e32</th><th style="text-align:right">\u0e08\u0e33\u0e19\u0e27\u0e19\u0e40\u0e07\u0e34\u0e19</th></tr></thead><tbody>'+
     rows.map(function(r){return '<tr><td style="color:var(--muted);font-size:12px">'+fmtD(r.date)+'</td><td style="color:var(--muted);font-size:12px">'+r.docNo+'</td><td>'+r.custName+'</td><td class="right green">'+fmtFull(r.amt)+'</td></tr>';}).join('')+'</tbody></table>');
@@ -559,7 +557,7 @@ function showModalReceipt(){
 function showModalPayment(){
   var rows=(G.payRows||[]).slice(0,50);
   openModal('\ud83d\udce4 \u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14\u0e40\u0e07\u0e34\u0e19\u0e08\u0e48\u0e32\u0e22',
-    '<div class="modal-summary">'+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14',(G.payRows||[]).length+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','var(--gold2)')+mStat('\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21 50 \u0e25\u0e48\u0e32\u0e2a\u0e38\u0e14',fmt(rows.reduce(function(s,r){return s+r.amt;},0)),'var(--red)')+'</div>'+
+    '<div class="modal-summary">'+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14',(G.payRows||[]).length+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','var(--gold2)')+mStat('\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21 50 \u0e25\u0e48\u0e32\u0e2a\u0e38\u0e14',fmtKPI(rows.reduce(function(s,r){return s+r.amt;},0)),'var(--red)')+'</div>'+
     '<input class="modal-search" placeholder="\ud83d\udd0d \u0e04\u0e49\u0e19\u0e2b\u0e32\u0e0a\u0e37\u0e48\u0e2d\u0e40\u0e08\u0e49\u0e32\u0e2b\u0e19\u0e35\u0e49\u2026" oninput="filterTbl(this,\'pTbl\')">'+
     '<table id="pTbl"><thead><tr><th>\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48</th><th>\u0e40\u0e25\u0e02\u0e17\u0e35\u0e48\u0e40\u0e2d\u0e01\u0e2a\u0e32\u0e23</th><th>\u0e40\u0e08\u0e49\u0e32\u0e2b\u0e19\u0e35\u0e49</th><th style="text-align:right">\u0e08\u0e33\u0e19\u0e27\u0e19\u0e40\u0e07\u0e34\u0e19</th></tr></thead><tbody>'+
     rows.map(function(r){return '<tr><td style="color:var(--muted);font-size:12px">'+fmtD(r.date)+'</td><td style="color:var(--muted);font-size:12px">'+r.docNo+'</td><td>'+r.vendName+'</td><td class="right red">'+fmtFull(r.amt)+'</td></tr>';}).join('')+'</tbody></table>');
@@ -568,15 +566,15 @@ function showModalCF(){
   var months=G.allMonths||[];
   openModal('\ud83d\udcb8 Cash Flow \u0e23\u0e32\u0e22\u0e40\u0e14\u0e37\u0e2d\u0e19',
     '<div class="modal-summary">'+mStat('\u0e40\u0e14\u0e37\u0e2d\u0e19\u0e17\u0e35\u0e48\u0e21\u0e35\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25',months.length+' \u0e40\u0e14\u0e37\u0e2d\u0e19','var(--blue)')+
-    mStat('\u0e40\u0e07\u0e34\u0e19\u0e23\u0e31\u0e1a\u0e23\u0e27\u0e21',fmt(Object.values(G.recByM||{}).reduce(function(s,v){return s+v;},0)),'var(--green)')+
-    mStat('\u0e40\u0e07\u0e34\u0e19\u0e08\u0e48\u0e32\u0e22\u0e23\u0e27\u0e21',fmt(Object.values(G.payByM||{}).reduce(function(s,v){return s+v;},0)),'var(--red)')+'</div>'+
+    mStat('\u0e40\u0e07\u0e34\u0e19\u0e23\u0e31\u0e1a\u0e23\u0e27\u0e21',fmtKPI(Object.values(G.recByM||{}).reduce(function(s,v){return s+v;},0)),'var(--green)')+
+    mStat('\u0e40\u0e07\u0e34\u0e19\u0e08\u0e48\u0e32\u0e22\u0e23\u0e27\u0e21',fmtKPI(Object.values(G.payByM||{}).reduce(function(s,v){return s+v;},0)),'var(--red)')+'</div>'+
     '<table><thead><tr><th>\u0e40\u0e14\u0e37\u0e2d\u0e19</th><th style="text-align:right">\u0e40\u0e07\u0e34\u0e19\u0e23\u0e31\u0e1a</th><th style="text-align:right">\u0e40\u0e07\u0e34\u0e19\u0e08\u0e48\u0e32\u0e22</th><th style="text-align:right">Cash Flow</th></tr></thead><tbody>'+
     months.map(function(m){var rec=G.recByM[m]||0,pay=G.payByM[m]||0,cf=rec-pay;return'<tr><td>'+(MLBL[m]||m)+'</td><td class="right green">'+fmtFull(rec)+'</td><td class="right red">'+fmtFull(pay)+'</td><td class="right '+(cf>=0?'green':'red')+'">'+(cf>=0?'+':'')+fmtFull(cf)+'</td></tr>';}).join('')+'</tbody></table>');
 }
 function showModalAR(){
   var rows=(G.arRows2||[]).sort(function(a,b){return b.bal-a.bal;}).slice(0,100);
   openModal('\ud83d\udccb AR \u0e25\u0e39\u0e01\u0e2b\u0e19\u0e35\u0e49\u0e04\u0e49\u0e32\u0e07\u0e23\u0e31\u0e1a',
-    '<div class="modal-summary">'+mStat('AR \u0e23\u0e27\u0e21',fmt(G.at||0),'var(--gold2)')+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23',(G.arRowCount||0)+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','var(--blue)')+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e25\u0e39\u0e01\u0e04\u0e49\u0e32',(G.arCusts||0)+' \u0e23\u0e32\u0e22','var(--teal)')+mStat('\u0e40\u0e01\u0e34\u0e19 90 \u0e27\u0e31\u0e19',fmt(G.a90p||0),'var(--red)')+'</div>'+
+    '<div class="modal-summary">'+mStat('AR \u0e23\u0e27\u0e21',fmtKPI(G.at||0),'var(--gold2)')+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23',(G.arRowCount||0)+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','var(--blue)')+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e25\u0e39\u0e01\u0e04\u0e49\u0e32',(G.arCusts||0)+' \u0e23\u0e32\u0e22','var(--teal)')+mStat('\u0e40\u0e01\u0e34\u0e19 90 \u0e27\u0e31\u0e19',fmtKPI(G.a90p||0),'var(--red)')+'</div>'+
     '<input class="modal-search" placeholder="\ud83d\udd0d \u0e04\u0e49\u0e19\u0e2b\u0e32\u0e0a\u0e37\u0e48\u0e2d\u0e25\u0e39\u0e01\u0e04\u0e49\u0e32\u2026" oninput="filterTbl(this,\'arDT\')">'+
     '<table id="arDT"><thead><tr><th>\u0e25\u0e39\u0e01\u0e04\u0e49\u0e32</th><th>\u0e40\u0e25\u0e02\u0e17\u0e35\u0e48\u0e40\u0e2d\u0e01\u0e2a\u0e32\u0e23</th><th style="text-align:right">\u0e22\u0e2d\u0e14\u0e04\u0e49\u0e32\u0e07</th><th style="text-align:right">\u0e2d\u0e32\u0e22\u0e38\u0e2b\u0e19\u0e35\u0e49 (\u0e27\u0e31\u0e19)</th><th>\u0e04\u0e23\u0e1a\u0e01\u0e33\u0e2b\u0e19\u0e14</th></tr></thead><tbody>'+
     rows.map(function(r){var cls=r.days>90?'red':r.days>60?'gold':r.days>30?'teal':'green';return'<tr><td>'+r.name+'</td><td style="color:var(--muted);font-size:12px">'+r.docNo+'</td><td class="right '+cls+'">'+fmtFull(r.bal)+'</td><td class="right '+cls+'">'+Math.round(r.days)+'</td><td style="font-size:12px;color:var(--muted)">'+fmtD(r.dueDate)+'</td></tr>';}).join('')+'</tbody></table>');
@@ -584,7 +582,7 @@ function showModalAR(){
 function showModalAROver(){
   var rows=(G.arRows2||[]).filter(function(r){return r.days>90;}).sort(function(a,b){return b.bal-a.bal;}).slice(0,80);
   openModal('\ud83d\udd34 AR \u0e40\u0e01\u0e34\u0e19\u0e01\u0e33\u0e2b\u0e19\u0e14 > 90 \u0e27\u0e31\u0e19',
-    '<div class="modal-summary">'+mStat('\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21\u0e40\u0e01\u0e34\u0e19 90 \u0e27\u0e31\u0e19',fmt(rows.reduce(function(s,r){return s+r.bal;},0)),'var(--red)')+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23',rows.length+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','var(--red)')+'</div>'+
+    '<div class="modal-summary">'+mStat('\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21\u0e40\u0e01\u0e34\u0e19 90 \u0e27\u0e31\u0e19',fmtKPI(rows.reduce(function(s,r){return s+r.bal;},0)),'var(--red)')+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23',rows.length+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','var(--red)')+'</div>'+
     '<input class="modal-search" placeholder="\ud83d\udd0d \u0e04\u0e49\u0e19\u0e2b\u0e32\u2026" oninput="filterTbl(this,\'arOT\')">'+
     '<table id="arOT"><thead><tr><th>\u0e25\u0e39\u0e01\u0e04\u0e49\u0e32</th><th>\u0e40\u0e25\u0e02\u0e17\u0e35\u0e48\u0e40\u0e2d\u0e01\u0e2a\u0e32\u0e23</th><th style="text-align:right">\u0e22\u0e2d\u0e14\u0e04\u0e49\u0e32\u0e07</th><th style="text-align:right">\u0e40\u0e01\u0e34\u0e19 (\u0e27\u0e31\u0e19)</th><th>\u0e04\u0e23\u0e1a\u0e01\u0e33\u0e2b\u0e19\u0e14</th></tr></thead><tbody>'+
     rows.map(function(r){return'<tr><td>'+r.name+'</td><td style="color:var(--muted);font-size:12px">'+r.docNo+'</td><td class="right red">'+fmtFull(r.bal)+'</td><td class="right red">'+Math.round(r.days)+'</td><td style="font-size:12px;color:var(--muted)">'+fmtD(r.dueDate)+'</td></tr>';}).join('')+'</tbody></table>');
@@ -592,7 +590,7 @@ function showModalAROver(){
 function showModalAP(){
   var rows=(G.apRows2||[]).sort(function(a,b){return b.bal-a.bal;}).slice(0,100);
   openModal('\ud83d\udcdd AP \u0e40\u0e08\u0e49\u0e32\u0e2b\u0e19\u0e35\u0e49\u0e04\u0e49\u0e32\u0e07\u0e08\u0e48\u0e32\u0e22',
-    '<div class="modal-summary">'+mStat('AP \u0e23\u0e27\u0e21',fmt(G.pt||0),'var(--red)')+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23',(G.apRowCount||0)+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','var(--blue)')+mStat('\u0e40\u0e01\u0e34\u0e19 60 \u0e27\u0e31\u0e19',fmt(G.p60p||0),'var(--red)')+mStat('\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e40\u0e01\u0e34\u0e19\u0e01\u0e33\u0e2b\u0e19\u0e14',fmt(G.p30||0),'var(--green)')+'</div>'+
+    '<div class="modal-summary">'+mStat('AP \u0e23\u0e27\u0e21',fmtKPI(G.pt||0),'var(--red)')+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23',(G.apRowCount||0)+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','var(--blue)')+mStat('\u0e40\u0e01\u0e34\u0e19 60 \u0e27\u0e31\u0e19',fmtKPI(G.p60p||0),'var(--red)')+mStat('\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e40\u0e01\u0e34\u0e19\u0e01\u0e33\u0e2b\u0e19\u0e14',fmtKPI(G.p30||0),'var(--green)')+'</div>'+
     '<input class="modal-search" placeholder="\ud83d\udd0d \u0e04\u0e49\u0e19\u0e2b\u0e32\u2026" oninput="filterTbl(this,\'apDT\')">'+
     '<table id="apDT"><thead><tr><th>\u0e40\u0e08\u0e49\u0e32\u0e2b\u0e19\u0e35\u0e49</th><th>\u0e40\u0e25\u0e02\u0e17\u0e35\u0e48\u0e40\u0e2d\u0e01\u0e2a\u0e32\u0e23</th><th style="text-align:right">\u0e22\u0e2d\u0e14\u0e04\u0e49\u0e32\u0e07</th><th style="text-align:right">\u0e2d\u0e32\u0e22\u0e38 (\u0e27\u0e31\u0e19)</th><th>\u0e04\u0e23\u0e1a\u0e01\u0e33\u0e2b\u0e19\u0e14</th></tr></thead><tbody>'+
     rows.map(function(r){var cls=r.days>60?'red':r.days>30?'gold':'green';return'<tr><td>'+r.name+'</td><td style="color:var(--muted);font-size:12px">'+r.docNo+'</td><td class="right '+cls+'">'+fmtFull(r.bal)+'</td><td class="right '+cls+'">'+Math.round(r.days)+'</td><td style="font-size:12px;color:var(--muted)">'+fmtD(r.dueDate)+'</td></tr>';}).join('')+'</tbody></table>');
@@ -600,14 +598,14 @@ function showModalAP(){
 function showModalAPDue(){
   var rows=(G.apRows2||[]).filter(function(r){return r.days<=60&&r.days>0;}).sort(function(a,b){return a.days-b.days;}).slice(0,60);
   openModal('\ud83d\udcc5 AP \u0e43\u0e01\u0e25\u0e49\u0e04\u0e23\u0e1a\u0e01\u0e33\u0e2b\u0e19\u0e14 (\u2264 60 \u0e27\u0e31\u0e19)',
-    '<div class="modal-summary">'+mStat('\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21 \u2264 60 \u0e27\u0e31\u0e19',fmt(rows.reduce(function(s,r){return s+r.bal;},0)),'var(--gold2)')+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23',rows.length+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','var(--gold2)')+'</div>'+
+    '<div class="modal-summary">'+mStat('\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21 \u2264 60 \u0e27\u0e31\u0e19',fmtKPI(rows.reduce(function(s,r){return s+r.bal;},0)),'var(--gold2)')+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23',rows.length+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','var(--gold2)')+'</div>'+
     '<table><thead><tr><th>\u0e40\u0e08\u0e49\u0e32\u0e2b\u0e19\u0e35\u0e49</th><th style="text-align:right">\u0e22\u0e2d\u0e14</th><th style="text-align:right">\u0e2d\u0e32\u0e22\u0e38 (\u0e27\u0e31\u0e19)</th><th>\u0e04\u0e23\u0e1a\u0e01\u0e33\u0e2b\u0e19\u0e14</th></tr></thead><tbody>'+
     rows.map(function(r){var cls=r.days>30?'gold':'green';return'<tr><td>'+r.name+'</td><td class="right '+cls+'">'+fmtFull(r.bal)+'</td><td class="right '+cls+'">'+Math.round(r.days)+'</td><td style="font-size:12px;color:var(--muted)">'+fmtD(r.dueDate)+'</td></tr>';}).join('')+'</tbody></table>');
 }
 function showModalExp(){
   var rows=(G.expAll||[]).filter(function(r){return r.amt>0;}).sort(function(a,b){return b.amt-a.amt;});
   openModal('\ud83d\udcb0 \u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14\u0e04\u0e48\u0e32\u0e43\u0e0a\u0e49\u0e08\u0e48\u0e32\u0e22',
-    '<div class="modal-summary">'+mStat('\u0e04\u0e48\u0e32\u0e43\u0e0a\u0e49\u0e08\u0e48\u0e32\u0e22\u0e23\u0e27\u0e21',fmt(G.et||0),'var(--red)')+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e2b\u0e21\u0e27\u0e14\u0e1a\u0e31\u0e0d\u0e0a\u0e35',rows.length+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','var(--blue)')+'</div>'+
+    '<div class="modal-summary">'+mStat('\u0e04\u0e48\u0e32\u0e43\u0e0a\u0e49\u0e08\u0e48\u0e32\u0e22\u0e23\u0e27\u0e21',fmtKPI(G.et||0),'var(--red)')+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e2b\u0e21\u0e27\u0e14\u0e1a\u0e31\u0e0d\u0e0a\u0e35',rows.length+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','var(--blue)')+'</div>'+
     '<input class="modal-search" placeholder="\ud83d\udd0d \u0e04\u0e49\u0e19\u0e2b\u0e32\u0e0a\u0e37\u0e48\u0e2d\u0e1a\u0e31\u0e0d\u0e0a\u0e35\u2026" oninput="filterTbl(this,\'expT\')">'+
     '<table id="expT"><thead><tr><th>\u0e23\u0e2b\u0e31\u0e2a</th><th>\u0e0a\u0e37\u0e48\u0e2d\u0e1a\u0e31\u0e0d\u0e0a\u0e35</th><th style="text-align:right">\u0e08\u0e33\u0e19\u0e27\u0e19\u0e40\u0e07\u0e34\u0e19</th><th style="text-align:right">\u0e2a\u0e31\u0e14\u0e2a\u0e48\u0e27\u0e19</th></tr></thead><tbody>'+
     rows.map(function(r){var pct=G.et>0?(r.amt/G.et*100).toFixed(1):0,cls=r.amt>50e6?'red':r.amt>20e6?'gold':'teal';return'<tr><td style="color:var(--muted);font-size:12px">'+r.code+'</td><td>'+r.name+'</td><td class="right '+cls+'">'+fmtFull(r.amt)+'</td><td class="right" style="color:var(--muted)">'+pct+'%</td></tr>';}).join('')+'</tbody></table>');
@@ -812,14 +810,14 @@ function renderRecon(){
 
   window.reconShowSAP=function(){
     openModal('\ud83d\udcca SAP Q03 \u2014 '+bank,
-      '<div class="modal-summary">'+mStat('\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21',fmt(sapTotal),sapTotal>=0?'var(--green)':'var(--red)')+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e1a\u0e31\u0e0d\u0e0a\u0e35',sapList.length+' \u0e1a\u0e31\u0e0d\u0e0a\u0e35','var(--blue)')+'</div>'+
+      '<div class="modal-summary">'+mStat('\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21',fmtKPI(sapTotal),sapTotal>=0?'var(--green)':'var(--red)')+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e1a\u0e31\u0e0d\u0e0a\u0e35',sapList.length+' \u0e1a\u0e31\u0e0d\u0e0a\u0e35','var(--blue)')+'</div>'+
       '<table><thead><tr><th>\u0e23\u0e2b\u0e31\u0e2a SAP</th><th>\u0e0a\u0e37\u0e48\u0e2d\u0e1a\u0e31\u0e0d\u0e0a\u0e35</th><th style="text-align:right">\u0e22\u0e2d\u0e14\u0e04\u0e07\u0e40\u0e2b\u0e25\u0e37\u0e2d (\u0e1a\u0e32\u0e17)</th></tr></thead><tbody>'+
       sapList.map(function(a){return'<tr style="background:rgba(255,255,255,0.02)"><td style="color:var(--teal);font-size:11px;padding:6px 8px">'+a.code+'</td><td style="padding:6px 8px;font-size:12px">'+a.name+'</td><td style="text-align:right;padding:6px 8px;font-weight:700;color:'+(a.bal>=0?'var(--green)':'var(--red)')+'">'+fmtFull(a.bal)+'</td></tr>';}).join('')+'</tbody></table>');
   }
   window.reconShowBank=function(){
     if(!hasData){alert('\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49\u0e2d\u0e31\u0e1b\u0e42\u0e2b\u0e25\u0e14 Bank Statement \u2014 \u0e43\u0e0a\u0e49 Tab "\u0e2d\u0e48\u0e32\u0e19 PDF Bank" \u0e01\u0e48\u0e2d\u0e19\u0e04\u0e23\u0e31\u0e1a');return;}
     openModal('\ud83c\udfe6 Bank Statement \u2014 '+bank,
-      '<div class="modal-summary">'+mStat('\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21',fmt(bankTotal),'var(--teal)')+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e1a\u0e31\u0e0d\u0e0a\u0e35',bd.accounts.length+' \u0e1a\u0e31\u0e0d\u0e0a\u0e35','var(--blue)')+mStat('\u0e0a\u0e48\u0e27\u0e07\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25',updDate,'var(--gold2)')+'</div>'+
+      '<div class="modal-summary">'+mStat('\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21',fmtKPI(bankTotal),'var(--teal)')+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e1a\u0e31\u0e0d\u0e0a\u0e35',bd.accounts.length+' \u0e1a\u0e31\u0e0d\u0e0a\u0e35','var(--blue)')+mStat('\u0e0a\u0e48\u0e27\u0e07\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25',updDate,'var(--gold2)')+'</div>'+
       '<table><thead><tr><th>\u0e40\u0e25\u0e02\u0e1a\u0e31\u0e0d\u0e0a\u0e35</th><th>\u0e0a\u0e37\u0e48\u0e2d</th><th style="text-align:right">\u0e22\u0e2d\u0e14\u0e04\u0e07\u0e40\u0e2b\u0e25\u0e37\u0e2d (\u0e1a\u0e32\u0e17)</th></tr></thead><tbody>'+
       bd.accounts.map(function(a){return'<tr style="background:rgba(255,255,255,0.02)"><td style="padding:6px 8px;font-size:12px">'+a.acctNo+'</td><td style="padding:6px 8px;font-size:12px">'+a.name+'</td><td style="text-align:right;padding:6px 8px;font-weight:700;color:var(--teal)">'+fmtFull(a.bal)+'</td></tr>';}).join('')+'</tbody></table>');
   }
@@ -846,7 +844,7 @@ function renderRecon(){
         '<td style="padding:6px 8px">'+st+'</td></tr>';
     }).join('');
     openModal('\ud83d\udd0d \u0e2a\u0e48\u0e27\u0e19\u0e15\u0e48\u0e32\u0e07 SAP vs Bank \u2014 '+bank,
-      '<div class="modal-summary">'+mStat('SAP \u0e23\u0e27\u0e21',fmt(sapTotal),sapTotal>=0?'var(--green)':'var(--red)')+mStat('Bank \u0e23\u0e27\u0e21',hasData?fmtKPI(bankTotal):'\u2014','var(--teal)')+mStat('\u0e2a\u0e48\u0e27\u0e19\u0e15\u0e48\u0e32\u0e07',diff!==null?fmt(diff):'\u2014',diff===null?'var(--muted)':Math.abs(diff)<1?'var(--green)':'var(--red)')+mStat('\u0e0a\u0e48\u0e27\u0e07\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25',updDate,'var(--gold2)')+'</div>'+
+      '<div class="modal-summary">'+mStat('SAP \u0e23\u0e27\u0e21',fmtKPI(sapTotal),sapTotal>=0?'var(--green)':'var(--red)')+mStat('Bank \u0e23\u0e27\u0e21',hasData?fmtKPI(bankTotal):'\u2014','var(--teal)')+mStat('\u0e2a\u0e48\u0e27\u0e19\u0e15\u0e48\u0e32\u0e07',diff!==null?fmt(diff):'\u2014',diff===null?'var(--muted)':Math.abs(diff)<1?'var(--green)':'var(--red)')+mStat('\u0e0a\u0e48\u0e27\u0e07\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25',updDate,'var(--gold2)')+'</div>'+
       '<table><thead><tr><th>\u0e23\u0e2b\u0e31\u0e2a SAP</th><th>\u0e0a\u0e37\u0e48\u0e2d\u0e1a\u0e31\u0e0d\u0e0a\u0e35</th><th style="text-align:right">SAP (\u0e1a\u0e32\u0e17)</th><th style="text-align:right">Bank (\u0e1a\u0e32\u0e17)</th><th style="text-align:right">\u0e2a\u0e48\u0e27\u0e19\u0e15\u0e48\u0e32\u0e07</th><th>\u0e2a\u0e16\u0e32\u0e19\u0e30</th></tr></thead><tbody>'+rows+'</tbody></table>');
   }
 
