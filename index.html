@@ -310,9 +310,22 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 </div>
 </div>
 <div id="pdfResults"></div>
+
+<!-- CSV to Sheets Uploader -->
+<div style="margin-top:24px;border-top:1px solid var(--border);padding-top:20px">
+  <div style="font-size:14px;font-weight:700;color:var(--gold2);margin-bottom:6px">&#128228; \u0e2d\u0e31\u0e1b\u0e42\u0e2b\u0e25\u0e14 CSV \u0e40\u0e02\u0e49\u0e32 Google Sheets \u2014 \u0e44\u0e21\u0e48\u0e40\u0e2a\u0e35\u0e22 API Credit</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:14px">\u0e25\u0e32\u0e01 CSV \u0e17\u0e35\u0e48\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e44\u0e27\u0e49\u0e21\u0e32\u0e27\u0e32\u0e07 \u2014 \u0e23\u0e30\u0e1a\u0e1a\u0e08\u0e30\u0e08\u0e33\u0e40\u0e25\u0e02\u0e1a\u0e31\u0e0d\u0e0a\u0e35\u0e41\u0e25\u0e30\u0e0a\u0e37\u0e48\u0e2d\u0e18\u0e19\u0e32\u0e04\u0e32\u0e23\u0e08\u0e32\u0e01\u0e0a\u0e37\u0e48\u0e2d\u0e44\u0e1f\u0e25\u0e4c\u0e2d\u0e31\u0e15\u0e42\u0e19\u0e21\u0e31\u0e15\u0e34</div>
+  <div id="csvSheetQueue" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px"></div>
+  <div class="recon-upload-zone" style="margin-bottom:0" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="csvSheetDrop(event)">
+    <input type="file" accept=".csv,.txt" multiple onchange="csvSheetHandle(this.files)" style="position:absolute;inset:0;opacity:0;cursor:pointer">
+    <div style="font-size:28px;margin-bottom:8px">&#128228;</div>
+    <div style="font-size:13px;font-weight:700;color:var(--gold2);margin-bottom:4px">\u0e04\u0e25\u0e34\u0e01\u0e2b\u0e23\u0e37\u0e2d\u0e25\u0e32\u0e01 CSV \u0e21\u0e32\u0e27\u0e32\u0e07</div>
+    <div style="font-size:12px;color:var(--muted)">\u0e0a\u0e37\u0e48\u0e2d\u0e44\u0e1f\u0e25\u0e4c\u0e15\u0e49\u0e2d\u0e07\u0e21\u0e35\u0e0a\u0e37\u0e48\u0e2d\u0e18\u0e19\u0e32\u0e04\u0e32\u0e23 \u0e40\u0e0a\u0e48\u0e19 KBANK_054-3-72482-3_2026.csv</div>
+  </div>
+</div>
 </div>
 <script>
-const APPS_URL='https://script.google.com/macros/s/AKfycbyeA5--UvlKGK8wyLoVYz4jsUCM3fLl58bHRd3ZTmboVl7pKiUAcroBVV-cIMT7VZPV1Q/exec';
+const APPS_URL='https://script.google.com/macros/s/AKfycbxoWajYtfi7HjnsDMWP0stylidw0EjeUJ7V4N9p4pQeA52RWt3JzRKvxXCAgnnnjExEKw/exec';
 const chartInstances={};
 let G={};
 let ACTIVE_MONTHS=[];
@@ -472,6 +485,7 @@ async function loadAllData(){
     st.textContent='\u0e2a\u0e23\u0e49\u0e32\u0e07\u0e01\u0e23\u0e32\u0e1f\u2026';st.className='loading-status ok';
     renderDashboard(G);
     document.getElementById('liveText').textContent='\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e08\u0e32\u0e01 Google Sheets (Live)';
+    loadBankFromSheets();
     document.getElementById('dateBadge').textContent='\ud83d\udcc5 '+today();
     setTimeout(function(){ov.style.opacity='0';setTimeout(function(){ov.style.display='none';},400);},600);
   }catch(err){
@@ -707,6 +721,7 @@ function renderFallback(){
   ACTIVE_MONTHS=[...allMonths];
   buildFilters(allMonths);
   renderDashboard(G);
+  loadBankFromSheets();
 }
 
 // SAP Q03 accounts
@@ -770,6 +785,11 @@ function rHandleFiles(files){
       el.className='upload-result';el.textContent='\u2705 '+file.name+' ('+bk+') \u2014 '+txns.length+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23';
       RACTIVE=bk;document.querySelectorAll('.recon-bank-btn').forEach(function(b){b.classList.remove('active');});var btn=document.getElementById('rbtn-'+bk);if(btn)btn.classList.add('active');
       renderRecon();
+      // Save to Google Sheets
+      var acctNo=file.name.replace(/\.(csv|txt)$/i,'');
+      saveBankToSheets(bk, acctNo, acctNo, '', txns.map(function(t){return{date:t.date,description:t.desc,debit:t.debit,credit:t.credit,balance:t.bal};})).then(function(ok){
+        if(ok){var el=document.getElementById('rUploadResult');if(el)el.textContent+='\u0020\u2705 \u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e25\u0e07 Google Sheets \u0e41\u0e25\u0e49\u0e27';}
+      });
     };reader.readAsText(file,'utf-8');
   });
 }
@@ -1089,6 +1109,214 @@ function pdfSendToRecon(pdfId){
   setTimeout(function(){var el=document.getElementById('rUploadResult');if(el){el.className='upload-result';el.textContent='\u2705 \u0e42\u0e2d\u0e19\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e08\u0e32\u0e01 PDF: '+pf.result.accountNumber+' ('+pf.result.txns.length+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23)';}},200);
 }
 
+
+// ════════════════════════════════════════
+// BANK STATEMENT PERSISTENCE (Google Sheets)
+// ════════════════════════════════════════
+
+async function saveBankToSheets(bank, acctNo, acctName, period, txns) {
+  try {
+    var payload = {
+      action: 'saveBankStatement',
+      bank: bank,
+      acctNo: acctNo,
+      acctName: acctName,
+      period: period,
+      transactions: txns
+    };
+    var res = await fetch(APPS_URL, {
+      method: 'POST',
+      mode: 'cors',
+      credentials: 'omit',
+      headers: {'Content-Type': 'text/plain'},
+      body: JSON.stringify(payload)
+    });
+    var data = await res.json();
+    if (data.success) {
+      console.log('Saved to Sheets:', data.saved, 'txns for', acctNo);
+      return true;
+    }
+    console.error('Save error:', data.error);
+    return false;
+  } catch(err) {
+    console.error('saveBankToSheets error:', err);
+    return false;
+  }
+}
+
+async function loadBankFromSheets() {
+  try {
+    var res = await fetch(APPS_URL + '?sheet=BANK_STATEMENTS', {
+      method: 'GET',
+      mode: 'cors',
+      credentials: 'omit'
+    });
+    var data = await res.json();
+    var rows = data.rows || [];
+    if (!rows.length) return;
+
+    // Group by bank + acctNo
+    var grouped = {};
+    rows.forEach(function(r) {
+      var bk = String(r['Bank'] || '');
+      var acctNo = String(r['AcctNo'] || '');
+      var key = bk + '|' + acctNo;
+      if (!grouped[key]) {
+        grouped[key] = {
+          bank: bk, acctNo: acctNo,
+          acctName: String(r['AcctName'] || ''),
+          period: String(r['Period'] || ''),
+          txns: [], lastBal: 0
+        };
+      }
+      var bal = parseFloat(r['Balance']) || 0;
+      grouped[key].txns.push({
+        date: String(r['Date'] || ''),
+        desc: String(r['Description'] || ''),
+        debit: parseFloat(r['Debit']) || 0,
+        credit: parseFloat(r['Credit']) || 0,
+        bal: bal
+      });
+      grouped[key].lastBal = bal;
+    });
+
+    // Feed into RBANK_DATA
+    Object.values(grouped).forEach(function(g) {
+      var bk = g.bank;
+      if (!RBANK_DATA[bk]) RBANK_DATA[bk] = {uploaded: true, period: g.period, accounts: []};
+      RBANK_DATA[bk].uploaded = true;
+      var existIdx = RBANK_DATA[bk].accounts.findIndex(function(a) { return a.acctNo === g.acctNo; });
+      var acctData = {acctNo: g.acctNo, name: g.acctName + ' ' + g.acctNo, bal: g.lastBal, txns: g.txns};
+      if (existIdx >= 0) RBANK_DATA[bk].accounts[existIdx] = acctData;
+      else RBANK_DATA[bk].accounts.push(acctData);
+    });
+
+    var total = Object.values(grouped).length;
+    var txnTotal = rows.length;
+    console.log('Loaded from Sheets:', total, 'accounts,', txnTotal, 'transactions');
+
+    // Show notification
+    showBankLoadNotice(total, txnTotal);
+
+    // Re-render recon if on tab 5
+    if (document.getElementById('page5').classList.contains('active')) {
+      renderRecon();
+    }
+  } catch(err) {
+    console.error('loadBankFromSheets error:', err);
+  }
+}
+
+function showBankLoadNotice(accounts, txns) {
+  var notice = document.getElementById('bankLoadNotice');
+  if (!notice) {
+    notice = document.createElement('div');
+    notice.id = 'bankLoadNotice';
+    notice.style.cssText = 'position:fixed;bottom:20px;right:20px;background:linear-gradient(135deg,var(--teal),#5DDDD6);color:var(--navy);padding:12px 18px;border-radius:10px;font-size:13px;font-weight:700;font-family:Sarabun,sans-serif;z-index:999;box-shadow:0 4px 20px rgba(0,0,0,0.3);animation:slideIn 0.3s ease;';
+    document.body.appendChild(notice);
+    var style = document.createElement('style');
+    style.textContent = '@keyframes slideIn{from{transform:translateX(120%)}to{transform:translateX(0)}}';
+    document.head.appendChild(style);
+  }
+  notice.textContent = '\ud83c\udfe6 \u0e42\u0e2b\u0e25\u0e14 Bank Statement \u0e08\u0e32\u0e01 Google Sheets: ' + accounts + ' \u0e1a\u0e31\u0e0d\u0e0a\u0e35 | ' + txns + ' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23';
+  notice.style.display = 'block';
+  setTimeout(function() { notice.style.display = 'none'; }, 5000);
+}
+
+
+// ════════════════════════════════════════
+// CSV TO GOOGLE SHEETS UPLOADER
+// ════════════════════════════════════════
+function csvSheetDrop(e){e.preventDefault();e.currentTarget.classList.remove('drag');csvSheetHandle(e.dataTransfer.files);}
+
+function csvSheetHandle(files){
+  var queue=document.getElementById('csvSheetQueue');
+  Array.from(files).forEach(function(file){
+    var n=file.name.toLowerCase();
+    // Detect bank from filename
+    var bk='BANK';
+    if(n.includes('bbl')||n.includes('bangkok'))bk='BBL';
+    else if(n.includes('kbank')||n.includes('kasikorn'))bk='KBANK';
+    else if(n.includes('ttb')||n.includes('tmb'))bk='TTB';
+    else if(n.includes('ktb'))bk='KTB';
+    else if(n.includes('scb'))bk='SCB';
+    else if(n.includes('kkp')||n.includes('kiatnakin'))bk='KKP';
+
+    // Extract account number from filename
+    var acctMatch=file.name.match(/(\d[\d\-x]{5,})/i);
+    var acctNo=acctMatch?acctMatch[1]:file.name.replace(/\.(csv|txt)$/i,'');
+
+    // Show item in queue
+    var itemId='csv_'+Date.now()+'_'+Math.random().toString(36).slice(2,5);
+    var div=document.createElement('div');
+    div.id=itemId;
+    div.className='pdf-item';
+    div.innerHTML='<div style="font-size:18px">&#128196;</div>'+
+      '<div style="flex:1"><div class="pdf-item-name">'+file.name+'</div>'+
+      '<div style="font-size:11px;color:var(--muted)">'+bk+' | '+acctNo+'</div></div>'+
+      '<div class="pdf-item-status pending" id="st_'+itemId+'">\u23f3 \u0e01\u0e33\u0e25\u0e31\u0e07\u0e2d\u0e48\u0e32\u0e19\u2026</div>';
+    queue.appendChild(div);
+
+    // Read CSV
+    var reader=new FileReader();
+    reader.onload=function(e){
+      var lines=e.target.result.trim().split('\n');
+      var txns=[];var lastBal=0;var period='';
+      lines.forEach(function(line,i){
+        if(i===0)return;
+        var cols=line.split(',').map(function(c){return c.trim().replace(/^["']|["']$/g,'');});
+        if(cols.length<3)return;
+        var dt=cols[0]||'';
+        var desc=cols[1]||'';
+        var debit=parseFloat(cols[2])||0;
+        var credit=parseFloat(cols[3])||0;
+        var bal=parseFloat(cols[4])||0;
+        if(bal)lastBal=bal;
+        if(dt){
+          if(!period)period=dt;
+          var lastDt=dt;
+          txns.push({date:normDate(dt),description:desc,debit:debit,credit:credit,balance:bal});
+        }
+      });
+
+      // Determine period
+      if(txns.length>0){
+        period=txns[0].date+'-'+txns[txns.length-1].date;
+      }
+
+      var st=document.getElementById('st_'+itemId);
+      if(!txns.length){
+        st.textContent='\u274c \u0e44\u0e21\u0e48\u0e1e\u0e1a\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23';
+        st.className='pdf-item-status error';
+        return;
+      }
+
+      st.textContent='\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e25\u0e07 Sheets\u2026';
+      st.className='pdf-item-status reading';
+
+      // Save to Google Sheets
+      saveBankToSheets(bk, acctNo, acctNo+' (CSV)', period, txns).then(function(ok){
+        if(ok){
+          st.textContent='\u2705 \u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08 '+txns.length+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23';
+          st.className='pdf-item-status done';
+          // Also feed into RBANK_DATA
+          if(!RBANK_DATA[bk])RBANK_DATA[bk]={uploaded:true,period:period,accounts:[]};
+          RBANK_DATA[bk].uploaded=true;
+          var existIdx=RBANK_DATA[bk].accounts.findIndex(function(a){return a.acctNo===acctNo;});
+          var acctData={acctNo:acctNo,name:acctNo+' (CSV)',bal:lastBal,txns:txns.map(function(t){return{date:t.date,desc:t.description,debit:t.debit,credit:t.credit,bal:t.balance};})};
+          if(existIdx>=0)RBANK_DATA[bk].accounts[existIdx]=acctData;
+          else RBANK_DATA[bk].accounts.push(acctData);
+          // Refresh recon if visible
+          if(document.getElementById('page5').classList.contains('active'))renderRecon();
+        } else {
+          st.textContent='\u274c \u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e44\u0e21\u0e48\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08';
+          st.className='pdf-item-status error';
+        }
+      });
+    };
+    reader.readAsText(file,'utf-8');
+  });
+}
 function switchTab(i){
   document.querySelectorAll('.tab').forEach(function(t,j){t.classList.toggle('active',i===j);});
   document.querySelectorAll('.page').forEach(function(p,j){p.classList.toggle('active',i===j);});
