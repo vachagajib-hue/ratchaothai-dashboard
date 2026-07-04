@@ -326,7 +326,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 </div>
 </div>
 <script>
-const APPS_URL='https://script.google.com/macros/s/AKfycbw72_Lx0W2pjT86yGhms1nMzAslxPgsKIKTjAO3tTCAHyjwvOgAvTAiwMH88B_H_P9Q7g/exec';
+const APPS_URL='https://script.google.com/macros/s/AKfycbxZQG4tERyTX0xqj_xIOAn3fD4Jygk2Ajj2qaXpGOROaicxTJiEkI1xkTqkTRuCl-7Z-A/exec';
 const chartInstances={};
 let G={};
 let ACTIVE_MONTHS=[];
@@ -614,22 +614,37 @@ function showModalExp(){
 function normDate(d){
   if(!d)return d;
   var s=String(d).trim();
-  var iso=s.match(/^(\d{4})-(\d{2})-(\d{2})T/);
-  if(iso){var yr=parseInt(iso[1]);if(yr>2400)yr=yr-543;return iso[3]+'/'+iso[2]+'/'+yr;}
+  // ISO with timezone: 2026-01-15T17:00:00.000Z -> use UTC date directly -> 15/01/2026
+  var isoT=s.match(/^(\d{4})-(\d{2})-(\d{2})T/);
+  if(isoT){
+    var yr=parseInt(isoT[1]);if(yr>2400)yr=yr-543;
+    return isoT[3]+'/'+isoT[2]+'/'+yr;
+  }
+  // YYYY-MM-DD -> DD/MM/YYYY
   var ymd=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if(ymd){var yr2=parseInt(ymd[1]);if(yr2>2400)yr2=yr2-543;return ymd[3]+'/'+ymd[2]+'/'+yr2;}
+  // DD/MM/YYYY BE -> CE
   var dmy=s.match(/^(\d{2}\/\d{2}\/)(\d{4})$/);
   if(dmy){var yr3=parseInt(dmy[2]);if(yr3>2400)return dmy[1]+(yr3-543);}
+  // M/D/YYYY (Google Sheets default): 1/15/2026 -> 15/01/2026
+  var mdy=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if(mdy){
+    var yr4=parseInt(mdy[3]);if(yr4>2400)yr4=yr4-543;
+    return String(mdy[2]).padStart(2,'0')+'/'+String(mdy[1]).padStart(2,'0')+'/'+yr4;
+  }
   return d;
 }
 function getMonth(dateStr){
-  var raw=String(dateStr||'');
-  var iso=raw.match(/^(\d{4})-(\d{2})-(\d{2})T/);
-  if(iso)return iso[2];
+  if(!dateStr)return'';
+  var raw=String(dateStr).trim();
+  // ISO with T: extract month directly
+  var isoT=raw.match(/^(\d{4})-(\d{2})-(\d{2})T/);
+  if(isoT)return isoT[2];
+  // Convert to DD/MM/YYYY then extract
   var d=normDate(raw)||'';
   if(d.match(/^\d{2}\/\d{2}\/\d{4}$/))return d.slice(3,5);
   if(d.match(/^\d{4}-\d{2}-\d{2}$/))return d.slice(5,7);
-  return d.slice(3,5);
+  return '';
 }
 function renderDashboard(d){
   var fm=ACTIVE_MONTHS.length?ACTIVE_MONTHS:d.allMonths;
@@ -1181,8 +1196,10 @@ async function loadBankFromSheets() {
         };
       }
       var bal = parseFloat(r['Balance']) || 0;
+      var rawDate = String(r['Date'] || '');
+      var normD = normDate(rawDate) || rawDate;
       grouped[key].txns.push({
-        date: String(r['Date'] || ''),
+        date: normD,
         desc: String(r['Description'] || ''),
         debit: parseFloat(r['Debit']) || 0,
         credit: parseFloat(r['Credit']) || 0,
