@@ -613,17 +613,22 @@ function showModalExp(){
 
 function normDate(d){
   if(!d)return d;
-  var s=String(d);
-  var m=s.match(/^(\d{2}\/\d{2}\/)(\d{4})$/);
-  if(m){var yr=parseInt(m[2]);if(yr>2400)return m[1]+(yr-543);}
-  var m2=s.match(/^(\d{4})(-\d{2}-\d{2})$/);
-  if(m2){var yr2=parseInt(m2[1]);if(yr2>2400)return(yr2-543)+m2[2];}
+  var s=String(d).trim();
+  var iso=s.match(/^(\d{4})-(\d{2})-(\d{2})T/);
+  if(iso){var yr=parseInt(iso[1]);if(yr>2400)yr=yr-543;return iso[3]+'/'+iso[2]+'/'+yr;}
+  var ymd=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(ymd){var yr2=parseInt(ymd[1]);if(yr2>2400)yr2=yr2-543;return ymd[3]+'/'+ymd[2]+'/'+yr2;}
+  var dmy=s.match(/^(\d{2}\/\d{2}\/)(\d{4})$/);
+  if(dmy){var yr3=parseInt(dmy[2]);if(yr3>2400)return dmy[1]+(yr3-543);}
   return d;
 }
 function getMonth(dateStr){
-  var d=normDate(dateStr)||'';
-  if(d.match(/^\d{2}\//))return d.slice(3,5);
-  if(d.match(/^\d{4}-/))return d.slice(5,7);
+  var raw=String(dateStr||'');
+  var iso=raw.match(/^(\d{4})-(\d{2})-(\d{2})T/);
+  if(iso)return iso[2];
+  var d=normDate(raw)||'';
+  if(d.match(/^\d{2}\/\d{2}\/\d{4}$/))return d.slice(3,5);
+  if(d.match(/^\d{4}-\d{2}-\d{2}$/))return d.slice(5,7);
   return d.slice(3,5);
 }
 function renderDashboard(d){
@@ -771,7 +776,7 @@ function rHandleFiles(files){
     else if(n.includes('ttb')||n.includes('tmb'))bk='TTB';
     else if(n.includes('ktb')||n.includes('krungthai'))bk='KTB';
     else if(n.includes('scb'))bk='SCB';
-    else if(n.includes('kkp')||n.includes('kiatnakin'))bk='KKP';
+    else if(n.includes('kkp')||n.includes('kiatnakin')||n.includes('kiatn')||n.includes('phatra'))bk='KKP';
     var reader=new FileReader();
     reader.onload=function(e){
       var lines=e.target.result.trim().split('\n'),txns=[],lastBal=0;
@@ -931,7 +936,7 @@ function pdfDetectBank(n){n=n.toLowerCase();
   if(n.includes('ttb')||n.includes('tmb')||n.includes('thanarb'))return'TTB';
   if(n.includes('ktb')||n.includes('krungthai')||n.includes('krung_thai'))return'KTB';
   if(n.includes('scb')||n.includes('siam'))return'SCB';
-  if(n.includes('kkp')||n.includes('kiatnakin'))return'KKP';
+  if(n.includes('kkp')||n.includes('kiatnakin')||n.includes('kiatn')||n.includes('phatra'))return'KKP';
   return'BANK';
 }
 
@@ -1238,7 +1243,7 @@ function csvSheetDrop(e){e.preventDefault();e.currentTarget.classList.remove('dr
 function csvSheetHandle(files){
   var queue=document.getElementById('csvSheetQueue');
   Array.from(files).forEach(function(file){
-    var n=file.name.toLowerCase();
+    var n=file.name.toLowerCase().replace(/\s+/g,'_');
     // Detect bank from filename
     var bk='BANK';
     if(n.includes('bbl')||n.includes('bangkok')||n.includes('krungthep'))bk='BBL';
@@ -1246,7 +1251,7 @@ function csvSheetHandle(files){
     else if(n.includes('ttb')||n.includes('tmb')||n.includes('thanarb'))bk='TTB';
     else if(n.includes('ktb')||n.includes('krungthai')||n.includes('krung_thai'))bk='KTB';
     else if(n.includes('scb')||n.includes('siam'))bk='SCB';
-    else if(n.includes('kkp')||n.includes('kiatnakin'))bk='KKP';
+    else if(n.includes('kkp')||n.includes('kiatnakin')||n.includes('kiatn')||n.includes('phatra'))bk='KKP';
 
     // Extract account number from filename
     var acctMatch=file.name.match(/(\d[\d\-x]{5,})/i);
