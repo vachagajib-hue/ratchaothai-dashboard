@@ -106,6 +106,23 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 .recon-upload-zone:hover,.recon-upload-zone.drag{border-color:var(--gold);background:rgba(212,168,67,0.1);}
 .recon-upload-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;}
 .recon-bank-btn{padding:7px 16px;border-radius:20px;border:1px solid var(--border);background:var(--card);color:var(--muted);font-size:12px;font-weight:600;font-family:'Sarabun',sans-serif;cursor:pointer;transition:all 0.2s;}
+.dm-calendar{background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:14px;}
+.dm-cal-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.dm-cal-nav{background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--text);width:26px;height:26px;border-radius:6px;cursor:pointer;font-size:14px;font-family:'Sarabun',sans-serif;line-height:1;}
+.dm-cal-nav:hover{background:rgba(255,255,255,0.14);}
+.dm-cal-title{font-size:13px;font-weight:700;color:var(--gold2);min-width:110px;text-align:center;}
+.dm-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+.dm-cal-dow{margin-bottom:4px;}
+.dm-cal-dow div{font-size:10px;color:var(--muted);text-align:center;font-weight:600;}
+.dm-cal-cell{position:relative;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;border-radius:6px;font-size:11px;color:var(--text2);}
+.dm-cal-cell.empty{visibility:hidden;}
+.dm-cal-cell.no-data{color:rgba(255,255,255,0.16);}
+.dm-cal-cell.has-data{background:rgba(43,191,179,0.12);border:1px solid rgba(43,191,179,0.35);color:var(--text);cursor:pointer;font-weight:600;}
+.dm-cal-cell.has-data:hover{background:rgba(43,191,179,0.28);}
+.dm-cal-cell.selected{background:var(--gold);border-color:var(--gold);color:var(--navy);font-weight:800;}
+.dm-cal-dot{position:absolute;bottom:2px;width:4px;height:4px;border-radius:50%;background:var(--teal);}
+.dm-cal-cell.selected .dm-cal-dot{background:var(--navy);}
+.dm-cal-summary{margin-top:8px;font-size:11px;color:var(--gold2);font-weight:600;}
 .recon-bank-btn.active{background:rgba(212,168,67,0.15);border-color:var(--gold);color:var(--gold2);}
 .recon-formula-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;}
 .recon-formula-row:last-child{border:none;font-weight:700;font-size:14px;padding-top:10px;}
@@ -376,7 +393,13 @@ function fmtFull(n){
 function today(){return new Date().toLocaleDateString('th-TH',{year:'numeric',month:'long',day:'numeric'});}
 function makeChart(id,cfg){if(chartInstances[id])chartInstances[id].destroy();chartInstances[id]=new Chart(document.getElementById(id),cfg);}
 function filterTbl(inp,id){const q=inp.value.toLowerCase();document.querySelectorAll('#'+id+' tbody tr').forEach(tr=>{tr.style.display=tr.textContent.toLowerCase().includes(q)?'':'none';});}
-const MLBL={'2025-10':'ต.ค.68','2025-11':'พ.ย.68','2025-12':'ธ.ค.68','2026-01':'ม.ค.69','2026-02':'ก.พ.69','2026-03':'มี.ค.69','2026-04':'เม.ย.69','2026-05':'พ.ค.69','2026-06':'มิ.ย.69'};
+function mlbl(mk){
+  var m=String(mk||'').match(/^(\d{4})-(\d{2})$/);
+  if(!m)return mk;
+  var MN=['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  var mo=+m[2],yr=(+m[1]+543);
+  return (MN[mo]||mk)+String(yr).slice(-2);
+}
 const MTHAI={1:'ม.ค.',2:'ก.พ.',3:'มี.ค.',4:'เม.ย.',5:'พ.ค.',6:'มิ.ย.',7:'ก.ค.',8:'ส.ค.',9:'ก.ย.',10:'ต.ค.',11:'พ.ย.',12:'ธ.ค.'};
 
 const AKEY='ratchaothai_anthropic_key';
@@ -449,7 +472,7 @@ function applyFilter(){
   var from=y1&&m1?y1+'-'+String(m1).padStart(2,'0'):y1?y1+'-01':null;
   var to=y2&&m2?y2+'-'+String(m2).padStart(2,'0'):y2?y2+'-12':null;
   ACTIVE_MONTHS=G.allMonths.filter(function(m){return(!from||m>=from)&&(!to||m<=to);});
-  document.getElementById('filterRange').textContent='\u0e41\u0e2a\u0e14\u0e07: '+(from?MLBL[from]||from:'\u0e15\u0e49\u0e19')+' \u2014 '+(to?MLBL[to]||to:'\u0e1b\u0e31\u0e08\u0e08\u0e38\u0e1a\u0e31\u0e19');
+  document.getElementById('filterRange').textContent='\u0e41\u0e2a\u0e14\u0e07: '+(from?mlbl(from):'\u0e15\u0e49\u0e19')+' \u2014 '+(to?mlbl(to):'\u0e1b\u0e31\u0e08\u0e08\u0e38\u0e1a\u0e31\u0e19');
   renderDashboard(G);
 }
 function resetFilter(){
@@ -619,7 +642,65 @@ function dmFilterRows(){
     var q=s.search.toLowerCase();
     rows=rows.filter(function(r){return r.name.toLowerCase().includes(q);});
   }
+  if(s.selectedDays&&Object.keys(s.selectedDays).length>0){
+    rows=rows.filter(function(r){return !!s.selectedDays[dateKey(r.dateStr)];});
+  }
   return rows;
+}
+function dmDaysWithData(){
+  var set={};
+  (DM.cfg.rows||[]).forEach(function(r){
+    var k=dateKey(r.dateStr);
+    if(k)set[k]=(set[k]||0)+1;
+  });
+  return set;
+}
+function dmCalendarHtml(){
+  var s=DM.state;
+  var y=s.calYear,m=s.calMonth;
+  var dataSet=dmDaysWithData();
+  var startDow=new Date(y,m-1,1).getDay();
+  var daysInMonth=new Date(y,m,0).getDate();
+  var MTHAI=['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  var DOWTHAI=['อา','จ','อ','พ','พฤ','ศ','ส'];
+  var html='<div class="dm-calendar">';
+  html+='<div class="dm-cal-head"><button class="dm-cal-nav" onclick="dmCalShift(-1)">‹</button><div class="dm-cal-title">'+MTHAI[m]+' '+(y+543)+'</div><button class="dm-cal-nav" onclick="dmCalShift(1)">›</button>';
+  html+='<span style="flex:1"></span><button class="filter-reset" onclick="dmCalSelectAll()">เลือกทั้งหมด</button><button class="filter-reset" onclick="dmCalClear()">ล้าง</button></div>';
+  html+='<div class="dm-cal-grid dm-cal-dow">'+DOWTHAI.map(function(x){return '<div>'+x+'</div>';}).join('')+'</div>';
+  html+='<div class="dm-cal-grid">';
+  for(var i=0;i<startDow;i++)html+='<div class="dm-cal-cell empty"></div>';
+  for(var d=1;d<=daysInMonth;d++){
+    var key=String(y)+String(m).padStart(2,'0')+String(d).padStart(2,'0');
+    var cnt=dataSet[key]||0,has=cnt>0,sel=!!s.selectedDays[key];
+    html+='<div class="dm-cal-cell'+(has?' has-data':' no-data')+(sel?' selected':'')+'"'+(has?' onclick="dmCalToggleDay(\''+key+'\')"':'')+' title="'+(has?cnt+' รายการ':'ไม่มีรายการ')+'"><span>'+d+'</span>'+(has?'<span class="dm-cal-dot"></span>':'')+'</div>';
+  }
+  html+='</div>';
+  var selCount=Object.keys(s.selectedDays).length;
+  if(selCount>0)html+='<div class="dm-cal-summary">✓ เลือกแล้ว '+selCount+' วัน</div>';
+  html+='</div>';
+  return html;
+}
+function dmCalShift(n){
+  var s=DM.state;
+  var d=new Date(s.calYear,s.calMonth-1+n,1);
+  s.calYear=d.getFullYear();s.calMonth=d.getMonth()+1;
+  dmRender();
+}
+function dmCalToggleDay(key){
+  var s=DM.state;
+  if(s.selectedDays[key])delete s.selectedDays[key];else s.selectedDays[key]=true;
+  dmRender();
+}
+function dmCalSelectAll(){
+  var s=DM.state,dataSet=dmDaysWithData(),y=s.calYear,m=s.calMonth,mm=String(m).padStart(2,'0');
+  Object.keys(dataSet).forEach(function(k){
+    if(k.slice(0,4)===String(y)&&k.slice(4,6)===mm)s.selectedDays[k]=true;
+  });
+  dmRender();
+}
+function dmCalClear(){
+  DM.state.selectedDays={};
+  dmRender();
 }
 function dmBuildMonthOptions(sel,cur){
   var years=[...new Set(DM.cfg.rows.map(function(r){var my=dmMonthYear(r.dateStr);return my?my.yr:null;}).filter(Boolean))].sort();
@@ -650,8 +731,12 @@ function dmRender(){
     html+='<select class="filter-select" onchange="DM.state.moTo=this.value;dmRender()" style="font-size:12px">'+MOPT.map(function(o){return'<option value="'+o[0]+'" '+(s.moTo===o[0]?'selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>';
     html+='<select class="filter-select" onchange="DM.state.yrTo=this.value;dmRender()" style="font-size:12px"><option value="">ปี</option>'+years.map(function(y){return'<option value="'+y+'" '+(s.yrTo===y?'selected':'')+'>'+(+y+543)+'</option>';}).join('')+'</select>';
     html+='<button class="filter-reset" onclick="DM.state.moFrom=DM.state.yrFrom=DM.state.moTo=DM.state.yrTo=\'\';dmRender()">✕ ล้างช่วง</button>';
+    html+='<button class="recon-bank-btn '+(s.calOpen?'active':'')+'" onclick="DM.state.calOpen=!DM.state.calOpen;dmRender()">📅 เลือกวันที่แบบปฏิทิน</button>';
   }
   html+='</div>';
+  if(cfg.groupable&&s.calOpen){
+    html+=dmCalendarHtml();
+  }
   html+='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">';
   if(cfg.groupable){
     html+='<span style="font-size:11px;color:var(--muted);font-weight:600">มุมมอง:</span>';
@@ -706,7 +791,10 @@ function dmToggleGroupIdx(i){
 }
 function openDetailModal(cfg){
   DM.cfg=cfg;
-  DM.state={view:'group',sort:'amt',search:'',moFrom:'',yrFrom:'',moTo:'',yrTo:'',expanded:{}};
+  var td=new Date(),defY=td.getFullYear(),defM=td.getMonth()+1;
+  var keys=(cfg.rows||[]).map(function(r){return dateKey(r.dateStr);}).filter(Boolean).sort();
+  if(keys.length){var lk=keys[keys.length-1];defY=+lk.slice(0,4);defM=+lk.slice(4,6);}
+  DM.state={view:'group',sort:'amt',search:'',moFrom:'',yrFrom:'',moTo:'',yrTo:'',expanded:{},calOpen:false,calYear:defY,calMonth:defM,selectedDays:{}};
   openModal(cfg.icon+' '+cfg.title, (cfg.statsHtml||'')+'<div id="dmDynamic"></div>');
   dmRender();
 }
@@ -808,14 +896,14 @@ function showModalPayment(){
 }
 function showModalCF(){
   var months=G.allMonths||[];
-  dmRegisterSimple('cf','Cash Flow รายเดือน',[{label:'เดือน',get:function(m){return MLBL[m]||m;}},{label:'เงินรับ',right:true,get:function(m){return fmtFull(G.recByM[m]||0);}},{label:'เงินจ่าย',right:true,get:function(m){return fmtFull(G.payByM[m]||0);}},{label:'Cash Flow',right:true,get:function(m){return fmtFull((G.recByM[m]||0)-(G.payByM[m]||0));}}],months);
+  dmRegisterSimple('cf','Cash Flow รายเดือน',[{label:'เดือน',get:function(m){return mlbl(m);}},{label:'เงินรับ',right:true,get:function(m){return fmtFull(G.recByM[m]||0);}},{label:'เงินจ่าย',right:true,get:function(m){return fmtFull(G.payByM[m]||0);}},{label:'Cash Flow',right:true,get:function(m){return fmtFull((G.recByM[m]||0)-(G.payByM[m]||0));}}],months);
   openModal('\ud83d\udcb8 Cash Flow \u0e23\u0e32\u0e22\u0e40\u0e14\u0e37\u0e2d\u0e19',
     dmExportBtns('cf')+
     '<div class="modal-summary">'+mStat('\u0e40\u0e14\u0e37\u0e2d\u0e19\u0e17\u0e35\u0e48\u0e21\u0e35\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25',months.length+' \u0e40\u0e14\u0e37\u0e2d\u0e19','var(--blue)')+
     mStat('\u0e40\u0e07\u0e34\u0e19\u0e23\u0e31\u0e1a\u0e23\u0e27\u0e21',fmtKPI(Object.values(G.recByM||{}).reduce(function(s,v){return s+v;},0)),'var(--green)')+
     mStat('\u0e40\u0e07\u0e34\u0e19\u0e08\u0e48\u0e32\u0e22\u0e23\u0e27\u0e21',fmtKPI(Object.values(G.payByM||{}).reduce(function(s,v){return s+v;},0)),'var(--red)')+'</div>'+
     '<table><thead><tr><th>\u0e40\u0e14\u0e37\u0e2d\u0e19</th><th style="text-align:right">\u0e40\u0e07\u0e34\u0e19\u0e23\u0e31\u0e1a</th><th style="text-align:right">\u0e40\u0e07\u0e34\u0e19\u0e08\u0e48\u0e32\u0e22</th><th style="text-align:right">Cash Flow</th></tr></thead><tbody>'+
-    months.map(function(m){var rec=G.recByM[m]||0,pay=G.payByM[m]||0,cf=rec-pay;return'<tr><td>'+(MLBL[m]||m)+'</td><td class="right green">'+fmtFull(rec)+'</td><td class="right red">'+fmtFull(pay)+'</td><td class="right '+(cf>=0?'green':'red')+'">'+(cf>=0?'+':'')+fmtFull(cf)+'</td></tr>';}).join('')+'</tbody></table>');
+    months.map(function(m){var rec=G.recByM[m]||0,pay=G.payByM[m]||0,cf=rec-pay;return'<tr><td>'+mlbl(m)+'</td><td class="right green">'+fmtFull(rec)+'</td><td class="right red">'+fmtFull(pay)+'</td><td class="right '+(cf>=0?'green':'red')+'">'+(cf>=0?'+':'')+fmtFull(cf)+'</td></tr>';}).join('')+'</tbody></table>');
 }
 function todayDateObj(){var t=new Date();t.setHours(0,0,0,0);return t;}
 function dateKeyFromObj(dt){return String(dt.getFullYear())+String(dt.getMonth()+1).padStart(2,'0')+String(dt.getDate()).padStart(2,'0');}
@@ -937,7 +1025,7 @@ function renderDashboard(d){
   var rD=last6.map(function(m){return +fmtM(d.recByM[m]||0);});
   var pD=last6.map(function(m){return +fmtM(d.payByM[m]||0);});
   var cfD=rD.map(function(r,i){return +(r-pD[i]).toFixed(2);});
-  var lbl=last6.map(function(m){return MLBL[m]||m;});
+  var lbl=last6.map(function(m){return mlbl(m);});
   var totR=fm.reduce(function(s,m){return s+(d.recByM[m]||0);},0);
   var totP=fm.reduce(function(s,m){return s+(d.payByM[m]||0);},0);
   var totCF=totR-totP;
