@@ -1002,6 +1002,24 @@ function showModalAR(){
   openDetailModal({title:'AR ลูกหนี้ค้างรับ',icon:'📋',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AR',rows:norm,itemsByDoc:G.arItemsByDoc,
     statsHtml:'<div class="modal-summary">'+mStat('AR รวม',fmtKPI(G.at||0),'var(--gold2)')+mStat('จำนวนรายการ',(G.arRowCount||0)+' รายการ','var(--blue)')+mStat('จำนวนลูกค้า',(G.arCusts||0)+' ราย','var(--teal)')+mStat('เกิน 90 วัน',fmtKPI(G.a90p||0),'var(--red)')+'</div>'});
 }
+function showModalAR030(){
+  var all=(G.arRows2||[]).filter(function(r){return r.days<=30;});
+  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),days:r.days};});
+  openDetailModal({title:'AR 0-30 วัน',icon:'✅',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AR',rows:norm,itemsByDoc:G.arItemsByDoc,
+    statsHtml:'<div class="modal-summary">'+mStat('ยอดรวม 0-30 วัน',fmtKPI(all.reduce(function(s,r){return s+r.bal;},0)),'var(--green)')+mStat('จำนวนรายการ',all.length+' รายการ','var(--green)')+'</div>'});
+}
+function showModalAR3060(){
+  var all=(G.arRows2||[]).filter(function(r){return r.days>30&&r.days<=60;});
+  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),days:r.days};});
+  openDetailModal({title:'AR 31-60 วัน',icon:'🟦',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AR',rows:norm,itemsByDoc:G.arItemsByDoc,
+    statsHtml:'<div class="modal-summary">'+mStat('ยอดรวม 31-60 วัน',fmtKPI(all.reduce(function(s,r){return s+r.bal;},0)),'var(--teal)')+mStat('จำนวนรายการ',all.length+' รายการ','var(--teal)')+'</div>'});
+}
+function showModalAR6090(){
+  var all=(G.arRows2||[]).filter(function(r){return r.days>60&&r.days<=90;});
+  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),days:r.days};});
+  openDetailModal({title:'AR 61-90 วัน',icon:'🟧',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AR',rows:norm,itemsByDoc:G.arItemsByDoc,
+    statsHtml:'<div class="modal-summary">'+mStat('ยอดรวม 61-90 วัน',fmtKPI(all.reduce(function(s,r){return s+r.bal;},0)),'var(--gold2)')+mStat('จำนวนรายการ',all.length+' รายการ','var(--gold2)')+'</div>'});
+}
 function showModalAROver(){
   var all=(G.arRows2||[]).filter(function(r){return r.days>90;});
   var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),days:r.days};});
@@ -1120,10 +1138,13 @@ function renderDashboard(d){
   var ar90pct2=d.at>0?(d.a90p/d.at*100).toFixed(1):0;
   var arDueSoon=filterDueSoon(d.arRows2||[],7);
   var arDueSoonSum=arDueSoon.reduce(function(s,r){return s+r.bal;},0);
+  var ar30pct2=d.at>0?(d.a30/d.at*100).toFixed(1):0,ar60pct2=d.at>0?(d.a60/d.at*100).toFixed(1):0,ar9060pct2=d.at>0?(d.a90/d.at*100).toFixed(1):0;
   document.getElementById('kpi1').innerHTML=
     kpi('gold','\ud83d\udccb','rgba(212,168,67,0.18)','AR \u0e04\u0e49\u0e32\u0e07\u0e23\u0e31\u0e1a\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14',fmtKPI(d.at),'gold',d.arRowCount.toLocaleString()+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','showModalAR()')+
+    kpi('green','\u2705','rgba(76,175,125,0.18)','AR 0-30 \u0e27\u0e31\u0e19',fmtKPI(d.a30),'green',ar30pct2+'% \u0e02\u0e2d\u0e07 AR','showModalAR030()')+
+    kpi('teal','\ud83d\udfe6','rgba(43,191,179,0.18)','AR 31-60 \u0e27\u0e31\u0e19',fmtKPI(d.a60),'teal',ar60pct2+'% \u0e02\u0e2d\u0e07 AR','showModalAR3060()')+
+    kpi('gold','\ud83d\udfe7','rgba(212,168,67,0.18)','AR 61-90 \u0e27\u0e31\u0e19',fmtKPI(d.a90),'gold',ar9060pct2+'% \u0e02\u0e2d\u0e07 AR','showModalAR6090()')+
     kpi('red','\u23f0','rgba(224,92,92,0.18)','AR \u0e40\u0e01\u0e34\u0e19\u0e01\u0e33\u0e2b\u0e19\u0e14 (>90 \u0e27\u0e31\u0e19)',fmtKPI(d.a90p),'red',ar90pct2+'% \u0e02\u0e2d\u0e07 AR','showModalAROver()')+
-    kpi('teal','\u2705','rgba(43,191,179,0.18)','AR \u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e40\u0e01\u0e34\u0e19\u0e01\u0e33\u0e2b\u0e19\u0e14',fmtKPI(d.a30),'teal',(d.at>0?(d.a30/d.at*100).toFixed(1):0)+'%','showModalAR()')+
     kpi('blue','\ud83d\udc65','rgba(91,143,249,0.18)','\u0e08\u0e33\u0e19\u0e27\u0e19\u0e25\u0e39\u0e01\u0e04\u0e49\u0e32\u0e17\u0e35\u0e48\u0e04\u0e49\u0e32\u0e07',d.arCusts+' \u0e23\u0e32\u0e22','blue','\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e08\u0e32\u0e01 Q04','showModalAR()')+
     kpi('teal','\u23f3','rgba(43,191,179,0.18)','AR \u0e04\u0e23\u0e1a\u0e01\u0e33\u0e2b\u0e19\u0e14 7 \u0e27\u0e31\u0e19\u0e02\u0e49\u0e32\u0e07\u0e2b\u0e19\u0e49\u0e32',fmtKPI(arDueSoonSum),'teal',arDueSoon.length+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','showModalARDueSoon()');
   makeChart('arAgingBar',{type:'bar',data:{labels:['0-30','31-60','61-90','>90'],datasets:[{data:[d.a30,d.a60,d.a90,d.a90p].map(function(v){return +fmtM(v);}),backgroundColor:['#4CAF7D','#2BBFB3','#D4A843','#E05C5C'],borderRadius:4}]},options:{plugins:{legend:{display:false}},scales:{x:{grid:{color:gc},ticks:{color:'#8FA3B8'}},y:{grid:{color:gc},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}},afterDataLimits:function(a){a.max=a.max*1.18;}}}},plugins:[barLblPlugin]});
