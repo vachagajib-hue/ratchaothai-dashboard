@@ -749,7 +749,7 @@ function dmRender(){
     html+='<button class="recon-bank-btn '+(s.view==='flat'?'active':'')+'" onclick="DM.state.view=\'flat\';dmRender()">รายการทั้งหมด</button>';
     html+='<span style="font-size:11px;color:var(--muted);font-weight:600;margin-left:8px">เรียง:</span>';
     html+='<button class="recon-bank-btn '+(s.sort==='amt'?'active':'')+'" onclick="DM.state.sort=\'amt\';dmRender()">ยอดมาก→น้อย</button>';
-    html+='<button class="recon-bank-btn '+(s.sort==='name'?'active':'')+'" onclick="DM.state.sort=\'name\';dmRender()">ชื่อ A-Z</button>';
+    html+='<button class="recon-bank-btn '+(s.sort==='name'?'active':'')+'" onclick="DM.state.sort=\'name\';dmRender()">กำหนดชำระ น้อย→มาก</button>';
   }
   html+='<span style="flex:1"></span>';
   html+='<button class="hbtn hbtn-muted" onclick="dmPrint()">🖨️ บันทึกเป็น PDF</button>';
@@ -761,7 +761,7 @@ function dmRender(){
   if(cfg.groupable&&s.view==='group'){
     html+='<th style="width:26px"></th><th>ชื่อ</th><th style="text-align:right">ยอดรวม</th><th style="text-align:right">% รวม</th><th style="text-align:right">จำนวนรายการ</th><th>กำหนดชำระใกล้สุด</th><th>Aging สูงสุด</th></tr></thead><tbody>';
     var groups=dmGroup(filtered);
-    groups.sort(function(a,b){return s.sort==='name'?a.name.localeCompare(b.name,'th'):b.total-a.total;});
+    groups.sort(function(a,b){return s.sort==='name'?(a.earliestKey||'99999999').localeCompare(b.earliestKey||'99999999'):b.total-a.total;});
     s.expanded=s.expanded||{};
     DM.state.lastGroups=groups;
     html+=groups.map(function(g,i){
@@ -778,7 +778,7 @@ function dmRender(){
   } else {
     html+='<th>ชื่อ</th><th>เลขที่เอกสาร</th><th style="text-align:right">'+cfg.amountLabel+'</th>'+(cfg.agingKind?'<th style="text-align:right">อายุ (วัน)</th>':'')+'<th>วันที่</th></tr></thead><tbody>';
     var flat=filtered.slice();
-    flat.sort(function(a,b){return s.sort==='name'?a.name.localeCompare(b.name,'th'):(b.amount||0)-(a.amount||0);});
+    flat.sort(function(a,b){return s.sort==='name'?(dateKey(a.dateStr)||'99999999').localeCompare(dateKey(b.dateStr)||'99999999'):(b.amount||0)-(a.amount||0);});
     html+=flat.map(function(r,i){
       return '<tr style="background:'+(i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)')+'"><td>'+r.name+'</td><td style="color:var(--muted);font-size:12px">'+(r.docNo||'—')+'</td><td class="right gold">'+fmtFull(r.amount)+'</td>'+(cfg.agingKind?'<td class="right">'+(r.days!==null&&r.days!==undefined?Math.round(r.days).toLocaleString('th-TH'):'—')+'</td>':'')+'<td style="font-size:12px;color:var(--muted)">'+(r.dateDisplay||'—')+'</td></tr>';
     }).join('');
@@ -815,11 +815,11 @@ function dmExportExcel(){
   if(cfg.groupable&&s.view==='group'){
     var groups=dmGroup(filtered);
     var totalAll=filtered.reduce(function(a,r){return a+(r.amount||0);},0);
-    groups.sort(function(a,b){return s.sort==='name'?a.name.localeCompare(b.name,'th'):b.total-a.total;});
+    groups.sort(function(a,b){return s.sort==='name'?(a.earliestKey||'99999999').localeCompare(b.earliestKey||'99999999'):b.total-a.total;});
     data=groups.map(function(g){return {'ชื่อ':g.name,[cfg.amountLabel]:g.total,'% รวม':totalAll>0?+(g.total/totalAll*100).toFixed(1):0,'จำนวนรายการ':g.count,'กำหนดชำระใกล้สุด':g.earliestDisplay||'','Aging สูงสุด (วัน)':g.worstDays||''};});
   } else {
     var flat=filtered.slice();
-    flat.sort(function(a,b){return s.sort==='name'?a.name.localeCompare(b.name,'th'):(b.amount||0)-(a.amount||0);});
+    flat.sort(function(a,b){return s.sort==='name'?(dateKey(a.dateStr)||'99999999').localeCompare(dateKey(b.dateStr)||'99999999'):(b.amount||0)-(a.amount||0);});
     data=flat.map(function(r){var o={'ชื่อ':r.name,'เลขที่เอกสาร':r.docNo||'',[cfg.amountLabel]:r.amount};if(cfg.agingKind)o['อายุ (วัน)']=r.days!==null&&r.days!==undefined?Math.round(r.days):'';o['วันที่']=r.dateDisplay||'';return o;});
   }
   var ws=XLSX.utils.json_to_sheet(data);
@@ -833,13 +833,13 @@ function dmPrint(){
   var rowsHtml='';
   if(cfg.groupable&&s.view==='group'){
     var groups=dmGroup(filtered);
-    groups.sort(function(a,b){return s.sort==='name'?a.name.localeCompare(b.name,'th'):b.total-a.total;});
+    groups.sort(function(a,b){return s.sort==='name'?(a.earliestKey||'99999999').localeCompare(b.earliestKey||'99999999'):b.total-a.total;});
     rowsHtml='<tr><th>ชื่อ</th><th class="pr-right">'+cfg.amountLabel+'</th><th class="pr-right">% รวม</th><th class="pr-right">จำนวนรายการ</th><th>กำหนดชำระใกล้สุด</th><th>Aging สูงสุด</th></tr>'+
       groups.map(function(g){var pct=totalAll>0?(g.total/totalAll*100).toFixed(1):'0.0';return '<tr><td>'+g.name+'</td><td class="pr-right">'+fmtFull(g.total)+'</td><td class="pr-right">'+pct+'%</td><td class="pr-right">'+g.count+'</td><td>'+(g.earliestDisplay||'—')+'</td><td>'+(g.worstDays!==null?Math.round(g.worstDays).toLocaleString('th-TH')+' วัน':'—')+'</td></tr>';}).join('')+
       '<tr class="pr-sub"><td>รวมทั้งหมด</td><td class="pr-right">'+fmtFull(totalAll)+'</td><td></td><td></td><td></td><td></td></tr>';
   } else {
     var flat=filtered.slice();
-    flat.sort(function(a,b){return s.sort==='name'?a.name.localeCompare(b.name,'th'):(b.amount||0)-(a.amount||0);});
+    flat.sort(function(a,b){return s.sort==='name'?(dateKey(a.dateStr)||'99999999').localeCompare(dateKey(b.dateStr)||'99999999'):(b.amount||0)-(a.amount||0);});
     rowsHtml='<tr><th>ชื่อ</th><th>เลขที่เอกสาร</th><th class="pr-right">'+cfg.amountLabel+'</th><th>วันที่</th></tr>'+
       flat.map(function(r){return '<tr><td>'+r.name+'</td><td>'+(r.docNo||'—')+'</td><td class="pr-right">'+fmtFull(r.amount)+'</td><td>'+(r.dateDisplay||'—')+'</td></tr>';}).join('')+
       '<tr class="pr-sub"><td colspan="2">รวมทั้งหมด</td><td class="pr-right">'+fmtFull(totalAll)+'</td><td></td></tr>';
