@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Financial Dashboard &#8212; บริษัท รถเจาะไทย จำกัด</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
 :root{--navy:#0D1B2A;--navy2:#1B2E45;--navy3:#243B55;--gold:#D4A843;--gold2:#F0C96B;--teal:#2BBFB3;--red:#E05C5C;--green:#4CAF7D;--blue:#5B8FF9;--muted:#8FA3B8;--border:rgba(255,255,255,0.08);--card:rgba(255,255,255,0.05);--text:#E8EFF7;--text2:#B0C4D8;}
@@ -128,9 +129,24 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 .pdf-start-btn:disabled{opacity:0.4;cursor:not-allowed;}
 .pdf-dl-btn{background:linear-gradient(135deg,var(--gold),var(--gold2));color:var(--navy);border:none;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;font-family:'Sarabun',sans-serif;cursor:pointer;margin-right:6px;}
 .pdf-send-btn{background:linear-gradient(135deg,var(--teal),#5DDDD6);color:var(--navy);border:none;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;font-family:'Sarabun',sans-serif;cursor:pointer;}
+#printArea{display:none;}
+@media print{
+  body *{visibility:hidden;}
+  #printArea,#printArea *{visibility:visible;}
+  #printArea{display:block;position:absolute;top:0;left:0;width:100%;padding:16px;background:#fff;color:#000;}
+  #printArea table{width:100%;border-collapse:collapse;font-size:10px;margin-top:10px;}
+  #printArea th,#printArea td{border:1px solid #999;padding:4px 6px;text-align:left;}
+  #printArea th{background:#e8e8e8;}
+  #printArea .pr-right{text-align:right;}
+  #printArea .pr-company{font-size:16px;font-weight:700;}
+  #printArea .pr-title{font-size:13px;margin-top:2px;font-weight:600;}
+  #printArea .pr-range,#printArea .pr-meta{font-size:11px;color:#333;margin-top:2px;}
+  #printArea .pr-sub{font-weight:700;background:#f3f3f3;}
+}
 </style>
 </head>
 <body>
+<div id="printArea"></div>
 <div class="apikey-modal" id="apikeyModal">
 <div class="apikey-box">
 <div class="apikey-title">&#128273; ตั้งค่า Anthropic API Key</div>
@@ -542,9 +558,207 @@ var lineLblPlugin={id:'lineLbl',afterDatasetsDraw:function(chart){
   });
 }};
 
+// =========================================================
+// Reusable detail-modal engine: group-by-name, month-year
+// filter, sort, PDF (print) export, Excel export.
+// =========================================================
+var DM = {}; // holds current modal's config + state
+
+function toSlashDMY(v){
+  if(v instanceof Date) return String(v.getDate()).padStart(2,'0')+'/'+String(v.getMonth()+1).padStart(2,'0')+'/'+v.getFullYear();
+  var s=String(v||'');
+  var m=s.match(/(\d{2})[.\/](\d{2})[.\/](\d{4})/);
+  return m?m[1]+'/'+m[2]+'/'+m[3]:'';
+}
+function dmMonthYear(dateStr){
+  var m=String(dateStr||'').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return m?{mo:m[2],yr:m[3]}:null;
+}
+function agingBadge(days,kind){
+  if(days===null||days===undefined)return '';
+  if(kind==='AP'){
+    var cls=days>60?'red':days>30?'gold':'green';
+  }else{
+    var cls=days>90?'red':days>60?'gold':days>30?'teal':'green';
+  }
+  return '<span class="badge badge-'+cls+'">'+Math.round(days)+' วัน</span>';
+}
+function dmGroup(rows){
+  var map={};
+  rows.forEach(function(r){
+    if(!map[r.name])map[r.name]={name:r.name,total:0,count:0,rows:[],worstDays:null};
+    var g=map[r.name];
+    g.total+=r.amount||0; g.count++; g.rows.push(r);
+    if(r.days!==null&&r.days!==undefined&&(g.worstDays===null||r.days>g.worstDays))g.worstDays=r.days;
+  });
+  return Object.values(map);
+}
+function dmFilterRows(){
+  var s=DM.state;
+  var rows=DM.cfg.rows;
+  if(s.moFrom||s.yrFrom||s.moTo||s.yrTo){
+    rows=rows.filter(function(r){
+      var my=dmMonthYear(r.dateStr);
+      if(!my)return false;
+      var key=my.yr+my.mo;
+      var from=(s.yrFrom||'0000')+(s.moFrom||'01');
+      var to=(s.yrTo||'9999')+(s.moTo||'12');
+      return key>=from&&key<=to;
+    });
+  }
+  if(s.search){
+    var q=s.search.toLowerCase();
+    rows=rows.filter(function(r){return r.name.toLowerCase().includes(q);});
+  }
+  return rows;
+}
+function dmBuildMonthOptions(sel,cur){
+  var years=[...new Set(DM.cfg.rows.map(function(r){var my=dmMonthYear(r.dateStr);return my?my.yr:null;}).filter(Boolean))].sort();
+  var months=[{v:'',l:'ทั้งหมด'},{v:'01',l:'ม.ค.'},{v:'02',l:'ก.พ.'},{v:'03',l:'มี.ค.'},{v:'04',l:'เม.ย.'},{v:'05',l:'พ.ค.'},{v:'06',l:'มิ.ย.'},{v:'07',l:'ก.ค.'},{v:'08',l:'ส.ค.'},{v:'09',l:'ก.ย.'},{v:'10',l:'ต.ค.'},{v:'11',l:'พ.ย.'},{v:'12',l:'ธ.ค.'}];
+  return years; // years computed for year-select build below
+}
+function dmRangeLabel(){
+  var s=DM.state;
+  if(!s.moFrom&&!s.yrFrom&&!s.moTo&&!s.yrTo)return 'ทั้งหมด';
+  var MTHAI2={'01':'ม.ค.','02':'ก.พ.','03':'มี.ค.','04':'เม.ย.','05':'พ.ค.','06':'มิ.ย.','07':'ก.ค.','08':'ส.ค.','09':'ก.ย.','10':'ต.ค.','11':'พ.ย.','12':'ธ.ค.'};
+  var from=(s.moFrom?MTHAI2[s.moFrom]+' ':'')+(s.yrFrom||'');
+  var to=(s.moTo?MTHAI2[s.moTo]+' ':'')+(s.yrTo||'');
+  return (from||'เริ่ม')+' — '+(to||'ปัจจุบัน');
+}
+function dmRender(){
+  var s=DM.state, cfg=DM.cfg;
+  var filtered=dmFilterRows();
+  var totalAll=filtered.reduce(function(a,r){return a+(r.amount||0);},0);
+  var years=[...new Set(cfg.rows.map(function(r){var my=dmMonthYear(r.dateStr);return my?my.yr:null;}).filter(Boolean))].sort();
+  var MOPT=[['','เดือน'],['01','ม.ค.'],['02','ก.พ.'],['03','มี.ค.'],['04','เม.ย.'],['05','พ.ค.'],['06','มิ.ย.'],['07','ก.ค.'],['08','ส.ค.'],['09','ก.ย.'],['10','ต.ค.'],['11','พ.ย.'],['12','ธ.ค.']];
+  var html='';
+  html+='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">';
+  html+='<input class="modal-search" style="flex:1;min-width:180px;margin-bottom:0" placeholder="🔍 ค้นหาชื่อ…" value="'+(s.search||'')+'" oninput="DM.state.search=this.value;dmRender()">';
+  if(cfg.groupable){
+    html+='<select class="filter-select" onchange="DM.state.moFrom=this.value;dmRender()" style="font-size:12px">'+MOPT.map(function(o){return'<option value="'+o[0]+'" '+(s.moFrom===o[0]?'selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>';
+    html+='<select class="filter-select" onchange="DM.state.yrFrom=this.value;dmRender()" style="font-size:12px"><option value="">ปี</option>'+years.map(function(y){return'<option value="'+y+'" '+(s.yrFrom===y?'selected':'')+'>'+(+y+543)+'</option>';}).join('')+'</select>';
+    html+='<span style="color:var(--muted);font-size:12px">ถึง</span>';
+    html+='<select class="filter-select" onchange="DM.state.moTo=this.value;dmRender()" style="font-size:12px">'+MOPT.map(function(o){return'<option value="'+o[0]+'" '+(s.moTo===o[0]?'selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>';
+    html+='<select class="filter-select" onchange="DM.state.yrTo=this.value;dmRender()" style="font-size:12px"><option value="">ปี</option>'+years.map(function(y){return'<option value="'+y+'" '+(s.yrTo===y?'selected':'')+'>'+(+y+543)+'</option>';}).join('')+'</select>';
+    html+='<button class="filter-reset" onclick="DM.state.moFrom=DM.state.yrFrom=DM.state.moTo=DM.state.yrTo=\'\';dmRender()">✕ ล้างช่วง</button>';
+  }
+  html+='</div>';
+  html+='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">';
+  if(cfg.groupable){
+    html+='<span style="font-size:11px;color:var(--muted);font-weight:600">มุมมอง:</span>';
+    html+='<button class="recon-bank-btn '+(s.view==='group'?'active':'')+'" onclick="DM.state.view=\'group\';dmRender()">จัดกลุ่มตามชื่อ</button>';
+    html+='<button class="recon-bank-btn '+(s.view==='flat'?'active':'')+'" onclick="DM.state.view=\'flat\';dmRender()">รายการทั้งหมด</button>';
+    html+='<span style="font-size:11px;color:var(--muted);font-weight:600;margin-left:8px">เรียง:</span>';
+    html+='<button class="recon-bank-btn '+(s.sort==='amt'?'active':'')+'" onclick="DM.state.sort=\'amt\';dmRender()">ยอดมาก→น้อย</button>';
+    html+='<button class="recon-bank-btn '+(s.sort==='name'?'active':'')+'" onclick="DM.state.sort=\'name\';dmRender()">ชื่อ A-Z</button>';
+  }
+  html+='<span style="flex:1"></span>';
+  html+='<button class="hbtn hbtn-muted" onclick="dmPrint()">🖨️ บันทึกเป็น PDF</button>';
+  html+='<button class="hbtn hbtn-green" onclick="dmExportExcel()">📊 บันทึกเป็น Excel</button>';
+  html+='</div>';
+  html+='<div style="font-size:11px;color:var(--muted);margin-bottom:8px">ช่วงข้อมูล: <strong style="color:var(--gold2)">'+dmRangeLabel()+'</strong> — พบ '+filtered.length+' รายการ, ยอดรวม <strong style="color:var(--text)">'+fmtFull(totalAll)+'</strong> บาท</div>';
+
+  html+='<div style="overflow-x:auto;max-height:420px;overflow-y:auto"><table><thead style="position:sticky;top:0;background:#1B2E45;z-index:2"><tr>';
+  if(cfg.groupable&&s.view==='group'){
+    html+='<th>ชื่อ</th><th style="text-align:right">ยอดรวม</th><th style="text-align:right">% รวม</th><th style="text-align:right">จำนวนรายการ</th><th>Aging สูงสุด</th></tr></thead><tbody>';
+    var groups=dmGroup(filtered);
+    groups.sort(function(a,b){return s.sort==='name'?a.name.localeCompare(b.name,'th'):b.total-a.total;});
+    html+=groups.map(function(g,i){
+      var pct=totalAll>0?(g.total/totalAll*100).toFixed(1):'0.0';
+      return '<tr style="background:'+(i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)')+'"><td>'+g.name+'</td><td class="right gold">'+fmtFull(g.total)+'</td><td class="right" style="color:var(--muted)">'+pct+'%</td><td class="right">'+g.count+'</td><td>'+(cfg.agingKind?agingBadge(g.worstDays,cfg.agingKind):'—')+'</td></tr>';
+    }).join('');
+  } else {
+    html+='<th>ชื่อ</th><th>เลขที่เอกสาร</th><th style="text-align:right">'+cfg.amountLabel+'</th>'+(cfg.agingKind?'<th style="text-align:right">อายุ (วัน)</th>':'')+'<th>วันที่</th></tr></thead><tbody>';
+    var flat=filtered.slice();
+    flat.sort(function(a,b){return s.sort==='name'?a.name.localeCompare(b.name,'th'):(b.amount||0)-(a.amount||0);});
+    html+=flat.map(function(r,i){
+      return '<tr style="background:'+(i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)')+'"><td>'+r.name+'</td><td style="color:var(--muted);font-size:12px">'+(r.docNo||'—')+'</td><td class="right gold">'+fmtFull(r.amount)+'</td>'+(cfg.agingKind?'<td class="right">'+(r.days!==null&&r.days!==undefined?Math.round(r.days):'—')+'</td>':'')+'<td style="font-size:12px;color:var(--muted)">'+(r.dateDisplay||'—')+'</td></tr>';
+    }).join('');
+  }
+  html+='</tbody></table></div>';
+
+  document.getElementById('dmDynamic').innerHTML=html;
+  DM.state.lastFiltered=filtered;
+}
+function openDetailModal(cfg){
+  DM.cfg=cfg;
+  DM.state={view:'group',sort:'amt',search:'',moFrom:'',yrFrom:'',moTo:'',yrTo:''};
+  openModal(cfg.icon+' '+cfg.title, (cfg.statsHtml||'')+'<div id="dmDynamic"></div>');
+  dmRender();
+}
+function dmExportExcel(){
+  var cfg=DM.cfg, s=DM.state, filtered=DM.state.lastFiltered||[];
+  var data;
+  if(cfg.groupable&&s.view==='group'){
+    var groups=dmGroup(filtered);
+    var totalAll=filtered.reduce(function(a,r){return a+(r.amount||0);},0);
+    groups.sort(function(a,b){return s.sort==='name'?a.name.localeCompare(b.name,'th'):b.total-a.total;});
+    data=groups.map(function(g){return {'ชื่อ':g.name,[cfg.amountLabel]:g.total,'% รวม':totalAll>0?+(g.total/totalAll*100).toFixed(1):0,'จำนวนรายการ':g.count,'Aging สูงสุด (วัน)':g.worstDays||''};});
+  } else {
+    var flat=filtered.slice();
+    flat.sort(function(a,b){return s.sort==='name'?a.name.localeCompare(b.name,'th'):(b.amount||0)-(a.amount||0);});
+    data=flat.map(function(r){var o={'ชื่อ':r.name,'เลขที่เอกสาร':r.docNo||'',[cfg.amountLabel]:r.amount};if(cfg.agingKind)o['อายุ (วัน)']=r.days!==null&&r.days!==undefined?Math.round(r.days):'';o['วันที่']=r.dateDisplay||'';return o;});
+  }
+  var ws=XLSX.utils.json_to_sheet(data);
+  var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'รายงาน');
+  XLSX.writeFile(wb, cfg.title.replace(/[\\/:*?"<>|]/g,'_')+'.xlsx');
+}
+function dmPrint(){
+  var cfg=DM.cfg, s=DM.state, filtered=DM.state.lastFiltered||[];
+  var totalAll=filtered.reduce(function(a,r){return a+(r.amount||0);},0);
+  var rowsHtml='';
+  if(cfg.groupable&&s.view==='group'){
+    var groups=dmGroup(filtered);
+    groups.sort(function(a,b){return s.sort==='name'?a.name.localeCompare(b.name,'th'):b.total-a.total;});
+    rowsHtml='<tr><th>ชื่อ</th><th class="pr-right">'+cfg.amountLabel+'</th><th class="pr-right">% รวม</th><th class="pr-right">จำนวนรายการ</th><th>Aging สูงสุด</th></tr>'+
+      groups.map(function(g){var pct=totalAll>0?(g.total/totalAll*100).toFixed(1):'0.0';return '<tr><td>'+g.name+'</td><td class="pr-right">'+fmtFull(g.total)+'</td><td class="pr-right">'+pct+'%</td><td class="pr-right">'+g.count+'</td><td>'+(g.worstDays!==null?Math.round(g.worstDays)+' วัน':'—')+'</td></tr>';}).join('')+
+      '<tr class="pr-sub"><td>รวมทั้งหมด</td><td class="pr-right">'+fmtFull(totalAll)+'</td><td></td><td></td><td></td></tr>';
+  } else {
+    var flat=filtered.slice();
+    flat.sort(function(a,b){return s.sort==='name'?a.name.localeCompare(b.name,'th'):(b.amount||0)-(a.amount||0);});
+    rowsHtml='<tr><th>ชื่อ</th><th>เลขที่เอกสาร</th><th class="pr-right">'+cfg.amountLabel+'</th><th>วันที่</th></tr>'+
+      flat.map(function(r){return '<tr><td>'+r.name+'</td><td>'+(r.docNo||'—')+'</td><td class="pr-right">'+fmtFull(r.amount)+'</td><td>'+(r.dateDisplay||'—')+'</td></tr>';}).join('')+
+      '<tr class="pr-sub"><td colspan="2">รวมทั้งหมด</td><td class="pr-right">'+fmtFull(totalAll)+'</td><td></td></tr>';
+  }
+  document.getElementById('printArea').innerHTML=
+    '<div class="pr-header"><div class="pr-company">บริษัท รถเจาะไทย จำกัด</div>'+
+    '<div class="pr-title">'+cfg.title+'</div>'+
+    '<div class="pr-range">ช่วงข้อมูล: '+dmRangeLabel()+'</div>'+
+    '<div class="pr-meta">พิมพ์เมื่อ: '+today()+' | จำนวน '+filtered.length+' รายการ</div></div>'+
+    '<table>'+rowsHtml+'</table>';
+  setTimeout(function(){window.print();},80);
+}
+
+function dmExportBtns(id){
+  return '<div style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:12px">'+
+    '<button class="hbtn hbtn-muted" onclick="dmSimplePrintById(\''+id+'\')">🖨️ บันทึกเป็น PDF</button>'+
+    '<button class="hbtn hbtn-green" onclick="dmSimpleExcelById(\''+id+'\')">📊 บันทึกเป็น Excel</button></div>';
+}
+var DM_SIMPLE={};
+function dmRegisterSimple(id,title,columns,rows){ DM_SIMPLE[id]={title:title,columns:columns,rows:rows}; }
+function dmSimpleExcel(title,columns,rows){
+  var data=rows.map(function(r){var o={};columns.forEach(function(c){o[c.label]=c.get(r);});return o;});
+  var ws=XLSX.utils.json_to_sheet(data);
+  var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'รายงาน');
+  XLSX.writeFile(wb,title.replace(/[\\/:*?"<>|]/g,'_')+'.xlsx');
+}
+function dmSimplePrintDoc(title,columns,rows){
+  var rowsHtml='<tr>'+columns.map(function(c){return '<th'+(c.right?' class="pr-right"':'')+'>'+c.label+'</th>';}).join('')+'</tr>'+
+    rows.map(function(r){return '<tr>'+columns.map(function(c){return '<td'+(c.right?' class="pr-right"':'')+'>'+c.get(r)+'</td>';}).join('')+'</tr>';}).join('');
+  document.getElementById('printArea').innerHTML=
+    '<div class="pr-header"><div class="pr-company">บริษัท รถเจาะไทย จำกัด</div><div class="pr-title">'+title+'</div><div class="pr-meta">พิมพ์เมื่อ: '+today()+' | จำนวน '+rows.length+' รายการ</div></div><table>'+rowsHtml+'</table>';
+  setTimeout(function(){window.print();},80);
+}
+function dmSimpleExcelById(id){var d=DM_SIMPLE[id];if(d)dmSimpleExcel(d.title,d.columns,d.rows);}
+function dmSimplePrintById(id){var d=DM_SIMPLE[id];if(d)dmSimplePrintDoc(d.title,d.columns,d.rows);}
+
 function showModalBank(){
   var rows=G.bankRows||[],pos=rows.filter(function(r){return r.bal>0;}).sort(function(a,b){return b.bal-a.bal;}),neg=rows.filter(function(r){return r.bal<0;}).sort(function(a,b){return a.bal-b.bal;});
+  dmRegisterSimple('bank','ยอดเงินสด & ธนาคาร',[{label:'รหัส',get:function(r){return r.code;}},{label:'ชื่อบัญชี',get:function(r){return r.name;}},{label:'ยอดคงเหลือ',right:true,get:function(r){return fmtFull(r.bal);}}],rows);
   openModal('\ud83c\udfe6 \u0e22\u0e2d\u0e14\u0e40\u0e07\u0e34\u0e19\u0e2a\u0e14 & \u0e18\u0e19\u0e32\u0e04\u0e32\u0e23',
+    dmExportBtns('bank')+
     '<div class="modal-summary">'+mStat('\u0e22\u0e2d\u0e14\u0e1a\u0e27\u0e01\u0e23\u0e27\u0e21',fmtKPI(pos.reduce(function(s,r){return s+r.bal;},0)),'var(--green)')+
     mStat('\u0e22\u0e2d\u0e14\u0e25\u0e1a\u0e23\u0e27\u0e21',fmtKPI(neg.reduce(function(s,r){return s+r.bal;},0)),'var(--red)')+
     mStat('\u0e22\u0e2d\u0e14\u0e2a\u0e38\u0e17\u0e18\u0e34',fmtKPI(G.bankNet),'var(--red)')+
@@ -557,24 +771,22 @@ function showModalBank(){
     neg.map(function(r){return '<tr><td style="color:var(--muted);font-size:12px">'+r.code+'</td><td>'+r.name+'</td><td class="right red">'+fmtFull(r.bal)+'</td></tr>';}).join('')+'</tbody></table>');
 }
 function showModalReceipt(){
-  var rows=(G.recRows||[]).slice(0,50);
-  openModal('\ud83d\udce5 \u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14\u0e40\u0e07\u0e34\u0e19\u0e23\u0e31\u0e1a',
-    '<div class="modal-summary">'+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14',(G.recRows||[]).length+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','var(--gold2)')+mStat('\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21 50 \u0e25\u0e48\u0e32\u0e2a\u0e38\u0e14',fmtKPI(rows.reduce(function(s,r){return s+r.amt;},0)),'var(--green)')+'</div>'+
-    '<input class="modal-search" placeholder="\ud83d\udd0d \u0e04\u0e49\u0e19\u0e2b\u0e32\u0e0a\u0e37\u0e48\u0e2d\u0e25\u0e39\u0e01\u0e04\u0e49\u0e32\u2026" oninput="filterTbl(this,\'rTbl\')">'+
-    '<table id="rTbl"><thead><tr><th>\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48</th><th>\u0e40\u0e25\u0e02\u0e17\u0e35\u0e48\u0e40\u0e2d\u0e01\u0e2a\u0e32\u0e23</th><th>\u0e25\u0e39\u0e01\u0e04\u0e49\u0e32</th><th style="text-align:right">\u0e08\u0e33\u0e19\u0e27\u0e19\u0e40\u0e07\u0e34\u0e19</th></tr></thead><tbody>'+
-    rows.map(function(r){return '<tr><td style="color:var(--muted);font-size:12px">'+fmtD(r.date)+'</td><td style="color:var(--muted);font-size:12px">'+r.docNo+'</td><td>'+r.custName+'</td><td class="right green">'+fmtFull(r.amt)+'</td></tr>';}).join('')+'</tbody></table>');
+  var all=G.recRows||[];
+  var norm=all.map(function(r){return {name:r.custName,docNo:r.docNo,amount:r.amt,dateStr:toSlashDMY(r.date),dateDisplay:fmtD(r.date),days:null};});
+  openDetailModal({title:'รายละเอียดเงินรับ',icon:'📥',amountLabel:'จำนวนเงิน',groupable:true,agingKind:null,rows:norm,
+    statsHtml:'<div class="modal-summary">'+mStat('จำนวนทั้งหมด',all.length+' รายการ','var(--gold2)')+mStat('ยอดรวมทั้งหมด',fmtKPI(all.reduce(function(s,r){return s+r.amt;},0)),'var(--green)')+'</div>'});
 }
 function showModalPayment(){
-  var rows=(G.payRows||[]).slice(0,50);
-  openModal('\ud83d\udce4 \u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14\u0e40\u0e07\u0e34\u0e19\u0e08\u0e48\u0e32\u0e22',
-    '<div class="modal-summary">'+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14',(G.payRows||[]).length+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','var(--gold2)')+mStat('\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21 50 \u0e25\u0e48\u0e32\u0e2a\u0e38\u0e14',fmtKPI(rows.reduce(function(s,r){return s+r.amt;},0)),'var(--red)')+'</div>'+
-    '<input class="modal-search" placeholder="\ud83d\udd0d \u0e04\u0e49\u0e19\u0e2b\u0e32\u0e0a\u0e37\u0e48\u0e2d\u0e40\u0e08\u0e49\u0e32\u0e2b\u0e19\u0e35\u0e49\u2026" oninput="filterTbl(this,\'pTbl\')">'+
-    '<table id="pTbl"><thead><tr><th>\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48</th><th>\u0e40\u0e25\u0e02\u0e17\u0e35\u0e48\u0e40\u0e2d\u0e01\u0e2a\u0e32\u0e23</th><th>\u0e40\u0e08\u0e49\u0e32\u0e2b\u0e19\u0e35\u0e49</th><th style="text-align:right">\u0e08\u0e33\u0e19\u0e27\u0e19\u0e40\u0e07\u0e34\u0e19</th></tr></thead><tbody>'+
-    rows.map(function(r){return '<tr><td style="color:var(--muted);font-size:12px">'+fmtD(r.date)+'</td><td style="color:var(--muted);font-size:12px">'+r.docNo+'</td><td>'+r.vendName+'</td><td class="right red">'+fmtFull(r.amt)+'</td></tr>';}).join('')+'</tbody></table>');
+  var all=G.payRows||[];
+  var norm=all.map(function(r){return {name:r.vendName,docNo:r.docNo,amount:r.amt,dateStr:toSlashDMY(r.date),dateDisplay:fmtD(r.date),days:null};});
+  openDetailModal({title:'รายละเอียดเงินจ่าย',icon:'📤',amountLabel:'จำนวนเงิน',groupable:true,agingKind:null,rows:norm,
+    statsHtml:'<div class="modal-summary">'+mStat('จำนวนทั้งหมด',all.length+' รายการ','var(--gold2)')+mStat('ยอดรวมทั้งหมด',fmtKPI(all.reduce(function(s,r){return s+r.amt;},0)),'var(--red)')+'</div>'});
 }
 function showModalCF(){
   var months=G.allMonths||[];
+  dmRegisterSimple('cf','Cash Flow รายเดือน',[{label:'เดือน',get:function(m){return MLBL[m]||m;}},{label:'เงินรับ',right:true,get:function(m){return fmtFull(G.recByM[m]||0);}},{label:'เงินจ่าย',right:true,get:function(m){return fmtFull(G.payByM[m]||0);}},{label:'Cash Flow',right:true,get:function(m){return fmtFull((G.recByM[m]||0)-(G.payByM[m]||0));}}],months);
   openModal('\ud83d\udcb8 Cash Flow \u0e23\u0e32\u0e22\u0e40\u0e14\u0e37\u0e2d\u0e19',
+    dmExportBtns('cf')+
     '<div class="modal-summary">'+mStat('\u0e40\u0e14\u0e37\u0e2d\u0e19\u0e17\u0e35\u0e48\u0e21\u0e35\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25',months.length+' \u0e40\u0e14\u0e37\u0e2d\u0e19','var(--blue)')+
     mStat('\u0e40\u0e07\u0e34\u0e19\u0e23\u0e31\u0e1a\u0e23\u0e27\u0e21',fmtKPI(Object.values(G.recByM||{}).reduce(function(s,v){return s+v;},0)),'var(--green)')+
     mStat('\u0e40\u0e07\u0e34\u0e19\u0e08\u0e48\u0e32\u0e22\u0e23\u0e27\u0e21',fmtKPI(Object.values(G.payByM||{}).reduce(function(s,v){return s+v;},0)),'var(--red)')+'</div>'+
@@ -582,39 +794,34 @@ function showModalCF(){
     months.map(function(m){var rec=G.recByM[m]||0,pay=G.payByM[m]||0,cf=rec-pay;return'<tr><td>'+(MLBL[m]||m)+'</td><td class="right green">'+fmtFull(rec)+'</td><td class="right red">'+fmtFull(pay)+'</td><td class="right '+(cf>=0?'green':'red')+'">'+(cf>=0?'+':'')+fmtFull(cf)+'</td></tr>';}).join('')+'</tbody></table>');
 }
 function showModalAR(){
-  var rows=(G.arRows2||[]).sort(function(a,b){return b.bal-a.bal;}).slice(0,100);
-  openModal('\ud83d\udccb AR \u0e25\u0e39\u0e01\u0e2b\u0e19\u0e35\u0e49\u0e04\u0e49\u0e32\u0e07\u0e23\u0e31\u0e1a',
-    '<div class="modal-summary">'+mStat('AR \u0e23\u0e27\u0e21',fmtKPI(G.at||0),'var(--gold2)')+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23',(G.arRowCount||0)+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','var(--blue)')+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e25\u0e39\u0e01\u0e04\u0e49\u0e32',(G.arCusts||0)+' \u0e23\u0e32\u0e22','var(--teal)')+mStat('\u0e40\u0e01\u0e34\u0e19 90 \u0e27\u0e31\u0e19',fmtKPI(G.a90p||0),'var(--red)')+'</div>'+
-    '<input class="modal-search" placeholder="\ud83d\udd0d \u0e04\u0e49\u0e19\u0e2b\u0e32\u0e0a\u0e37\u0e48\u0e2d\u0e25\u0e39\u0e01\u0e04\u0e49\u0e32\u2026" oninput="filterTbl(this,\'arDT\')">'+
-    '<table id="arDT"><thead><tr><th>\u0e25\u0e39\u0e01\u0e04\u0e49\u0e32</th><th>\u0e40\u0e25\u0e02\u0e17\u0e35\u0e48\u0e40\u0e2d\u0e01\u0e2a\u0e32\u0e23</th><th style="text-align:right">\u0e22\u0e2d\u0e14\u0e04\u0e49\u0e32\u0e07</th><th style="text-align:right">\u0e2d\u0e32\u0e22\u0e38\u0e2b\u0e19\u0e35\u0e49 (\u0e27\u0e31\u0e19)</th><th>\u0e04\u0e23\u0e1a\u0e01\u0e33\u0e2b\u0e19\u0e14</th></tr></thead><tbody>'+
-    rows.map(function(r){var cls=r.days>90?'red':r.days>60?'gold':r.days>30?'teal':'green';return'<tr><td>'+r.name+'</td><td style="color:var(--muted);font-size:12px">'+r.docNo+'</td><td class="right '+cls+'">'+fmtFull(r.bal)+'</td><td class="right '+cls+'">'+Math.round(r.days)+'</td><td style="font-size:12px;color:var(--muted)">'+fmtD(r.dueDate)+'</td></tr>';}).join('')+'</tbody></table>');
+  var all=G.arRows2||[];
+  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),days:r.days};});
+  openDetailModal({title:'AR ลูกหนี้ค้างรับ',icon:'📋',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AR',rows:norm,
+    statsHtml:'<div class="modal-summary">'+mStat('AR รวม',fmtKPI(G.at||0),'var(--gold2)')+mStat('จำนวนรายการ',(G.arRowCount||0)+' รายการ','var(--blue)')+mStat('จำนวนลูกค้า',(G.arCusts||0)+' ราย','var(--teal)')+mStat('เกิน 90 วัน',fmtKPI(G.a90p||0),'var(--red)')+'</div>'});
 }
 function showModalAROver(){
-  var rows=(G.arRows2||[]).filter(function(r){return r.days>90;}).sort(function(a,b){return b.bal-a.bal;}).slice(0,80);
-  openModal('\ud83d\udd34 AR \u0e40\u0e01\u0e34\u0e19\u0e01\u0e33\u0e2b\u0e19\u0e14 > 90 \u0e27\u0e31\u0e19',
-    '<div class="modal-summary">'+mStat('\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21\u0e40\u0e01\u0e34\u0e19 90 \u0e27\u0e31\u0e19',fmtKPI(rows.reduce(function(s,r){return s+r.bal;},0)),'var(--red)')+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23',rows.length+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','var(--red)')+'</div>'+
-    '<input class="modal-search" placeholder="\ud83d\udd0d \u0e04\u0e49\u0e19\u0e2b\u0e32\u2026" oninput="filterTbl(this,\'arOT\')">'+
-    '<table id="arOT"><thead><tr><th>\u0e25\u0e39\u0e01\u0e04\u0e49\u0e32</th><th>\u0e40\u0e25\u0e02\u0e17\u0e35\u0e48\u0e40\u0e2d\u0e01\u0e2a\u0e32\u0e23</th><th style="text-align:right">\u0e22\u0e2d\u0e14\u0e04\u0e49\u0e32\u0e07</th><th style="text-align:right">\u0e40\u0e01\u0e34\u0e19 (\u0e27\u0e31\u0e19)</th><th>\u0e04\u0e23\u0e1a\u0e01\u0e33\u0e2b\u0e19\u0e14</th></tr></thead><tbody>'+
-    rows.map(function(r){return'<tr><td>'+r.name+'</td><td style="color:var(--muted);font-size:12px">'+r.docNo+'</td><td class="right red">'+fmtFull(r.bal)+'</td><td class="right red">'+Math.round(r.days)+'</td><td style="font-size:12px;color:var(--muted)">'+fmtD(r.dueDate)+'</td></tr>';}).join('')+'</tbody></table>');
+  var all=(G.arRows2||[]).filter(function(r){return r.days>90;});
+  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),days:r.days};});
+  openDetailModal({title:'AR เกินกำหนด > 90 วัน',icon:'🔴',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AR',rows:norm,
+    statsHtml:'<div class="modal-summary">'+mStat('ยอดรวมเกิน 90 วัน',fmtKPI(all.reduce(function(s,r){return s+r.bal;},0)),'var(--red)')+mStat('จำนวนรายการ',all.length+' รายการ','var(--red)')+'</div>'});
 }
 function showModalAP(){
-  var rows=(G.apRows2||[]).sort(function(a,b){return b.bal-a.bal;}).slice(0,100);
-  openModal('\ud83d\udcdd AP \u0e40\u0e08\u0e49\u0e32\u0e2b\u0e19\u0e35\u0e49\u0e04\u0e49\u0e32\u0e07\u0e08\u0e48\u0e32\u0e22',
-    '<div class="modal-summary">'+mStat('AP \u0e23\u0e27\u0e21',fmtKPI(G.pt||0),'var(--red)')+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23',(G.apRowCount||0)+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','var(--blue)')+mStat('\u0e40\u0e01\u0e34\u0e19 60 \u0e27\u0e31\u0e19',fmtKPI(G.p60p||0),'var(--red)')+mStat('\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e40\u0e01\u0e34\u0e19\u0e01\u0e33\u0e2b\u0e19\u0e14',fmtKPI(G.p30||0),'var(--green)')+'</div>'+
-    '<input class="modal-search" placeholder="\ud83d\udd0d \u0e04\u0e49\u0e19\u0e2b\u0e32\u2026" oninput="filterTbl(this,\'apDT\')">'+
-    '<table id="apDT"><thead><tr><th>\u0e40\u0e08\u0e49\u0e32\u0e2b\u0e19\u0e35\u0e49</th><th>\u0e40\u0e25\u0e02\u0e17\u0e35\u0e48\u0e40\u0e2d\u0e01\u0e2a\u0e32\u0e23</th><th style="text-align:right">\u0e22\u0e2d\u0e14\u0e04\u0e49\u0e32\u0e07</th><th style="text-align:right">\u0e2d\u0e32\u0e22\u0e38 (\u0e27\u0e31\u0e19)</th><th>\u0e04\u0e23\u0e1a\u0e01\u0e33\u0e2b\u0e19\u0e14</th></tr></thead><tbody>'+
-    rows.map(function(r){var cls=r.days>60?'red':r.days>30?'gold':'green';return'<tr><td>'+r.name+'</td><td style="color:var(--muted);font-size:12px">'+r.docNo+'</td><td class="right '+cls+'">'+fmtFull(r.bal)+'</td><td class="right '+cls+'">'+Math.round(r.days)+'</td><td style="font-size:12px;color:var(--muted)">'+fmtD(r.dueDate)+'</td></tr>';}).join('')+'</tbody></table>');
+  var all=G.apRows2||[];
+  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),days:r.days};});
+  openDetailModal({title:'AP เจ้าหนี้ค้างจ่าย',icon:'📝',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AP',rows:norm,
+    statsHtml:'<div class="modal-summary">'+mStat('AP รวม',fmtKPI(G.pt||0),'var(--red)')+mStat('จำนวนรายการ',(G.apRowCount||0)+' รายการ','var(--blue)')+mStat('เกิน 60 วัน',fmtKPI(G.p60p||0),'var(--red)')+mStat('ยังไม่เกินกำหนด',fmtKPI(G.p30||0),'var(--green)')+'</div>'});
 }
 function showModalAPDue(){
-  var rows=(G.apRows2||[]).filter(function(r){return r.days<=60&&r.days>0;}).sort(function(a,b){return a.days-b.days;}).slice(0,60);
-  openModal('\ud83d\udcc5 AP \u0e43\u0e01\u0e25\u0e49\u0e04\u0e23\u0e1a\u0e01\u0e33\u0e2b\u0e19\u0e14 (\u2264 60 \u0e27\u0e31\u0e19)',
-    '<div class="modal-summary">'+mStat('\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21 \u2264 60 \u0e27\u0e31\u0e19',fmtKPI(rows.reduce(function(s,r){return s+r.bal;},0)),'var(--gold2)')+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23',rows.length+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','var(--gold2)')+'</div>'+
-    '<table><thead><tr><th>\u0e40\u0e08\u0e49\u0e32\u0e2b\u0e19\u0e35\u0e49</th><th style="text-align:right">\u0e22\u0e2d\u0e14</th><th style="text-align:right">\u0e2d\u0e32\u0e22\u0e38 (\u0e27\u0e31\u0e19)</th><th>\u0e04\u0e23\u0e1a\u0e01\u0e33\u0e2b\u0e19\u0e14</th></tr></thead><tbody>'+
-    rows.map(function(r){var cls=r.days>30?'gold':'green';return'<tr><td>'+r.name+'</td><td class="right '+cls+'">'+fmtFull(r.bal)+'</td><td class="right '+cls+'">'+Math.round(r.days)+'</td><td style="font-size:12px;color:var(--muted)">'+fmtD(r.dueDate)+'</td></tr>';}).join('')+'</tbody></table>');
+  var all=(G.apRows2||[]).filter(function(r){return r.days<=60&&r.days>0;});
+  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),days:r.days};});
+  openDetailModal({title:'AP ใกล้ครบกำหนด (≤ 60 วัน)',icon:'📅',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AP',rows:norm,
+    statsHtml:'<div class="modal-summary">'+mStat('ยอดรวม ≤ 60 วัน',fmtKPI(all.reduce(function(s,r){return s+r.bal;},0)),'var(--gold2)')+mStat('จำนวนรายการ',all.length+' รายการ','var(--gold2)')+'</div>'});
 }
 function showModalExp(){
   var rows=(G.expAll||[]).filter(function(r){return r.amt>0;}).sort(function(a,b){return b.amt-a.amt;});
+  dmRegisterSimple('exp','รายละเอียดค่าใช้จ่าย',[{label:'รหัส',get:function(r){return r.code;}},{label:'ชื่อบัญชี',get:function(r){return r.name;}},{label:'จำนวนเงิน',right:true,get:function(r){return fmtFull(r.amt);}},{label:'สัดส่วน',right:true,get:function(r){return (G.et>0?(r.amt/G.et*100).toFixed(1):0)+'%';}}],rows);
   openModal('\ud83d\udcb0 \u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14\u0e04\u0e48\u0e32\u0e43\u0e0a\u0e49\u0e08\u0e48\u0e32\u0e22',
+    dmExportBtns('exp')+
     '<div class="modal-summary">'+mStat('\u0e04\u0e48\u0e32\u0e43\u0e0a\u0e49\u0e08\u0e48\u0e32\u0e22\u0e23\u0e27\u0e21',fmtKPI(G.et||0),'var(--red)')+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e2b\u0e21\u0e27\u0e14\u0e1a\u0e31\u0e0d\u0e0a\u0e35',rows.length+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','var(--blue)')+'</div>'+
     '<input class="modal-search" placeholder="\ud83d\udd0d \u0e04\u0e49\u0e19\u0e2b\u0e32\u0e0a\u0e37\u0e48\u0e2d\u0e1a\u0e31\u0e0d\u0e0a\u0e35\u2026" oninput="filterTbl(this,\'expT\')">'+
     '<table id="expT"><thead><tr><th>\u0e23\u0e2b\u0e31\u0e2a</th><th>\u0e0a\u0e37\u0e48\u0e2d\u0e1a\u0e31\u0e0d\u0e0a\u0e35</th><th style="text-align:right">\u0e08\u0e33\u0e19\u0e27\u0e19\u0e40\u0e07\u0e34\u0e19</th><th style="text-align:right">\u0e2a\u0e31\u0e14\u0e2a\u0e48\u0e27\u0e19</th></tr></thead><tbody>'+
@@ -904,14 +1111,18 @@ function renderRecon(){
   function sf(n){var neg=n<0;var s=Math.abs(n).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});return'<strong style="color:'+(neg?'var(--red)':'var(--green)')+'">&#3647; '+(neg?'('+s+')':s)+'</strong>';}
 
   window.reconShowSAP=function(){
+    dmRegisterSimple('reconSap','SAP Q03 - '+bank,[{label:'รหัส SAP',get:function(a){return a.code;}},{label:'ชื่อบัญชี',get:function(a){return a.name;}},{label:'ยอดคงเหลือ',right:true,get:function(a){return fmtFull(a.bal);}}],sapList);
     openModal('\ud83d\udcca SAP Q03 \u2014 '+bank,
+      dmExportBtns('reconSap')+
       '<div class="modal-summary">'+mStat('\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21',fmtKPI(sapTotal),sapTotal>=0?'var(--green)':'var(--red)')+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e1a\u0e31\u0e0d\u0e0a\u0e35',sapList.length+' \u0e1a\u0e31\u0e0d\u0e0a\u0e35','var(--blue)')+'</div>'+
       '<table><thead><tr><th>\u0e23\u0e2b\u0e31\u0e2a SAP</th><th>\u0e0a\u0e37\u0e48\u0e2d\u0e1a\u0e31\u0e0d\u0e0a\u0e35</th><th style="text-align:right">\u0e22\u0e2d\u0e14\u0e04\u0e07\u0e40\u0e2b\u0e25\u0e37\u0e2d (\u0e1a\u0e32\u0e17)</th></tr></thead><tbody>'+
       sapList.map(function(a){return'<tr style="background:rgba(255,255,255,0.02)"><td style="color:var(--teal);font-size:11px;padding:6px 8px">'+a.code+'</td><td style="padding:6px 8px;font-size:12px">'+a.name+'</td><td style="text-align:right;padding:6px 8px;font-weight:700;color:'+(a.bal>=0?'var(--green)':'var(--red)')+'">'+fmtFull(a.bal)+'</td></tr>';}).join('')+'</tbody></table>');
   }
   window.reconShowBank=function(){
     if(!hasData){alert('\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49\u0e2d\u0e31\u0e1b\u0e42\u0e2b\u0e25\u0e14 Bank Statement \u2014 \u0e43\u0e0a\u0e49 Tab "\u0e2d\u0e48\u0e32\u0e19 PDF Bank" \u0e01\u0e48\u0e2d\u0e19\u0e04\u0e23\u0e31\u0e1a');return;}
+    dmRegisterSimple('reconBank','Bank Statement - '+bank,[{label:'เลขบัญชี',get:function(a){return a.acctNo;}},{label:'ชื่อ',get:function(a){return a.name;}},{label:'ยอดคงเหลือ',right:true,get:function(a){return fmtFull(a.bal);}}],bd.accounts);
     openModal('\ud83c\udfe6 Bank Statement \u2014 '+bank,
+      dmExportBtns('reconBank')+
       '<div class="modal-summary">'+mStat('\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21',fmtKPI(bankTotal),'var(--teal)')+mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e1a\u0e31\u0e0d\u0e0a\u0e35',bd.accounts.length+' \u0e1a\u0e31\u0e0d\u0e0a\u0e35','var(--blue)')+mStat('\u0e0a\u0e48\u0e27\u0e07\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25',updDate,'var(--gold2)')+'</div>'+
       '<table><thead><tr><th>\u0e40\u0e25\u0e02\u0e1a\u0e31\u0e0d\u0e0a\u0e35</th><th>\u0e0a\u0e37\u0e48\u0e2d</th><th style="text-align:right">\u0e22\u0e2d\u0e14\u0e04\u0e07\u0e40\u0e2b\u0e25\u0e37\u0e2d (\u0e1a\u0e32\u0e17)</th></tr></thead><tbody>'+
       bd.accounts.map(function(a){return'<tr style="background:rgba(255,255,255,0.02)"><td style="padding:6px 8px;font-size:12px">'+a.acctNo+'</td><td style="padding:6px 8px;font-size:12px">'+a.name+'</td><td style="text-align:right;padding:6px 8px;font-weight:700;color:var(--teal)">'+fmtFull(a.bal)+'</td></tr>';}).join('')+'</tbody></table>');
@@ -929,7 +1140,9 @@ function renderRecon(){
         '<td style="text-align:right;padding:6px 8px;color:'+cls+';font-weight:700">'+(d2!==null?fmtFull(d2):'\u2014')+'</td>'+
         '<td style="padding:6px 8px">'+st+'</td></tr>';
     }).join('');
+    dmRegisterSimple('reconDiff','เปรียบเทียบ SAP vs Bank - '+bank,[{label:'รหัส SAP',get:function(a){return a.code;}},{label:'ชื่อบัญชี',get:function(a){return a.name;}},{label:'SAP',right:true,get:function(a){return fmtFull(a.bal);}},{label:'Bank',right:true,get:function(a){var ba=hasData?bd.accounts.find(function(x){return acctMatches(x.acctNo,a.name);}):null;return ba?fmtFull(ba.bal):'-';}},{label:'ส่วนต่าง',right:true,get:function(a){var ba=hasData?bd.accounts.find(function(x){return acctMatches(x.acctNo,a.name);}):null;return ba?fmtFull(ba.bal-a.bal):'-';}}],sapList);
     openModal('\ud83d\udd0d \u0e2a\u0e48\u0e27\u0e19\u0e15\u0e48\u0e32\u0e07 SAP vs Bank \u2014 '+bank,
+      dmExportBtns('reconDiff')+
       '<div class="modal-summary">'+mStat('SAP \u0e23\u0e27\u0e21',fmtKPI(sapTotal),sapTotal>=0?'var(--green)':'var(--red)')+mStat('Bank \u0e23\u0e27\u0e21',hasData?fmtKPI(bankTotal):'\u2014','var(--teal)')+mStat('\u0e2a\u0e48\u0e27\u0e19\u0e15\u0e48\u0e32\u0e07',diff!==null?fmtKPI(diff):'\u2014',diff===null?'var(--muted)':Math.abs(diff)<1?'var(--green)':'var(--red)')+mStat('\u0e0a\u0e48\u0e27\u0e07\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25',updDate,'var(--gold2)')+'</div>'+
       '<table><thead><tr><th>\u0e23\u0e2b\u0e31\u0e2a SAP</th><th>\u0e0a\u0e37\u0e48\u0e2d\u0e1a\u0e31\u0e0d\u0e0a\u0e35</th><th style="text-align:right">SAP (\u0e1a\u0e32\u0e17)</th><th style="text-align:right">Bank (\u0e1a\u0e32\u0e17)</th><th style="text-align:right">\u0e2a\u0e48\u0e27\u0e19\u0e15\u0e48\u0e32\u0e07</th><th>\u0e2a\u0e16\u0e32\u0e19\u0e30</th></tr></thead><tbody>'+rows+'</tbody></table>');
   }
