@@ -1345,8 +1345,18 @@ async function rHandleFiles(files){
 function selBank(b){RACTIVE=b;document.querySelectorAll('.recon-bank-btn').forEach(function(x){x.classList.remove('active');});var el=document.getElementById('rbtn-'+b);if(el)el.classList.add('active');renderRecon();}
 
 function sapBankOf(name){
-  var m=String(name||'').match(/\b(BBL|KBANK|KTB|TTB|SCB|KKP)\b/);
-  return m?m[1]:'CASH';
+  var s=String(name||'');
+  // Q03_BANK_BALANCE เก็บชื่อธนาคารเป็นภาษาไทย ไม่ใช่ตัวย่อ BBL/KBANK ต้องจับคำไทยก่อน
+  if(/กสิกร/.test(s))return 'KBANK';
+  if(/กรุงเทพ/.test(s))return 'BBL';
+  if(/ทหารไทย|ธนชาต/.test(s))return 'TTB';
+  if(/กรุงไทย/.test(s))return 'KTB';
+  if(/ไทยพาณิชย์/.test(s))return 'SCB';
+  if(/เกียรตินาคิน/.test(s))return 'KKP';
+  if(/เงินสด/.test(s))return 'CASH';
+  var m=s.match(/\b(BBL|KBANK|KTB|TTB|SCB|KKP)\b/i);
+  if(m)return m[1].toUpperCase();
+  return 'OTHER';   // เช่น บัญชีธนาคารพัฒนา(LDB), กรุงศรี ฯลฯ ที่ยังไม่มีแท็บเฉพาะ — ยังโชว์ในแท็บ "ทุกธนาคาร" ได้ปกติ
 }
 function renderRecon(){
   var bank=RACTIVE;
