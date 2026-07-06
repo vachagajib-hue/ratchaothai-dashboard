@@ -167,7 +167,8 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
   #printArea th,#printArea td{border:1px solid #d5dbe3;padding:5px 7px;text-align:left;}
   #printArea th{background:#2461B3;color:#fff;font-weight:700;}
   #printArea tbody tr:nth-child(even){background:#F5F8FC;}
-  #printArea .pr-right{text-align:right;color:#1B4F91;font-weight:600;}
+  #printArea th.pr-right{text-align:right;}
+  #printArea td.pr-right{text-align:right;color:#1B4F91;font-weight:600;}
   #printArea .pr-sub{font-weight:800;background:#EAF1FB;color:#1B4F91;}
   #printArea .pr-sub .pr-right{color:#1B4F91;}
 }
@@ -620,10 +621,12 @@ function agingBadge(days,kind){
 function dmGroup(rows){
   var map={};
   rows.forEach(function(r){
-    if(!map[r.name])map[r.name]={name:r.name,total:0,count:0,rows:[],worstDays:null};
+    if(!map[r.name])map[r.name]={name:r.name,total:0,count:0,rows:[],worstDays:null,earliestKey:null,earliestDisplay:null};
     var g=map[r.name];
     g.total+=r.amount||0; g.count++; g.rows.push(r);
     if(r.days!==null&&r.days!==undefined&&(g.worstDays===null||r.days>g.worstDays))g.worstDays=r.days;
+    var k=dateKey(r.dateStr);
+    if(k&&(g.earliestKey===null||k<g.earliestKey)){g.earliestKey=k;g.earliestDisplay=r.dateDisplay;}
   });
   return Object.values(map);
 }
@@ -756,7 +759,7 @@ function dmRender(){
 
   html+='<div style="overflow-x:auto;max-height:420px;overflow-y:auto"><table><thead style="position:sticky;top:0;background:#1B2E45;z-index:2"><tr>';
   if(cfg.groupable&&s.view==='group'){
-    html+='<th style="width:26px"></th><th>ชื่อ</th><th style="text-align:right">ยอดรวม</th><th style="text-align:right">% รวม</th><th style="text-align:right">จำนวนรายการ</th><th>Aging สูงสุด</th></tr></thead><tbody>';
+    html+='<th style="width:26px"></th><th>ชื่อ</th><th style="text-align:right">ยอดรวม</th><th style="text-align:right">% รวม</th><th style="text-align:right">จำนวนรายการ</th><th>กำหนดชำระใกล้สุด</th><th>Aging สูงสุด</th></tr></thead><tbody>';
     var groups=dmGroup(filtered);
     groups.sort(function(a,b){return s.sort==='name'?a.name.localeCompare(b.name,'th'):b.total-a.total;});
     s.expanded=s.expanded||{};
@@ -764,10 +767,10 @@ function dmRender(){
     html+=groups.map(function(g,i){
       var pct=totalAll>0?(g.total/totalAll*100).toFixed(1):'0.0';
       var exp=!!s.expanded[g.name];
-      var row='<tr style="background:'+(i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)')+';cursor:pointer" onclick="dmToggleGroupIdx('+i+')"><td class="right" style="color:var(--gold2);font-weight:700">'+(exp?'−':'+')+'</td><td>'+g.name+'</td><td class="right gold">'+fmtFull(g.total)+'</td><td class="right" style="color:var(--muted)">'+pct+'%</td><td class="right">'+g.count+'</td><td>'+(cfg.agingKind?agingBadge(g.worstDays,cfg.agingKind):'—')+'</td></tr>';
+      var row='<tr style="background:'+(i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)')+';cursor:pointer" onclick="dmToggleGroupIdx('+i+')"><td class="right" style="color:var(--gold2);font-weight:700">'+(exp?'−':'+')+'</td><td>'+g.name+'</td><td class="right gold">'+fmtFull(g.total)+'</td><td class="right" style="color:var(--muted)">'+pct+'%</td><td class="right">'+g.count+'</td><td style="font-size:12px;color:var(--text2)">'+(g.earliestDisplay||'—')+'</td><td>'+(cfg.agingKind?agingBadge(g.worstDays,cfg.agingKind):'—')+'</td></tr>';
       if(exp){
         row+=g.rows.map(function(r){
-          return '<tr style="background:rgba(255,255,255,0.015)"><td></td><td style="padding-left:22px;color:var(--muted);font-size:12px">↳ '+(r.docNo||'—')+'</td><td class="right" style="font-size:12px;color:var(--text2)">'+fmtFull(r.amount)+'</td><td></td><td style="font-size:12px;color:var(--muted)">'+(r.dateDisplay||'—')+'</td><td>'+((cfg.agingKind&&r.days!==null&&r.days!==undefined)?agingBadge(r.days,cfg.agingKind):'')+'</td></tr>';
+          return '<tr style="background:rgba(255,255,255,0.015)"><td></td><td style="padding-left:22px;color:var(--muted);font-size:12px">↳ '+(r.docNo||'—')+'</td><td class="right" style="font-size:12px;color:var(--text2)">'+fmtFull(r.amount)+'</td><td></td><td></td><td style="font-size:12px;color:var(--muted)">'+(r.dateDisplay||'—')+'</td><td>'+((cfg.agingKind&&r.days!==null&&r.days!==undefined)?agingBadge(r.days,cfg.agingKind):'')+'</td></tr>';
         }).join('');
       }
       return row;
@@ -813,7 +816,7 @@ function dmExportExcel(){
     var groups=dmGroup(filtered);
     var totalAll=filtered.reduce(function(a,r){return a+(r.amount||0);},0);
     groups.sort(function(a,b){return s.sort==='name'?a.name.localeCompare(b.name,'th'):b.total-a.total;});
-    data=groups.map(function(g){return {'ชื่อ':g.name,[cfg.amountLabel]:g.total,'% รวม':totalAll>0?+(g.total/totalAll*100).toFixed(1):0,'จำนวนรายการ':g.count,'Aging สูงสุด (วัน)':g.worstDays||''};});
+    data=groups.map(function(g){return {'ชื่อ':g.name,[cfg.amountLabel]:g.total,'% รวม':totalAll>0?+(g.total/totalAll*100).toFixed(1):0,'จำนวนรายการ':g.count,'กำหนดชำระใกล้สุด':g.earliestDisplay||'','Aging สูงสุด (วัน)':g.worstDays||''};});
   } else {
     var flat=filtered.slice();
     flat.sort(function(a,b){return s.sort==='name'?a.name.localeCompare(b.name,'th'):(b.amount||0)-(a.amount||0);});
@@ -831,9 +834,9 @@ function dmPrint(){
   if(cfg.groupable&&s.view==='group'){
     var groups=dmGroup(filtered);
     groups.sort(function(a,b){return s.sort==='name'?a.name.localeCompare(b.name,'th'):b.total-a.total;});
-    rowsHtml='<tr><th>ชื่อ</th><th class="pr-right">'+cfg.amountLabel+'</th><th class="pr-right">% รวม</th><th class="pr-right">จำนวนรายการ</th><th>Aging สูงสุด</th></tr>'+
-      groups.map(function(g){var pct=totalAll>0?(g.total/totalAll*100).toFixed(1):'0.0';return '<tr><td>'+g.name+'</td><td class="pr-right">'+fmtFull(g.total)+'</td><td class="pr-right">'+pct+'%</td><td class="pr-right">'+g.count+'</td><td>'+(g.worstDays!==null?Math.round(g.worstDays).toLocaleString('th-TH')+' วัน':'—')+'</td></tr>';}).join('')+
-      '<tr class="pr-sub"><td>รวมทั้งหมด</td><td class="pr-right">'+fmtFull(totalAll)+'</td><td></td><td></td><td></td></tr>';
+    rowsHtml='<tr><th>ชื่อ</th><th class="pr-right">'+cfg.amountLabel+'</th><th class="pr-right">% รวม</th><th class="pr-right">จำนวนรายการ</th><th>กำหนดชำระใกล้สุด</th><th>Aging สูงสุด</th></tr>'+
+      groups.map(function(g){var pct=totalAll>0?(g.total/totalAll*100).toFixed(1):'0.0';return '<tr><td>'+g.name+'</td><td class="pr-right">'+fmtFull(g.total)+'</td><td class="pr-right">'+pct+'%</td><td class="pr-right">'+g.count+'</td><td>'+(g.earliestDisplay||'—')+'</td><td>'+(g.worstDays!==null?Math.round(g.worstDays).toLocaleString('th-TH')+' วัน':'—')+'</td></tr>';}).join('')+
+      '<tr class="pr-sub"><td>รวมทั้งหมด</td><td class="pr-right">'+fmtFull(totalAll)+'</td><td></td><td></td><td></td><td></td></tr>';
   } else {
     var flat=filtered.slice();
     flat.sort(function(a,b){return s.sort==='name'?a.name.localeCompare(b.name,'th'):(b.amount||0)-(a.amount||0);});
