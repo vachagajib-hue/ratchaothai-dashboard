@@ -287,9 +287,9 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 </table></div>
 </div>
 <div class="recon-section" id="reconTxnSection" style="display:none">
-<div class="recon-section-title">&#128221; รายการเดินบัญชีจาก CSV</div>
-<div style="overflow-x:auto"><table id="reconTxnTbl">
-<thead><tr><th>วันที่</th><th>รายละเอียด</th><th style="text-align:right">Debit</th><th style="text-align:right">Credit</th><th style="text-align:right">ยอดคงเหลือ</th></tr></thead>
+<div class="recon-section-title">&#128221; รายการเดินบัญชีจาก CSV <span class="chart-sub" id="reconTxnCount"></span></div>
+<div style="overflow:auto;max-height:480px;border:1px solid var(--border);border-radius:8px"><table id="reconTxnTbl">
+<thead style="position:sticky;top:0;z-index:2;background:#1B2E45"><tr><th>วันที่</th><th>รายละเอียด</th><th style="text-align:right">Debit</th><th style="text-align:right">Credit</th><th style="text-align:right">ยอดคงเหลือ</th></tr></thead>
 <tbody id="reconTxnBody"></tbody>
 </table></div>
 </div>
@@ -338,13 +338,16 @@ const chartInstances={};
 let G={};
 let ACTIVE_MONTHS=[];
 // Utilities
-function fmt(n){if(Math.abs(n)>=1e6)return (n/1e6).toFixed(2)+' ล้าน';return n.toLocaleString('th-TH');}
+function fmt(n){if(Math.abs(n)>=1e6)return (n/1e6).toFixed(2)+' ล้าน';return (+n).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function fmtKPI(n){
   if(n===null||n===undefined)return '\u2014';
-  return Math.round(n).toLocaleString('th-TH');
+  return (+n).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
 }
 function fmtM(n){return (n/1e6).toFixed(2);}
-function fmtFull(n){return Math.round(n).toLocaleString('th-TH');}
+function fmtFull(n){
+  if(n===null||n===undefined)return '\u2014';
+  return (+n).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
 function today(){return new Date().toLocaleDateString('th-TH',{year:'numeric',month:'long',day:'numeric'});}
 function makeChart(id,cfg){if(chartInstances[id])chartInstances[id].destroy();chartInstances[id]=new Chart(document.getElementById(id),cfg);}
 function filterTbl(inp,id){const q=inp.value.toLowerCase();document.querySelectorAll('#'+id+' tbody tr').forEach(tr=>{tr.style.display=tr.textContent.toLowerCase().includes(q)?'':'none';});}
@@ -978,7 +981,9 @@ function renderRecon(){
     var dr=months.map(function(m){return allTxns.filter(function(t){return getMonth(t.date||'')===m;}).reduce(function(s,t){return s+(t.debit||0);},0)/1e6;});
     chartInstances['reconMonthlyBar']=new Chart(document.getElementById('reconMonthlyBar'),{type:'bar',data:{labels:mlbls,datasets:[{label:'\u0e23\u0e31\u0e1a (Credit)',data:cr,backgroundColor:'rgba(76,175,125,0.8)',borderRadius:4},{label:'\u0e08\u0e48\u0e32\u0e22 (Debit)',data:dr,backgroundColor:'rgba(224,92,92,0.8)',borderRadius:4}]},options:{plugins:{legend:{labels:{color:'#8FA3B8',boxWidth:10}}},scales:{x:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#8FA3B8'}},y:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}},afterDataLimits:function(a){if(a.max>0)a.max=a.max*1.15;}}}},plugins:[barLblPlugin]});
     document.getElementById('reconTxnSection').style.display='block';
-    document.getElementById('reconTxnBody').innerHTML=allTxns.slice(0,60).map(function(t,i){var bg=i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)';return'<tr style="background:'+bg+'"><td style="color:var(--muted);font-size:12px">'+(t.date||'\u2014')+'</td><td>'+(t.desc||'\u2014')+'</td><td class="right red">'+(t.debit?fmtFull(t.debit):'\u2014')+'</td><td class="right green">'+(t.credit?fmtFull(t.credit):'\u2014')+'</td><td class="right" style="font-weight:700">'+(t.bal?fmtFull(t.bal):'\u2014')+'</td></tr>';}).join('');
+    var allTxnsSorted=allTxns.slice().sort(function(x,y){return dateKey(x.date).localeCompare(dateKey(y.date));});
+    document.getElementById('reconTxnCount').textContent='('+allTxnsSorted.length+' รายการ)';
+    document.getElementById('reconTxnBody').innerHTML=allTxnsSorted.map(function(t,i){var bg=i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)';return'<tr style="background:'+bg+'"><td style="color:var(--muted);font-size:12px">'+(t.date||'\u2014')+'</td><td>'+(t.desc||'\u2014')+'</td><td class="right red">'+(t.debit?fmtFull(t.debit):'\u2014')+'</td><td class="right green">'+(t.credit?fmtFull(t.credit):'\u2014')+'</td><td class="right" style="font-weight:700">'+(t.bal?fmtFull(t.bal):'\u2014')+'</td></tr>';}).join('');
 
     // Month-end balance per account: last transaction on/before the end of
     // each month (carried forward if no transaction that month).
