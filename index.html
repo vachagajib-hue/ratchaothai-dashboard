@@ -632,6 +632,18 @@ function normDate(d){
     var yr4=parseInt(mdy[3]);if(yr4>2400)yr4=yr4-543;
     return String(mdy[2]).padStart(2,'0')+'/'+String(mdy[1]).padStart(2,'0')+'/'+yr4;
   }
+  // Bare Excel/Google-Sheets date serial (e.g. "46269") that leaked through
+  // un-formatted because the cell wasn't recognized as a Date type. Plausible
+  // serial range covers roughly year 1990-2100.
+  var serial=s.match(/^\d{4,6}(\.\d+)?$/);
+  if(serial){
+    var n=parseFloat(serial[0]);
+    if(n>32000&&n<73000){
+      var epoch=new Date(1899,11,30);
+      var dt=new Date(epoch.getTime()+Math.round(n)*86400000);
+      return String(dt.getDate()).padStart(2,'0')+'/'+String(dt.getMonth()+1).padStart(2,'0')+'/'+dt.getFullYear();
+    }
+  }
   return d;
 }
 function getMonth(dateStr){
@@ -782,35 +794,79 @@ RBANK_DATA['BBL']={uploaded:true,period:'01/01/2026\u201311/06/2026',accounts:[
   {acctNo:'3453xxx898',name:'Current BBL Lam Narai 3453xxx898',bal:9785,txns:[]}
 ]};
 
-function rHandleDrop(e){e.preventDefault();document.querySelector('.recon-upload-zone').classList.remove('drag');rHandleFiles(e.dataTransfer.files);}
-function rHandleFiles(files){
-  Array.from(files).forEach(function(file){
-    var n=file.name.toLowerCase(),bk='OTHER';
-    if(n.includes('bbl')||n.includes('bangkok'))bk='BBL';
-    else if(n.includes('kbank')||n.includes('kasikorn'))bk='KBANK';
-    else if(n.includes('ttb')||n.includes('tmb'))bk='TTB';
-    else if(n.includes('ktb')||n.includes('krungthai'))bk='KTB';
-    else if(n.includes('scb'))bk='SCB';
-    else if(n.includes('kkp')||n.includes('kiatnakin')||n.includes('kiatn')||n.includes('phatra'))bk='KKP';
-    var reader=new FileReader();
-    reader.onload=function(e){
-      var lines=e.target.result.trim().split('\n'),txns=[],lastBal=0;
-      lines.forEach(function(line,i){if(i===0)return;var cols=line.split(',').map(function(c){return c.trim().replace(/["']/g,'');});if(cols.length<3)return;var debit=parseFloat(cols[2]&&cols[2].replace(/[,\s]/g,''))||0,credit=parseFloat(cols[3]&&cols[3].replace(/[,\s]/g,''))||0,bal=parseFloat(cols[4]&&cols[4].replace(/[,\s]/g,''))||0;if(bal)lastBal=bal;txns.push({date:cols[0],desc:cols[1]||'',debit:debit,credit:credit,bal:bal});});
-      if(!RBANK_DATA[bk])RBANK_DATA[bk]={uploaded:true,accounts:[]};
-      RBANK_DATA[bk].uploaded=true;
-      RBANK_DATA[bk].accounts.push({acctNo:file.name.replace(/\.(csv|txt)$/i,''),name:file.name,bal:lastBal,txns:txns});
-      var el=document.getElementById('rUploadResult');
-      el.className='upload-result';el.textContent='\u2705 '+file.name+' ('+bk+') \u2014 '+txns.length+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23';
-      RACTIVE=bk;document.querySelectorAll('.recon-bank-btn').forEach(function(b){b.classList.remove('active');});var btn=document.getElementById('rbtn-'+bk);if(btn)btn.classList.add('active');
-      renderRecon();
-      // Save to Google Sheets
-      var acctNo=file.name.replace(/\.(csv|txt)$/i,'');
-      saveBankToSheets(bk, acctNo, acctNo, '', txns.map(function(t){return{date:t.date,description:t.desc,debit:t.debit,credit:t.credit,balance:t.bal};})).then(function(ok){
-        if(ok){var el=document.getElementById('rUploadResult');if(el)el.textContent+='\u0020\u2705 \u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e25\u0e07 Google Sheets \u0e41\u0e25\u0e49\u0e27';}
-      });
-    };reader.readAsText(file,'utf-8');
-  });
+// Shared account-number matcher: handles masked bank account numbers
+// (e.g. filename "2493xxx157" where the bank export replaced middle digits
+// with 'x') against full SAP ledger account numbers (e.g. "249-3-01015-7").
+function acctMatches(bankAcctNo, sapName){
+  var bd=String(bankAcctNo).replace(/[^0-9x]/gi,'').toLowerCase();
+  var sn=String(sapName).replace(/[^0-9]/g,'');
+  // 1) Positional match, same digit-count, 'x' in bank number = wildcard.
+  if(bd.length===sn.length && bd.length>=6){
+    var ok=true;
+    for(var i=0;i<bd.length;i++){ if(bd[i]!=='x'&&bd[i]!==sn[i]){ok=false;break;} }
+    if(ok)return true;
+  }
+  // 2) Digit-suffix match (strip any 'x' out first).
+  var bankDig=bd.replace(/x/g,'');
+  for(var l=Math.min(bankDig.length,sn.length,10);l>=6;l--){
+    if(bankDig.slice(-l)===sn.slice(-l))return true;
+  }
+  // 3) Loose substring fallback using the SAP name's own account-number tail.
+  var tail=String(sapName).replace(/^[^0-9]*/,'').replace(/[^0-9\-]/g,'');
+  if(tail.length>4){
+    var bankAcctStr=String(bankAcctNo);
+    if(bankAcctStr.includes(tail)||bankAcctStr.replace(/-/g,'').includes(tail.replace(/-/g,'')))return true;
+  }
+  return false;
 }
+// Shared fuzzy bank-name detector (EN + TH aliases). Returns bank code or null if unrecognized.
+function detectBank(filename){
+  var n=filename.toLowerCase();
+  if(n.includes('bbl')||n.includes('bangkok')||n.includes('krungthep')||filename.includes('กรุงเทพ'))return 'BBL';
+  if(n.includes('kbank')||n.includes('kasikorn')||filename.includes('กสิกร'))return 'KBANK';
+  if(n.includes('ttb')||n.includes('tmb')||n.includes('thanachart')||filename.includes('ทหารไทย')||filename.includes('ธนชาต'))return 'TTB';
+  if(n.includes('ktb')||n.includes('krungthai')||n.includes('krung_thai')||n.includes('krung-thai')||filename.includes('กรุงไทย'))return 'KTB';
+  if(n.includes('scb')||n.includes('siam')||filename.includes('ไทยพาณิชย์'))return 'SCB';
+  if(n.includes('kkp')||n.includes('kiatnakin')||n.includes('kiatn')||n.includes('phatra')||filename.includes('เกียรตินาคิน'))return 'KKP';
+  return null;
+}
+function rHandleDrop(e){e.preventDefault();document.querySelector('.recon-upload-zone').classList.remove('drag');rHandleFiles(e.dataTransfer.files);}
+async function rHandleFiles(files){
+  var el=document.getElementById('rUploadResult');
+  var list=Array.from(files);
+  // Sequential processing — parallel requests can overwhelm the Apps Script
+  // endpoint and cause some saves to fail with "Failed to fetch".
+  for(var idx=0;idx<list.length;idx++){
+    var file=list[idx];
+    var tag=list.length>1?'('+(idx+1)+'/'+list.length+') ':'';
+    var bk=detectBank(file.name);
+    if(!bk){
+      el.className='upload-error';
+      el.textContent=tag+'❌ ไม่รู้จักธนาคารจากชื่อไฟล์ “'+file.name+'” — ชื่อไฟล์ต้องมีชื่อ/รหัสธนาคาร (BBL/KBANK/TTB/KTB/SCB/KKP หรือชื่อเต็ม) — กรุณาเปลี่ยนชื่อไฟล์แล้วลองอีกครั้ง';
+      continue;
+    }
+    var raw=await readFileAsText(file);
+    var lines=raw.trim().split('\n'),txns=[],lastBal=0;
+    lines.forEach(function(line,i){if(i===0)return;var cols=line.split(',').map(function(c){return c.trim().replace(/["']/g,'');});if(cols.length<3)return;var debit=parseFloat(cols[2]&&cols[2].replace(/[,\s]/g,''))||0,credit=parseFloat(cols[3]&&cols[3].replace(/[,\s]/g,''))||0,bal=parseFloat(cols[4]&&cols[4].replace(/[,\s]/g,''))||0;if(bal)lastBal=bal;txns.push({date:cols[0],desc:cols[1]||'',debit:debit,credit:credit,bal:bal});});
+    if(!txns.length){
+      el.className='upload-error';
+      el.textContent=tag+'❌ '+file.name+' — อ่านไฟล์ได้แต่ไม่พบรายการ ตรวจสอบ format CSV (แทง 1: วันที่,รายละเอียด,Debit,Credit,Balance)';
+      continue;
+    }
+    if(!RBANK_DATA[bk])RBANK_DATA[bk]={uploaded:true,accounts:[]};
+    RBANK_DATA[bk].uploaded=true;
+    RBANK_DATA[bk].accounts.push({acctNo:file.name.replace(/\.(csv|txt)$/i,''),name:file.name,bal:lastBal,txns:txns});
+    el.className='upload-result';el.textContent=tag+'✅ '+file.name+' ('+bk+') — '+txns.length+' รายการ — กำลังบันทึกลง Google Sheets…';
+    RACTIVE=bk;document.querySelectorAll('.recon-bank-btn').forEach(function(b){b.classList.remove('active');});var btn=document.getElementById('rbtn-'+bk);if(btn)btn.classList.add('active');
+    renderRecon();
+    var acctNo=file.name.replace(/\.(csv|txt)$/i,'');
+    var res=await saveBankToSheetsRetry(bk, acctNo, acctNo, '', txns.map(function(t){return{date:t.date,description:t.desc,debit:t.debit,credit:t.credit,balance:t.bal};}));
+    if(res.success){el.className='upload-result';el.textContent=tag+'✅ '+file.name+' ('+bk+') — '+txns.length+' รายการ — ✅ บันทึกลง Google Sheets แล้ว';}
+    else{el.className='upload-error';el.textContent=tag+'⚠️ '+file.name+' — อ่านไฟล์สำเร็จ แต่บันทึกลง Google Sheets ไม่สำเร็จ (ลอง 2 ครั้งแล้ว): '+(res.error||'ไม่ทราบสาเหตุ');}
+    await new Promise(function(r){setTimeout(r,300);});
+  }
+}
+
 function selBank(b){RACTIVE=b;document.querySelectorAll('.recon-bank-btn').forEach(function(x){x.classList.remove('active');});var el=document.getElementById('rbtn-'+b);if(el)el.classList.add('active');renderRecon();}
 
 function renderRecon(){
@@ -843,16 +899,7 @@ function renderRecon(){
   }
   window.reconShowDiff=function(){
     var rows=sapList.map(function(a){
-      var ba=hasData?bd.accounts.find(function(x){
-          var bankDig=x.acctNo.replace(/[^0-9]/g,'');
-          var sapNameDig=a.name.replace(/[^0-9]/g,'');
-          var matched=false;
-          for(var l=Math.min(bankDig.length,sapNameDig.length,10);l>=6;l--){
-            if(bankDig.slice(-l)===sapNameDig.slice(-l)){matched=true;break;}
-          }
-          if(!matched){var sn=a.name.replace(/^[^0-9]*/,'').replace(/[^0-9\-]/g,'');if(sn.length>4&&(x.acctNo.includes(sn)||(x.name&&x.name.includes(sn))))matched=true;}
-          return matched;
-        }):null;
+      var ba=hasData?bd.accounts.find(function(x){ return acctMatches(x.acctNo, a.name); }):null;
       var bb=ba?ba.bal:null;
       var d2=bb!==null?bb-a.bal:null;
       var cls=d2===null?'var(--muted)':Math.abs(d2)<1?'var(--green)':'var(--red)';
@@ -888,14 +935,7 @@ function renderRecon(){
   var tbody=document.getElementById('reconDetailBody');tbody.innerHTML='';
   sapList.forEach(function(acct,i){
     var bankBal=hasData?bd.accounts.reduce(function(s,a){
-          var bankDig=a.acctNo.replace(/[^0-9]/g,'');
-          var sapNameDig=acct.name.replace(/[^0-9]/g,'');
-          var matched=false;
-          for(var l=Math.min(bankDig.length,sapNameDig.length,10);l>=6;l--){
-            if(bankDig.slice(-l)===sapNameDig.slice(-l)){matched=true;break;}
-          }
-          if(!matched){var sn=acct.name.replace(/^[^0-9]*/,'').replace(/[^0-9\-]/g,'');if(sn.length>4&&(a.acctNo.includes(sn)||(a.name&&a.name.includes(sn))))matched=true;}
-          return matched?s+a.bal:s;
+          return acctMatches(a.acctNo, acct.name)?s+a.bal:s;
         },null):null;
     var realBankBal=bankBal===0?null:bankBal;
     var d2=realBankBal!==null?realBankBal-acct.bal:null;
@@ -908,16 +948,7 @@ function renderRecon(){
 
   // Charts
   if(chartInstances['reconCompareBar'])chartInstances['reconCompareBar'].destroy();
-  chartInstances['reconCompareBar']=new Chart(document.getElementById('reconCompareBar'),{type:'bar',data:{labels:sapList.map(function(a){return a.code;}),datasets:[{label:'SAP',data:sapList.map(function(a){return +(a.bal/1e6).toFixed(2);}),backgroundColor:'rgba(91,143,249,0.7)',borderRadius:4},{label:'Bank',data:sapList.map(function(a){if(!hasData)return 0;var ba=bd.accounts.find(function(x){
-          var bankDig=x.acctNo.replace(/[^0-9]/g,'');
-          var sapNameDig=a.name.replace(/[^0-9]/g,'');
-          var matched=false;
-          for(var l=Math.min(bankDig.length,sapNameDig.length,10);l>=6;l--){
-            if(bankDig.slice(-l)===sapNameDig.slice(-l)){matched=true;break;}
-          }
-          if(!matched){var sn=a.name.replace(/^[^0-9]*/,'').replace(/[^0-9\-]/g,'');if(sn.length>4&&(x.acctNo.includes(sn)||(x.name&&x.name.includes(sn))))matched=true;}
-          return matched;
-        });return ba?+(ba.bal/1e6).toFixed(2):0;}),backgroundColor:'rgba(43,191,179,0.7)',borderRadius:4}]},options:{plugins:{legend:{labels:{color:'#8FA3B8',boxWidth:10}}},scales:{x:{grid:{color:gc},ticks:{color:'#8FA3B8',font:{size:9}}},y:{grid:{color:gc},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}}}}}});
+  chartInstances['reconCompareBar']=new Chart(document.getElementById('reconCompareBar'),{type:'bar',data:{labels:sapList.map(function(a){return a.code;}),datasets:[{label:'SAP',data:sapList.map(function(a){return +(a.bal/1e6).toFixed(2);}),backgroundColor:'rgba(91,143,249,0.7)',borderRadius:4},{label:'Bank',data:sapList.map(function(a){if(!hasData)return 0;var ba=bd.accounts.find(function(x){ return acctMatches(x.acctNo, a.name); });return ba?+(ba.bal/1e6).toFixed(2):0;}),backgroundColor:'rgba(43,191,179,0.7)',borderRadius:4}]},options:{plugins:{legend:{labels:{color:'#8FA3B8',boxWidth:10}}},scales:{x:{grid:{color:gc},ticks:{color:'#8FA3B8',font:{size:9}}},y:{grid:{color:gc},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}}}}}});
 
   // Always destroy charts before re-render
   if(chartInstances['reconMonthlyBar'])chartInstances['reconMonthlyBar'].destroy();
@@ -1157,17 +1188,31 @@ async function saveBankToSheets(bank, acctNo, acctName, period, txns) {
       headers: {'Content-Type': 'text/plain'},
       body: JSON.stringify(payload)
     });
+    if (!res.ok) {
+      console.error('saveBankToSheets HTTP error:', res.status);
+      return {success:false, error:'HTTP '+res.status};
+    }
     var data = await res.json();
     if (data.success) {
       console.log('Saved to Sheets:', data.saved, 'txns for', acctNo);
-      return true;
+      return {success:true, saved:data.saved, skipped:data.skipped};
     }
     console.error('Save error:', data.error);
-    return false;
+    return {success:false, error:data.error||'Apps Script returned no error detail'};
   } catch(err) {
     console.error('saveBankToSheets error:', err);
-    return false;
+    return {success:false, error:err.message||String(err)};
   }
+}
+
+async function saveBankToSheetsRetry(bank, acctNo, acctName, period, txns, retries){
+  retries = retries===undefined?2:retries;
+  var res = await saveBankToSheets(bank, acctNo, acctName, period, txns);
+  if(!res.success && retries>0){
+    await new Promise(function(r){setTimeout(r,900);});
+    return saveBankToSheetsRetry(bank, acctNo, acctName, period, txns, retries-1);
+  }
+  return res;
 }
 
 async function loadBankFromSheets() {
@@ -1257,94 +1302,93 @@ function showBankLoadNotice(accounts, txns) {
 // ════════════════════════════════════════
 function csvSheetDrop(e){e.preventDefault();e.currentTarget.classList.remove('drag');csvSheetHandle(e.dataTransfer.files);}
 
-function csvSheetHandle(files){
-  var queue=document.getElementById('csvSheetQueue');
-  Array.from(files).forEach(function(file){
-    var n=file.name.toLowerCase().replace(/\s+/g,'_');
-    // Detect bank from filename
-    var bk='BANK';
-    if(n.includes('bbl')||n.includes('bangkok')||n.includes('krungthep'))bk='BBL';
-    else if(n.includes('kbank')||n.includes('kasikorn'))bk='KBANK';
-    else if(n.includes('ttb')||n.includes('tmb')||n.includes('thanarb'))bk='TTB';
-    else if(n.includes('ktb')||n.includes('krungthai')||n.includes('krung_thai'))bk='KTB';
-    else if(n.includes('scb')||n.includes('siam'))bk='SCB';
-    else if(n.includes('kkp')||n.includes('kiatnakin')||n.includes('kiatn')||n.includes('phatra'))bk='KKP';
+function readFileAsText(file){
+  return new Promise(function(resolve){
+    var reader=new FileReader();
+    reader.onload=function(e){resolve(e.target.result);};
+    reader.readAsText(file,'utf-8');
+  });
+}
 
-    // Extract account number from filename
+async function csvSheetHandle(files){
+  var queue=document.getElementById('csvSheetQueue');
+  var list=Array.from(files);
+  // Process one file at a time (sequential) — firing all uploads to Apps Script
+  // at once causes some requests to silently fail ("Failed to fetch") when
+  // Google Apps Script can't handle many concurrent invocations.
+  for(var idx=0;idx<list.length;idx++){
+    var file=list[idx];
+    var bk=detectBank(file.name);
+
     var acctMatch=file.name.match(/(\d[\d\-x]{5,})/i);
     var acctNo=acctMatch?acctMatch[1]:file.name.replace(/\.(csv|txt)$/i,'');
 
-    // Show item in queue
     var itemId='csv_'+Date.now()+'_'+Math.random().toString(36).slice(2,5);
     var div=document.createElement('div');
     div.id=itemId;
     div.className='pdf-item';
     div.innerHTML='<div style="font-size:18px">&#128196;</div>'+
       '<div style="flex:1"><div class="pdf-item-name">'+file.name+'</div>'+
-      '<div style="font-size:11px;color:var(--muted)">'+bk+' | '+acctNo+'</div></div>'+
-      '<div class="pdf-item-status pending" id="st_'+itemId+'">\u23f3 \u0e01\u0e33\u0e25\u0e31\u0e07\u0e2d\u0e48\u0e32\u0e19\u2026</div>';
+      '<div style="font-size:11px;color:var(--muted)">'+(bk||'?')+' | '+acctNo+'</div></div>'+
+      '<div class="pdf-item-status pending" id="st_'+itemId+'">⏳ กำลังอ่าน…</div>';
     queue.appendChild(div);
+    var st=document.getElementById('st_'+itemId);
 
-    // Read CSV
-    var reader=new FileReader();
-    reader.onload=function(e){
-      var lines=e.target.result.trim().split('\n');
-      var txns=[];var lastBal=0;var period='';
-      lines.forEach(function(line,i){
-        if(i===0)return;
-        var cols=line.split(',').map(function(c){return c.trim().replace(/^["']|["']$/g,'');});
-        if(cols.length<3)return;
-        var dt=cols[0]||'';
-        var desc=cols[1]||'';
-        var debit=parseFloat(cols[2])||0;
-        var credit=parseFloat(cols[3])||0;
-        var bal=parseFloat(cols[4])||0;
-        if(bal)lastBal=bal;
-        if(dt){
-          if(!period)period=dt;
-          var lastDt=dt;
-          txns.push({date:normDate(dt),description:desc,debit:debit,credit:credit,balance:bal});
-        }
-      });
+    if(!bk){
+      st.textContent='❌ ไม่รู้จักธนาคาร — ชื่อไฟล์ต้องมี BBL/KBANK/TTB/KTB/SCB/KKP';
+      st.className='pdf-item-status error';
+      continue; // skip this file, move to next
+    }
 
-      // Determine period
-      if(txns.length>0){
-        period=txns[0].date+'-'+txns[txns.length-1].date;
+    var raw=await readFileAsText(file);
+    var lines=raw.trim().split('\n');
+    var txns=[];var lastBal=0;var period='';
+    lines.forEach(function(line,i){
+      if(i===0)return;
+      var cols=line.split(',').map(function(c){return c.trim().replace(/^["']|["']$/g,'');});
+      if(cols.length<3)return;
+      var dt=cols[0]||'';
+      var desc=cols[1]||'';
+      var debit=parseFloat(cols[2])||0;
+      var credit=parseFloat(cols[3])||0;
+      var bal=parseFloat(cols[4])||0;
+      if(bal)lastBal=bal;
+      if(dt){
+        if(!period)period=dt;
+        txns.push({date:normDate(dt),description:desc,debit:debit,credit:credit,balance:bal});
       }
+    });
+    if(txns.length>0)period=txns[0].date+'-'+txns[txns.length-1].date;
 
-      var st=document.getElementById('st_'+itemId);
-      if(!txns.length){
-        st.textContent='\u274c \u0e44\u0e21\u0e48\u0e1e\u0e1a\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23';
-        st.className='pdf-item-status error';
-        return;
-      }
+    if(!txns.length){
+      st.textContent='❌ ไม่พบรายการ — ตรวจสอบ format CSV ของไฟล์นี้';
+      st.className='pdf-item-status error';
+      continue;
+    }
 
-      st.textContent='\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e25\u0e07 Sheets\u2026';
-      st.className='pdf-item-status reading';
+    st.textContent='บันทึกลง Sheets…';
+    st.className='pdf-item-status reading';
 
-      // Save to Google Sheets
-      saveBankToSheets(bk, acctNo, acctNo+' (CSV)', period, txns).then(function(ok){
-        if(ok){
-          st.textContent='\u2705 \u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08 '+txns.length+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23';
-          st.className='pdf-item-status done';
-          // Also feed into RBANK_DATA
-          if(!RBANK_DATA[bk])RBANK_DATA[bk]={uploaded:true,period:period,accounts:[]};
-          RBANK_DATA[bk].uploaded=true;
-          var existIdx=RBANK_DATA[bk].accounts.findIndex(function(a){return a.acctNo===acctNo;});
-          var acctData={acctNo:acctNo,name:acctNo+' (CSV)',bal:lastBal,txns:txns.map(function(t){return{date:t.date,desc:t.description,debit:t.debit,credit:t.credit,bal:t.balance};})};
-          if(existIdx>=0)RBANK_DATA[bk].accounts[existIdx]=acctData;
-          else RBANK_DATA[bk].accounts.push(acctData);
-          // Refresh recon if visible
-          if(document.getElementById('page5').classList.contains('active'))renderRecon();
-        } else {
-          st.textContent='\u274c \u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e44\u0e21\u0e48\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08';
-          st.className='pdf-item-status error';
-        }
-      });
-    };
-    reader.readAsText(file,'utf-8');
-  });
+    var res=await saveBankToSheetsRetry(bk, acctNo, acctNo+' (CSV)', period, txns);
+    if(res.success){
+      st.textContent='✅ บันทึกสำเร็จ '+txns.length+' รายการ';
+      st.className='pdf-item-status done';
+      if(!RBANK_DATA[bk])RBANK_DATA[bk]={uploaded:true,period:period,accounts:[]};
+      RBANK_DATA[bk].uploaded=true;
+      var existIdx=RBANK_DATA[bk].accounts.findIndex(function(a){return a.acctNo===acctNo;});
+      var acctData={acctNo:acctNo,name:acctNo+' (CSV)',bal:lastBal,txns:txns.map(function(t){return{date:t.date,desc:t.description,debit:t.debit,credit:t.credit,bal:t.balance};})};
+      if(existIdx>=0)RBANK_DATA[bk].accounts[existIdx]=acctData;
+      else RBANK_DATA[bk].accounts.push(acctData);
+      if(document.getElementById('page5').classList.contains('active'))renderRecon();
+    } else {
+      st.textContent='❌ บันทึกไม่สำเร็จ (ลอง 2 ครั้งแล้ว): '+(res.error||'ไม่ทราบสาเหตุ');
+      st.className='pdf-item-status error';
+    }
+    // Small gap between requests so Apps Script never sees overlapping invocations
+    await new Promise(function(r){setTimeout(r,300);});
+  }
 }
+
 function switchTab(i){
   document.querySelectorAll('.tab').forEach(function(t,j){t.classList.toggle('active',i===j);});
   document.querySelectorAll('.page').forEach(function(p,j){p.classList.toggle('active',i===j);});
@@ -1356,4 +1400,4 @@ setTimeout(updateApiDot,200);
 loadAllData();
 </script>
 </body>
-</html>
+</html>v
