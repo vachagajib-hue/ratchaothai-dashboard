@@ -106,7 +106,9 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 .recon-upload-zone:hover,.recon-upload-zone.drag{border-color:var(--gold);background:rgba(212,168,67,0.1);}
 .recon-upload-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;}
 .recon-bank-btn{padding:7px 16px;border-radius:20px;border:1px solid var(--border);background:var(--card);color:var(--muted);font-size:12px;font-weight:600;font-family:'Sarabun',sans-serif;cursor:pointer;transition:all 0.2s;}
-.dm-calendar{background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:14px;}
+.dm-calendar{background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:14px;max-width:400px;}
+.dm-cal-footer{display:flex;align-items:center;justify-content:space-between;margin-top:10px;gap:8px;}
+.dm-cal-footer .dm-cal-summary{margin-top:0;}
 .dm-cal-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
 .dm-cal-nav{background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--text);width:26px;height:26px;border-radius:6px;cursor:pointer;font-size:14px;font-family:'Sarabun',sans-serif;line-height:1;}
 .dm-cal-nav:hover{background:rgba(255,255,255,0.14);}
@@ -114,7 +116,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 .dm-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
 .dm-cal-dow{margin-bottom:4px;}
 .dm-cal-dow div{font-size:10px;color:var(--muted);text-align:center;font-weight:600;}
-.dm-cal-cell{position:relative;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;border-radius:6px;font-size:11px;color:var(--text2);}
+.dm-cal-cell{position:relative;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;border-radius:6px;font-size:10.5px;color:var(--text2);min-width:0;}
 .dm-cal-cell.empty{visibility:hidden;}
 .dm-cal-cell.no-data{color:rgba(255,255,255,0.16);}
 .dm-cal-cell.has-data{background:rgba(43,191,179,0.12);border:1px solid rgba(43,191,179,0.35);color:var(--text);cursor:pointer;font-weight:600;}
@@ -159,7 +161,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 #printArea .pr-meta{font-size:10.5px;color:#666;margin-top:4px;padding:0 16px;}
 @media print{
   body *{visibility:hidden;}
-  #printArea,#printArea *{visibility:visible;}
+  #printArea,#printArea *{visibility:visible;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;}
   #printArea{display:block;position:absolute;top:0;left:0;width:100%;padding:16px;background:#fff;color:#222;}
   #printArea table{width:100%;border-collapse:collapse;font-size:10px;margin-top:14px;}
   #printArea th,#printArea td{border:1px solid #d5dbe3;padding:5px 7px;text-align:left;}
@@ -676,7 +678,7 @@ function dmCalendarHtml(){
   }
   html+='</div>';
   var selCount=Object.keys(s.selectedDays).length;
-  if(selCount>0)html+='<div class="dm-cal-summary">✓ เลือกแล้ว '+selCount+' วัน</div>';
+  html+='<div class="dm-cal-footer">'+(selCount>0?'<span class="dm-cal-summary">✓ เลือกแล้ว '+selCount+' วัน</span>':'<span></span>')+'<button class="hbtn hbtn-muted" onclick="dmPrint()">🖨️ พิมพ์ตามวันที่เลือก</button></div>';
   html+='</div>';
   return html;
 }
@@ -794,7 +796,13 @@ function openDetailModal(cfg){
   var td=new Date(),defY=td.getFullYear(),defM=td.getMonth()+1;
   var keys=(cfg.rows||[]).map(function(r){return dateKey(r.dateStr);}).filter(Boolean).sort();
   if(keys.length){var lk=keys[keys.length-1];defY=+lk.slice(0,4);defM=+lk.slice(4,6);}
-  DM.state={view:'group',sort:'amt',search:'',moFrom:'',yrFrom:'',moTo:'',yrTo:'',expanded:{},calOpen:false,calYear:defY,calMonth:defM,selectedDays:{}};
+  var selectedDays={};
+  if(cfg.presetDays&&cfg.presetDays.length){
+    cfg.presetDays.forEach(function(k){selectedDays[k]=true;});
+    var pk=cfg.presetDays.slice().sort()[0];
+    defY=+pk.slice(0,4);defM=+pk.slice(4,6);
+  }
+  DM.state={view:'group',sort:'amt',search:'',moFrom:'',yrFrom:'',moTo:'',yrTo:'',expanded:{},calOpen:!!cfg.openCalendar,calYear:defY,calMonth:defM,selectedDays:selectedDays};
   openModal(cfg.icon+' '+cfg.title, (cfg.statsHtml||'')+'<div id="dmDynamic"></div>');
   dmRender();
 }
@@ -917,16 +925,20 @@ function filterDueSoon(rows,daysAhead){
   });
 }
 function showModalARDueSoon(){
-  var all=filterDueSoon(G.arRows2||[],7);
-  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),days:r.days};});
-  openDetailModal({title:'AR ครบกำหนดใน 7 วันข้างหน้า',icon:'⏳',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AR',rows:norm,
-    statsHtml:'<div class="modal-summary">'+mStat('ยอดครบกำหนด 7 วัน',fmtKPI(all.reduce(function(s,r){return s+r.bal;},0)),'var(--gold2)')+mStat('จำนวนรายการ',all.length+' รายการ','var(--gold2)')+'</div>'});
+  var full=G.arRows2||[];
+  var due=filterDueSoon(full,7);
+  var norm=full.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),days:r.days};});
+  var presetDays=due.map(function(r){return dateKey(toSlashDMY(r.dueDate));}).filter(Boolean);
+  openDetailModal({title:'AR ครบกำหนดใน 7 วันข้างหน้า',icon:'⏳',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AR',rows:norm,openCalendar:true,presetDays:presetDays,
+    statsHtml:'<div class="modal-summary">'+mStat('ยอดครบกำหนด 7 วัน',fmtKPI(due.reduce(function(s,r){return s+r.bal;},0)),'var(--gold2)')+mStat('จำนวนรายการ',due.length+' รายการ','var(--gold2)')+'</div>'});
 }
 function showModalAPDueSoon(){
-  var all=filterDueSoon(G.apRows2||[],7);
-  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),days:r.days};});
-  openDetailModal({title:'AP ครบกำหนดใน 7 วันข้างหน้า',icon:'⏳',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AP',rows:norm,
-    statsHtml:'<div class="modal-summary">'+mStat('ยอดครบกำหนด 7 วัน',fmtKPI(all.reduce(function(s,r){return s+r.bal;},0)),'var(--red)')+mStat('จำนวนรายการ',all.length+' รายการ','var(--red)')+'</div>'});
+  var full=G.apRows2||[];
+  var due=filterDueSoon(full,7);
+  var norm=full.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),days:r.days};});
+  var presetDays=due.map(function(r){return dateKey(toSlashDMY(r.dueDate));}).filter(Boolean);
+  openDetailModal({title:'AP ครบกำหนดใน 7 วันข้างหน้า',icon:'⏳',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AP',rows:norm,openCalendar:true,presetDays:presetDays,
+    statsHtml:'<div class="modal-summary">'+mStat('ยอดครบกำหนด 7 วัน',fmtKPI(due.reduce(function(s,r){return s+r.bal;},0)),'var(--red)')+mStat('จำนวนรายการ',due.length+' รายการ','var(--red)')+'</div>'});
 }
 function showModalAR(){
   var all=G.arRows2||[];
