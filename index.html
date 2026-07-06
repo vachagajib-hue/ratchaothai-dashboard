@@ -567,7 +567,18 @@ async function loadAllData(){
       var q11=await fetchSheet('Q11_SAP_MONTHLY_BALANCE');
       q11.rows.forEach(function(r){
         var code=String(r[1]||'');if(!code)return;
-        var ym=String(r[3]||'');if(!ym)return;
+        // Google Sheets มักแปลง '2026-01' เป็นวันที่จริงโดยอัตโนมัติ (แม้จอโชว์เป็น '2026-01')
+        // พอส่งผ่าน JSON จะกลายเป็น ISO string ยาวๆ เช่น '2026-01-01T00:00:00.000Z'
+        // ต้องดึงแค่ YYYY-MM ออกมาเสมอ ไม่ใช้ String(r[3]) ตรงๆ
+        var raw=r[3];
+        var ym;
+        if(raw instanceof Date){
+          ym=raw.getFullYear()+'-'+String(raw.getMonth()+1).padStart(2,'0');
+        }else{
+          var m=String(raw||'').match(/^(\d{4})-(\d{2})/);
+          ym=m?m[1]+'-'+m[2]:'';
+        }
+        if(!ym)return;
         var bal=parseFloat(r[4])||0;
         if(!sapMonthlyByAcct[code])sapMonthlyByAcct[code]={};
         sapMonthlyByAcct[code][ym]=bal;
