@@ -323,6 +323,11 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <tbody id="reconMonthlyBalBody"></tbody>
 </table></div>
 </div>
+<div class="recon-section" id="reconSapMonthlySection" style="display:none">
+<div class="recon-section-title">&#128202; เทียบยอด SAP vs Bank แยกรายเดือน</div>
+<div style="font-size:11px;color:var(--muted);margin-bottom:8px">เขียว = ตรงกัน (ต่างกันไม่เกิน 1 บาท) &nbsp;·&nbsp; แดง = ต้องตรวจสอบ &nbsp;·&nbsp; — = ไม่มีข้อมูลเดือนนั้น</div>
+<div id="reconSapMonthlyWrap" style="overflow-x:auto"></div>
+</div>
 <div class="recon-section">
 <div class="recon-section-title">&#128269; รายละเอียดการกระทบยอดรายบัญชี</div>
 <input class="modal-search" style="margin-bottom:12px" placeholder="&#128269; ค้นหาชื่อบัญชี…" oninput="filterTbl(this,'reconDetailTbl')">
@@ -555,10 +560,24 @@ async function loadAllData(){
       });
     }catch(e){}
 
+    // Q11: ยอดคงเหลือ SAP (เงินสด/ธนาคาร) แบบสิ้นเดือน — สำหรับเทียบกับยอด Bank รายเดือน
+    // คอลัมภ์คาดหวัง: [#, AcctCode, AcctName, YearMonth('YYYY-MM'), EndOfMonthBalance]
+    var sapMonthlyByAcct={};
+    try{
+      var q11=await fetchSheet('Q11_SAP_MONTHLY_BALANCE');
+      q11.rows.forEach(function(r){
+        var code=String(r[1]||'');if(!code)return;
+        var ym=String(r[3]||'');if(!ym)return;
+        var bal=parseFloat(r[4])||0;
+        if(!sapMonthlyByAcct[code])sapMonthlyByAcct[code]={};
+        sapMonthlyByAcct[code][ym]=bal;
+      });
+    }catch(e){}
+
     var allMonths=Object.keys(Object.assign({},recByM,payByM)).sort();
     G={recByM:recByM,payByM:payByM,bankNet:bankNet,bankRows:bankRows,recRows:recRows,payRows:payRows,
        at:at,a30:a30,a60:a60,a90:a90,a90p:a90p,topAR:topAR,arAgeMap:arAgeMap,arRows2:arRows2,arCusts:Object.keys(arByCust).length,
-       pt:pt,p30:p30,p60:p60,p60p:p60p,topAP:topAP,apRows2:apRows2,arItemsByDoc:arItemsByDoc,apItemsByDoc:apItemsByDoc,
+       pt:pt,p30:p30,p60:p60,p60p:p60p,topAP:topAP,apRows2:apRows2,arItemsByDoc:arItemsByDoc,apItemsByDoc:apItemsByDoc,sapMonthlyByAcct:sapMonthlyByAcct,
        et:et,topExp:exps.slice(0,10),expAll:expAll,arRowCount:q04.rows.length,apRowCount:q05.rows.length,allMonths:allMonths};
     ACTIVE_MONTHS=[...allMonths];
     buildFilters(allMonths);
@@ -1325,11 +1344,18 @@ async function rHandleFiles(files){
 
 function selBank(b){RACTIVE=b;document.querySelectorAll('.recon-bank-btn').forEach(function(x){x.classList.remove('active');});var el=document.getElementById('rbtn-'+b);if(el)el.classList.add('active');renderRecon();}
 
+function sapBankOf(name){
+  var m=String(name||'').match(/\b(BBL|KBANK|KTB|TTB|SCB|KKP)\b/);
+  return m?m[1]:'CASH';
+}
 function renderRecon(){
   var bank=RACTIVE;
   // Expose modal functions globally for KPI onclick handlers
   window._rShowSAP=null;window._rShowBank=null;window._rShowDiff=null;
-  var sapList=bank==='ALL'?SAP_Q03.filter(function(a){return a.bank!=='CASH';}):SAP_Q03.filter(function(a){return a.bank===bank;});
+  // ยอด SAP ต้องดึงจากข้อมูลสด (Q03_BANK_BALANCE ที่โหลดมาจาก Google Sheets) เท่านั้น
+  // ห้ามใช้ SAP_Q03 (array hardcode สำรองไว้ตอนไม่มีข้อมูลจริง/โหมด fallback)
+  var sapLive=(G.bankRows&&G.bankRows.length?G.bankRows:SAP_Q03).map(function(a){return {code:a.code,name:a.name,bal:a.bal,bank:a.bank||sapBankOf(a.name)};});
+  var sapList=bank==='ALL'?sapLive.filter(function(a){return a.bank!=='CASH';}):sapLive.filter(function(a){return a.bank===bank;});
   var sapTotal=sapList.reduce(function(s,a){return s+a.bal;},0);
   var bd=RBANK_DATA[bank];
   var bankTotal=bd?bd.accounts.reduce(function(s,a){return s+a.bal;},0):null;
@@ -1447,8 +1473,56 @@ function renderRecon(){
     document.getElementById('reconMonthlyBalBody').innerHTML=
       balRows.map(function(r){return'<tr><td style="font-size:12px;color:var(--muted)">'+r.name+'</td>'+r.vals.map(function(v){return'<td class="right" style="'+(v===null?'color:var(--muted)':'')+'">'+(v===null?'\u2014':fmtFull(v))+'</td>';}).join('')+'</tr>';}).join('')+
       '<tr style="border-top:2px solid var(--border);font-weight:700"><td>รวมทุกบัญชี</td>'+totVals.map(function(v){return'<td class="right '+(v!==null&&v<0?'red':'green')+'">'+(v===null?'<span style="color:var(--muted)">\u2014</span>':fmtFull(v))+'</td>';}).join('')+'</tr>';
+
+    // ===== เทียบยอด SAP vs Bank แยกรายเดือน (จาก Q11_SAP_MONTHLY_BALANCE) =====
+    var monthSet={};
+    bd.accounts.forEach(function(acc){
+      (acc.txns||[]).forEach(function(t){var mk=dateKey(t.date||'');if(mk&&mk.length===8)monthSet[mk.slice(0,4)+'-'+mk.slice(4,6)]=true;});
+    });
+    sapList.forEach(function(a){
+      var mm=(G.sapMonthlyByAcct||{})[a.code];
+      if(mm)Object.keys(mm).forEach(function(ym){monthSet[ym]=true;});
+    });
+    var cmpMonths=Object.keys(monthSet).sort();
+    if(cmpMonths.length){
+      document.getElementById('reconSapMonthlySection').style.display='block';
+      var MTHAI3={'01':'ม.ค.','02':'ก.พ.','03':'มี.ค.','04':'เม.ย.','05':'พ.ค.','06':'มิ.ย.','07':'ก.ค.','08':'ส.ค.','09':'ก.ย.','10':'ต.ค.','11':'พ.ย.','12':'ธ.ค.'};
+      var cmpLbls=cmpMonths.map(function(ym){var mo=ym.slice(5,7),yr=(+ym.slice(0,4)+543);return (MTHAI3[mo]||mo)+' '+String(yr).slice(-2);});
+      var acctPairs=sapList.map(function(a){
+        var ba=bd.accounts.find(function(x){return acctMatches(x.acctNo,a.name);});
+        var sortedTxns=ba?(ba.txns||[]).slice().sort(function(x,y){return dateKey(x.date).localeCompare(dateKey(y.date));}):[];
+        var mm=(G.sapMonthlyByAcct||{})[a.code];
+        var sapVals=cmpMonths.map(function(ym){return mm&&mm[ym]!==undefined?mm[ym]:null;});
+        var bankVals=cmpMonths.map(function(ym){
+          if(!ba)return null;
+          var upTo=sortedTxns.filter(function(t){var mk=dateKey(t.date||'');return mk&&(mk.slice(0,4)+'-'+mk.slice(4,6))<=ym;});
+          return upTo.length?(upTo[upTo.length-1].bal||0):null;
+        });
+        var diffVals=cmpMonths.map(function(ym,i){return sapVals[i]!==null&&bankVals[i]!==null?bankVals[i]-sapVals[i]:null;});
+        return {code:a.code,name:a.name,sapVals:sapVals,bankVals:bankVals,diffVals:diffVals};
+      }).filter(function(p){return p.sapVals.some(function(v){return v!==null;})||p.bankVals.some(function(v){return v!==null;});});
+      var totSap=cmpMonths.map(function(ym,i){var any=false,t=0;acctPairs.forEach(function(p){if(p.sapVals[i]!==null){t+=p.sapVals[i];any=true;}});return any?t:null;});
+      var totBank=cmpMonths.map(function(ym,i){var any=false,t=0;acctPairs.forEach(function(p){if(p.bankVals[i]!==null){t+=p.bankVals[i];any=true;}});return any?t:null;});
+      var totDiff=cmpMonths.map(function(ym,i){return totSap[i]!==null&&totBank[i]!==null?totBank[i]-totSap[i]:null;});
+      function sapCell(v){return v===null?'<td class="right" style="color:var(--muted)">—</td>':'<td class="right">'+fmtFull(v)+'</td>';}
+      function diffCell(v){return v===null?'<td class="right" style="color:var(--muted)">—</td>':'<td class="right '+(Math.abs(v)<1?'green':'red')+'">'+fmtFull(v)+'</td>';}
+      var html='<table><thead><tr><th>บัญชี</th><th>ประเภท</th>'+cmpLbls.map(function(l){return '<th style="text-align:right">'+l+'</th>';}).join('')+'</tr></thead><tbody>';
+      html+=acctPairs.map(function(p){
+        return '<tr><td rowspan="3" style="font-size:11px;color:var(--muted);vertical-align:top;padding-top:8px">'+p.name+'</td><td style="font-size:11px;color:var(--blue)">SAP</td>'+p.sapVals.map(sapCell).join('')+'</tr>'+
+        '<tr><td style="font-size:11px;color:var(--teal)">Bank</td>'+p.bankVals.map(sapCell).join('')+'</tr>'+
+        '<tr style="border-bottom:1px solid var(--border)"><td style="font-size:11px;color:var(--gold2);font-weight:600">ส่วนต่าง</td>'+p.diffVals.map(diffCell).join('')+'</tr>';
+      }).join('');
+      html+='<tr style="border-top:2px solid var(--border)"><td rowspan="3" style="font-weight:700;padding-top:8px">รวมทุกบัญชี</td><td style="font-size:11px;color:var(--blue);font-weight:700">SAP</td>'+totSap.map(sapCell).join('')+'</tr>'+
+        '<tr><td style="font-size:11px;color:var(--teal);font-weight:700">Bank</td>'+totBank.map(sapCell).join('')+'</tr>'+
+        '<tr><td style="font-size:11px;color:var(--gold2);font-weight:700">ส่วนต่าง</td>'+totDiff.map(diffCell).join('')+'</tr>';
+      html+='</tbody></table>';
+      document.getElementById('reconSapMonthlyWrap').innerHTML=html;
+    } else {
+      document.getElementById('reconSapMonthlySection').style.display='none';
+    }
   } else {
     document.getElementById('reconMonthlyBalSection').style.display='none';
+    document.getElementById('reconSapMonthlySection').style.display='none';
     // No data - show empty chart with message
     chartInstances['reconMonthlyBar']=new Chart(document.getElementById('reconMonthlyBar'),{type:'bar',data:{labels:['\u0e21.\u0e04.','\u0e01.\u0e1e.','\u0e21\u0e35.\u0e04.','\u0e40\u0e21.\u0e22.','\u0e1e.\u0e04.','\u0e21\u0e34.\u0e22.'],datasets:[{label:'\u0e23\u0e31\u0e1a (Credit)',data:[0,0,0,0,0,0],backgroundColor:'rgba(76,175,125,0.3)',borderRadius:4},{label:'\u0e08\u0e48\u0e32\u0e22 (Debit)',data:[0,0,0,0,0,0],backgroundColor:'rgba(224,92,92,0.3)',borderRadius:4}]},options:{plugins:{legend:{labels:{color:'#8FA3B8',boxWidth:10}},subtitle:{display:true,text:'\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49\u0e2d\u0e31\u0e1b\u0e42\u0e2b\u0e25\u0e14 Bank Statement \u2014 \u0e43\u0e0a\u0e49 Tab "\u0e2d\u0e48\u0e32\u0e19 PDF Bank"',color:'#8FA3B8',font:{size:12}}},scales:{x:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#8FA3B8'}},y:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#8FA3B8'},max:10}}}});
     document.getElementById('reconTxnSection').style.display='none';
