@@ -75,7 +75,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 .info-box-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;opacity:0.7;}
 .modal-overlay{position:fixed;inset:0;background:rgba(5,12,22,0.85);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;pointer-events:none;transition:opacity 0.25s;}
 .modal-overlay.open{opacity:1;pointer-events:all;}
-.modal{background:#152233;border:1px solid rgba(255,255,255,0.1);border-radius:16px;width:100%;max-width:860px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,0.6);transform:translateY(16px);transition:transform 0.25s;}
+.modal{background:#152233;border:1px solid rgba(255,255,255,0.1);border-radius:16px;width:100%;max-width:1320px;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,0.6);transform:translateY(16px);transition:transform 0.25s;}
 .modal-overlay.open .modal{transform:translateY(0);}
 .modal-header{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid var(--border);flex-shrink:0;}
 .modal-title{font-size:15px;font-weight:700;}.modal-close{background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--muted);width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;}
@@ -130,18 +130,22 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 .pdf-dl-btn{background:linear-gradient(135deg,var(--gold),var(--gold2));color:var(--navy);border:none;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;font-family:'Sarabun',sans-serif;cursor:pointer;margin-right:6px;}
 .pdf-send-btn{background:linear-gradient(135deg,var(--teal),#5DDDD6);color:var(--navy);border:none;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;font-family:'Sarabun',sans-serif;cursor:pointer;}
 #printArea{display:none;}
+#printArea .pr-header{background:#0D1B2A;color:#fff;padding:14px 18px;margin:-16px -16px 14px -16px;border-bottom:4px solid #D4A843;}
+#printArea .pr-header .pr-company{color:#fff;}
+#printArea .pr-header .pr-title{color:#F0C96B;}
+#printArea .pr-header .pr-range,#printArea .pr-header .pr-meta{color:#C9D6E3;}
 @media print{
   body *{visibility:hidden;}
   #printArea,#printArea *{visibility:visible;}
   #printArea{display:block;position:absolute;top:0;left:0;width:100%;padding:16px;background:#fff;color:#000;}
   #printArea table{width:100%;border-collapse:collapse;font-size:10px;margin-top:10px;}
   #printArea th,#printArea td{border:1px solid #999;padding:4px 6px;text-align:left;}
-  #printArea th{background:#e8e8e8;}
+  #printArea th{background:#0D1B2A;color:#fff;font-weight:700;}
   #printArea .pr-right{text-align:right;}
   #printArea .pr-company{font-size:16px;font-weight:700;}
   #printArea .pr-title{font-size:13px;margin-top:2px;font-weight:600;}
   #printArea .pr-range,#printArea .pr-meta{font-size:11px;color:#333;margin-top:2px;}
-  #printArea .pr-sub{font-weight:700;background:#f3f3f3;}
+  #printArea .pr-sub{font-weight:700;background:#F0C96B;color:#0D1B2A;}
 }
 </style>
 </head>
@@ -581,7 +585,7 @@ function agingBadge(days,kind){
   }else{
     var cls=days>90?'red':days>60?'gold':days>30?'teal':'green';
   }
-  return '<span class="badge badge-'+cls+'">'+Math.round(days)+' วัน</span>';
+  return '<span class="badge badge-'+cls+'">'+Math.round(days).toLocaleString('th-TH')+' วัน</span>';
 }
 function dmGroup(rows){
   var map={};
@@ -660,19 +664,28 @@ function dmRender(){
 
   html+='<div style="overflow-x:auto;max-height:420px;overflow-y:auto"><table><thead style="position:sticky;top:0;background:#1B2E45;z-index:2"><tr>';
   if(cfg.groupable&&s.view==='group'){
-    html+='<th>ชื่อ</th><th style="text-align:right">ยอดรวม</th><th style="text-align:right">% รวม</th><th style="text-align:right">จำนวนรายการ</th><th>Aging สูงสุด</th></tr></thead><tbody>';
+    html+='<th style="width:26px"></th><th>ชื่อ</th><th style="text-align:right">ยอดรวม</th><th style="text-align:right">% รวม</th><th style="text-align:right">จำนวนรายการ</th><th>Aging สูงสุด</th></tr></thead><tbody>';
     var groups=dmGroup(filtered);
     groups.sort(function(a,b){return s.sort==='name'?a.name.localeCompare(b.name,'th'):b.total-a.total;});
+    s.expanded=s.expanded||{};
+    DM.state.lastGroups=groups;
     html+=groups.map(function(g,i){
       var pct=totalAll>0?(g.total/totalAll*100).toFixed(1):'0.0';
-      return '<tr style="background:'+(i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)')+'"><td>'+g.name+'</td><td class="right gold">'+fmtFull(g.total)+'</td><td class="right" style="color:var(--muted)">'+pct+'%</td><td class="right">'+g.count+'</td><td>'+(cfg.agingKind?agingBadge(g.worstDays,cfg.agingKind):'—')+'</td></tr>';
+      var exp=!!s.expanded[g.name];
+      var row='<tr style="background:'+(i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)')+';cursor:pointer" onclick="dmToggleGroupIdx('+i+')"><td class="right" style="color:var(--gold2);font-weight:700">'+(exp?'−':'+')+'</td><td>'+g.name+'</td><td class="right gold">'+fmtFull(g.total)+'</td><td class="right" style="color:var(--muted)">'+pct+'%</td><td class="right">'+g.count+'</td><td>'+(cfg.agingKind?agingBadge(g.worstDays,cfg.agingKind):'—')+'</td></tr>';
+      if(exp){
+        row+=g.rows.map(function(r){
+          return '<tr style="background:rgba(255,255,255,0.015)"><td></td><td style="padding-left:22px;color:var(--muted);font-size:12px">↳ '+(r.docNo||'—')+'</td><td class="right" style="font-size:12px;color:var(--text2)">'+fmtFull(r.amount)+'</td><td></td><td style="font-size:12px;color:var(--muted)">'+(r.dateDisplay||'—')+'</td><td>'+((cfg.agingKind&&r.days!==null&&r.days!==undefined)?agingBadge(r.days,cfg.agingKind):'')+'</td></tr>';
+        }).join('');
+      }
+      return row;
     }).join('');
   } else {
     html+='<th>ชื่อ</th><th>เลขที่เอกสาร</th><th style="text-align:right">'+cfg.amountLabel+'</th>'+(cfg.agingKind?'<th style="text-align:right">อายุ (วัน)</th>':'')+'<th>วันที่</th></tr></thead><tbody>';
     var flat=filtered.slice();
     flat.sort(function(a,b){return s.sort==='name'?a.name.localeCompare(b.name,'th'):(b.amount||0)-(a.amount||0);});
     html+=flat.map(function(r,i){
-      return '<tr style="background:'+(i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)')+'"><td>'+r.name+'</td><td style="color:var(--muted);font-size:12px">'+(r.docNo||'—')+'</td><td class="right gold">'+fmtFull(r.amount)+'</td>'+(cfg.agingKind?'<td class="right">'+(r.days!==null&&r.days!==undefined?Math.round(r.days):'—')+'</td>':'')+'<td style="font-size:12px;color:var(--muted)">'+(r.dateDisplay||'—')+'</td></tr>';
+      return '<tr style="background:'+(i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)')+'"><td>'+r.name+'</td><td style="color:var(--muted);font-size:12px">'+(r.docNo||'—')+'</td><td class="right gold">'+fmtFull(r.amount)+'</td>'+(cfg.agingKind?'<td class="right">'+(r.days!==null&&r.days!==undefined?Math.round(r.days).toLocaleString('th-TH'):'—')+'</td>':'')+'<td style="font-size:12px;color:var(--muted)">'+(r.dateDisplay||'—')+'</td></tr>';
     }).join('');
   }
   html+='</tbody></table></div>';
@@ -680,9 +693,15 @@ function dmRender(){
   document.getElementById('dmDynamic').innerHTML=html;
   DM.state.lastFiltered=filtered;
 }
+function dmToggleGroupIdx(i){
+  var g=DM.state.lastGroups&&DM.state.lastGroups[i];
+  if(!g)return;
+  DM.state.expanded[g.name]=!DM.state.expanded[g.name];
+  dmRender();
+}
 function openDetailModal(cfg){
   DM.cfg=cfg;
-  DM.state={view:'group',sort:'amt',search:'',moFrom:'',yrFrom:'',moTo:'',yrTo:''};
+  DM.state={view:'group',sort:'amt',search:'',moFrom:'',yrFrom:'',moTo:'',yrTo:'',expanded:{}};
   openModal(cfg.icon+' '+cfg.title, (cfg.statsHtml||'')+'<div id="dmDynamic"></div>');
   dmRender();
 }
@@ -712,7 +731,7 @@ function dmPrint(){
     var groups=dmGroup(filtered);
     groups.sort(function(a,b){return s.sort==='name'?a.name.localeCompare(b.name,'th'):b.total-a.total;});
     rowsHtml='<tr><th>ชื่อ</th><th class="pr-right">'+cfg.amountLabel+'</th><th class="pr-right">% รวม</th><th class="pr-right">จำนวนรายการ</th><th>Aging สูงสุด</th></tr>'+
-      groups.map(function(g){var pct=totalAll>0?(g.total/totalAll*100).toFixed(1):'0.0';return '<tr><td>'+g.name+'</td><td class="pr-right">'+fmtFull(g.total)+'</td><td class="pr-right">'+pct+'%</td><td class="pr-right">'+g.count+'</td><td>'+(g.worstDays!==null?Math.round(g.worstDays)+' วัน':'—')+'</td></tr>';}).join('')+
+      groups.map(function(g){var pct=totalAll>0?(g.total/totalAll*100).toFixed(1):'0.0';return '<tr><td>'+g.name+'</td><td class="pr-right">'+fmtFull(g.total)+'</td><td class="pr-right">'+pct+'%</td><td class="pr-right">'+g.count+'</td><td>'+(g.worstDays!==null?Math.round(g.worstDays).toLocaleString('th-TH')+' วัน':'—')+'</td></tr>';}).join('')+
       '<tr class="pr-sub"><td>รวมทั้งหมด</td><td class="pr-right">'+fmtFull(totalAll)+'</td><td></td><td></td><td></td></tr>';
   } else {
     var flat=filtered.slice();
