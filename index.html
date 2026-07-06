@@ -271,6 +271,13 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <div class="recon-section"><div class="recon-section-title">&#128202; เปรียบ SAP vs Bank</div><canvas id="reconCompareBar" style="max-height:200px"></canvas></div>
 <div class="recon-section"><div class="recon-section-title">&#128202; ยอดรับ-จ่ายจาก Bank</div><canvas id="reconMonthlyBar" style="max-height:200px"></canvas></div>
 </div>
+<div class="recon-section" id="reconMonthlyBalSection" style="display:none">
+<div class="recon-section-title">&#128197; ยอดคงเหลือสิ้นเดือน (Month-end Balance)</div>
+<div style="overflow-x:auto"><table id="reconMonthlyBalTbl">
+<thead><tr><th>บัญชี</th><th style="text-align:right">ม.ค.</th><th style="text-align:right">ก.พ.</th><th style="text-align:right">มี.ค.</th><th style="text-align:right">เม.ย.</th><th style="text-align:right">พ.ค.</th><th style="text-align:right">มิ.ย.</th></tr></thead>
+<tbody id="reconMonthlyBalBody"></tbody>
+</table></div>
+</div>
 <div class="recon-section">
 <div class="recon-section-title">&#128269; รายละเอียดการกระทบยอดรายบัญชี</div>
 <input class="modal-search" style="margin-bottom:12px" placeholder="&#128269; ค้นหาชื่อบัญชี…" oninput="filterTbl(this,'reconDetailTbl')">
@@ -626,11 +633,15 @@ function normDate(d){
   // DD/MM/YYYY BE -> CE
   var dmy=s.match(/^(\d{2}\/\d{2}\/)(\d{4})$/);
   if(dmy){var yr3=parseInt(dmy[2]);if(yr3>2400)return dmy[1]+(yr3-543);}
-  // M/D/YYYY (Google Sheets default): 1/15/2026 -> 15/01/2026
-  var mdy=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if(mdy){
-    var yr4=parseInt(mdy[3]);if(yr4>2400)yr4=yr4-543;
-    return String(mdy[2]).padStart(2,'0')+'/'+String(mdy[1]).padStart(2,'0')+'/'+yr4;
+  // D/M/YYYY (our CSV + Sheets convention, e.g. "5/1/2026" -> "05/01/2026").
+  // NOTE: previously this branch assumed M/D/Y (US) and swapped the two
+  // numbers - wrong for our data (bank CSVs are always D/M/Y): it silently
+  // transposed day/month whenever day<=12, and produced visibly-invalid
+  // dates (month>12) whenever day>12. Fixed to zero-pad only, no swap.
+  var dmy2=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if(dmy2){
+    var yr4=parseInt(dmy2[3]);if(yr4>2400)yr4=yr4-543;
+    return String(dmy2[1]).padStart(2,'0')+'/'+String(dmy2[2]).padStart(2,'0')+'/'+yr4;
   }
   // Bare Excel/Google-Sheets date serial (e.g. "46269") that leaked through
   // un-formatted because the cell wasn't recognized as a Date type. Plausible
@@ -658,6 +669,11 @@ function getMonth(dateStr){
   if(d.match(/^\d{4}-\d{2}-\d{2}$/))return d.slice(5,7);
   return '';
 }
+function dateKey(d){
+  var m=String(d||'').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return m?m[3]+m[2]+m[1]:'';
+}
+
 function renderDashboard(d){
   var fm=ACTIVE_MONTHS.length?ACTIVE_MONTHS:d.allMonths;
   var last6=fm.slice(-6);
@@ -963,7 +979,28 @@ function renderRecon(){
     chartInstances['reconMonthlyBar']=new Chart(document.getElementById('reconMonthlyBar'),{type:'bar',data:{labels:mlbls,datasets:[{label:'\u0e23\u0e31\u0e1a (Credit)',data:cr,backgroundColor:'rgba(76,175,125,0.8)',borderRadius:4},{label:'\u0e08\u0e48\u0e32\u0e22 (Debit)',data:dr,backgroundColor:'rgba(224,92,92,0.8)',borderRadius:4}]},options:{plugins:{legend:{labels:{color:'#8FA3B8',boxWidth:10}}},scales:{x:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#8FA3B8'}},y:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}},afterDataLimits:function(a){if(a.max>0)a.max=a.max*1.15;}}}},plugins:[barLblPlugin]});
     document.getElementById('reconTxnSection').style.display='block';
     document.getElementById('reconTxnBody').innerHTML=allTxns.slice(0,60).map(function(t,i){var bg=i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)';return'<tr style="background:'+bg+'"><td style="color:var(--muted);font-size:12px">'+(t.date||'\u2014')+'</td><td>'+(t.desc||'\u2014')+'</td><td class="right red">'+(t.debit?fmtFull(t.debit):'\u2014')+'</td><td class="right green">'+(t.credit?fmtFull(t.credit):'\u2014')+'</td><td class="right" style="font-weight:700">'+(t.bal?fmtFull(t.bal):'\u2014')+'</td></tr>';}).join('');
+
+    // Month-end balance per account: last transaction on/before the end of
+    // each month (carried forward if no transaction that month).
+    document.getElementById('reconMonthlyBalSection').style.display='block';
+    var balRows=bd.accounts.map(function(a){
+      var sorted=(a.txns||[]).slice().sort(function(x,y){return dateKey(x.date).localeCompare(dateKey(y.date));});
+      var vals=months.map(function(m){
+        var upTo=sorted.filter(function(t){var mk=getMonth(t.date||'');return mk&&mk<=m;});
+        return upTo.length?upTo[upTo.length-1].bal||0:null;
+      });
+      return {name:a.acctNo,vals:vals};
+    });
+    var totVals=months.map(function(m,mi){
+      var any=false,tot=0;
+      balRows.forEach(function(r){if(r.vals[mi]!==null){tot+=r.vals[mi];any=true;}});
+      return any?tot:null;
+    });
+    document.getElementById('reconMonthlyBalBody').innerHTML=
+      balRows.map(function(r){return'<tr><td style="font-size:12px;color:var(--muted)">'+r.name+'</td>'+r.vals.map(function(v){return'<td class="right" style="'+(v===null?'color:var(--muted)':'')+'">'+(v===null?'\u2014':fmtFull(v))+'</td>';}).join('')+'</tr>';}).join('')+
+      '<tr style="border-top:2px solid var(--border);font-weight:700"><td>รวมทุกบัญชี</td>'+totVals.map(function(v){return'<td class="right '+(v!==null&&v<0?'red':'green')+'">'+(v===null?'<span style="color:var(--muted)">\u2014</span>':fmtFull(v))+'</td>';}).join('')+'</tr>';
   } else {
+    document.getElementById('reconMonthlyBalSection').style.display='none';
     // No data - show empty chart with message
     chartInstances['reconMonthlyBar']=new Chart(document.getElementById('reconMonthlyBar'),{type:'bar',data:{labels:['\u0e21.\u0e04.','\u0e01.\u0e1e.','\u0e21\u0e35.\u0e04.','\u0e40\u0e21.\u0e22.','\u0e1e.\u0e04.','\u0e21\u0e34.\u0e22.'],datasets:[{label:'\u0e23\u0e31\u0e1a (Credit)',data:[0,0,0,0,0,0],backgroundColor:'rgba(76,175,125,0.3)',borderRadius:4},{label:'\u0e08\u0e48\u0e32\u0e22 (Debit)',data:[0,0,0,0,0,0],backgroundColor:'rgba(224,92,92,0.3)',borderRadius:4}]},options:{plugins:{legend:{labels:{color:'#8FA3B8',boxWidth:10}},subtitle:{display:true,text:'\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49\u0e2d\u0e31\u0e1b\u0e42\u0e2b\u0e25\u0e14 Bank Statement \u2014 \u0e43\u0e0a\u0e49 Tab "\u0e2d\u0e48\u0e32\u0e19 PDF Bank"',color:'#8FA3B8',font:{size:12}}},scales:{x:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#8FA3B8'}},y:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#8FA3B8'},max:10}}}});
     document.getElementById('reconTxnSection').style.display='none';
@@ -976,15 +1013,7 @@ var BK_COLORS={BBL:'#0A4FA0',KBANK:'#1E8449',TTB:'#1A5C8A',KTB:'#0066A1',SCB:'#4
 var BK_TH={BBL:'\u0e01\u0e23\u0e38\u0e07\u0e40\u0e17\u0e1e',KBANK:'\u0e01\u0e2a\u0e34\u0e01\u0e23\u0e44\u0e17\u0e22',TTB:'\u0e17\u0e2b\u0e32\u0e23\u0e44\u0e17\u0e22',KTB:'\u0e01\u0e23\u0e38\u0e07\u0e44\u0e17\u0e22',SCB:'\u0e44\u0e17\u0e22\u0e1e\u0e32\u0e13\u0e34\u0e0a\u0e22\u0e4c',KKP:'\u0e40\u0e01\u0e35\u0e22\u0e23\u0e15\u0e34\u0e19\u0e32\u0e04\u0e34\u0e19',BANK:'\u0e18\u0e19\u0e32\u0e04\u0e32\u0e23'};
 function hexRgb(h){return parseInt(h.slice(1,3),16)+','+parseInt(h.slice(3,5),16)+','+parseInt(h.slice(5,7),16);}
 function pdfDrop(e){e.preventDefault();document.querySelector('.pdf-drop-zone').classList.remove('drag');pdfAddFiles(e.dataTransfer.files);}
-function pdfDetectBank(n){n=n.toLowerCase();
-  if(n.includes('bbl')||n.includes('bangkok')||n.includes('krungthep'))return'BBL';
-  if(n.includes('kbank')||n.includes('kasikorn'))return'KBANK';
-  if(n.includes('ttb')||n.includes('tmb')||n.includes('thanarb'))return'TTB';
-  if(n.includes('ktb')||n.includes('krungthai')||n.includes('krung_thai'))return'KTB';
-  if(n.includes('scb')||n.includes('siam'))return'SCB';
-  if(n.includes('kkp')||n.includes('kiatnakin')||n.includes('kiatn')||n.includes('phatra'))return'KKP';
-  return'BANK';
-}
+function pdfDetectBank(n){return detectBank(n)||'BANK';}
 
 function pdfAddFiles(fileList){
   var newFiles=Array.from(fileList).filter(function(f){return f.name.toLowerCase().endsWith('.pdf');});
