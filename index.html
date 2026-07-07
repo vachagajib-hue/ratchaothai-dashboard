@@ -669,6 +669,41 @@ function agingBadge(days,kind){
   }
   return '<span class="badge badge-'+cls+'">'+Math.round(days).toLocaleString('th-TH')+' วัน</span>';
 }
+// ===== เทียบเงินรับ/เงินจ่าย กับรายการจริงในสเตทเมนต์ธนาคาร (RBANK_DATA) =====
+function daysBetweenKeys(k1,k2){
+  if(!k1||!k2)return Infinity;
+  function toDate(k){return new Date(+k.slice(0,4),+k.slice(4,6)-1,+k.slice(6,8));}
+  return Math.round((toDate(k1)-toDate(k2))/86400000);
+}
+function findBankMatch(amount,dateStr,side){
+  var targetKey=dateKey(dateStr);
+  if(!targetKey||!amount)return null;
+  var best=null,bestDiff=Infinity;
+  Object.keys(RBANK_DATA||{}).forEach(function(bk){
+    (RBANK_DATA[bk].accounts||[]).forEach(function(acc){
+      (acc.txns||[]).forEach(function(t){
+        var val=side==='credit'?(t.credit||0):(t.debit||0);
+        if(!val||Math.abs(val-amount)>0.5)return;
+        var tk=dateKey(t.date);
+        if(!tk)return;
+        var diff=Math.abs(daysBetweenKeys(tk,targetKey));
+        if(diff<=5&&diff<bestDiff){bestDiff=diff;best={bank:bk,acctNo:acc.acctNo,date:t.date,diffDays:diff};}
+      });
+    });
+  });
+  return best;
+}
+function bankMatchBadge(m){
+  if(!m)return '<span class="badge badge-red">❌ ไม่พบ</span>';
+  if(m.diffDays===0)return '<span class="badge badge-green">✅ ตรงวัน ('+m.bank+')</span>';
+  return '<span class="badge badge-gold">✅ ห่าง '+m.diffDays+' วัน ('+m.bank+')</span>';
+}
+function groupMatchBadge(g,side){
+  var total=g.rows.length,matched=0;
+  g.rows.forEach(function(r){if(findBankMatch(r.amount,r.dateStr,side))matched++;});
+  var cls=matched===total?'green':matched===0?'red':'gold';
+  return '<span class="badge badge-'+cls+'">'+matched+'/'+total+' พบ</span>';
+}
 function dmGroup(rows){
   var map={};
   rows.forEach(function(r){
@@ -810,7 +845,7 @@ function dmRender(){
 
   html+='<div style="overflow-x:auto;max-height:420px;overflow-y:auto"><table><thead style="position:sticky;top:0;background:#1B2E45;z-index:2"><tr>';
   if(cfg.groupable&&s.view==='group'){
-    html+='<th style="width:26px"></th><th>ชื่อ</th><th style="text-align:right">ยอดรวม</th><th style="text-align:right">% รวม</th><th style="text-align:right">จำนวนรายการ</th><th>กำหนดชำระใกล้สุด</th><th>Aging สูงสุด</th></tr></thead><tbody>';
+    html+='<th style="width:26px"></th><th>ชื่อ</th><th style="text-align:right">ยอดรวม</th><th style="text-align:right">% รวม</th><th style="text-align:right">จำนวนรายการ</th><th>'+(cfg.matchBank?'วันที่แรกสุด':'กำหนดชำระใกล้สุด')+'</th><th>'+(cfg.matchBank?'ตรงกับแบงค์':'Aging สูงสุด')+'</th></tr></thead><tbody>';
     var groups=dmGroup(filtered);
     groups.sort(function(a,b){return s.sort==='name'?(a.earliestKey||'99999999').localeCompare(b.earliestKey||'99999999'):b.total-a.total;});
     s.expanded=s.expanded||{};
@@ -818,7 +853,8 @@ function dmRender(){
     html+=groups.map(function(g,i){
       var pct=totalAll>0?(g.total/totalAll*100).toFixed(1):'0.0';
       var exp=!!s.expanded[g.name];
-      var row='<tr style="background:'+(i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)')+';cursor:pointer" onclick="dmToggleGroupIdx('+i+')"><td class="right" style="color:var(--gold2);font-weight:700">'+(exp?'−':'+')+'</td><td>'+g.name+'</td><td class="right gold">'+fmtFull(g.total)+'</td><td class="right" style="color:var(--muted)">'+pct+'%</td><td class="right">'+g.count+'</td><td style="font-size:12px;color:var(--text2)">'+(g.earliestDisplay||'—')+'</td><td>'+(cfg.agingKind?agingBadge(g.worstDays,cfg.agingKind):'—')+'</td></tr>';
+      var lastCell=cfg.matchBank?groupMatchBadge(g,cfg.matchBank):(cfg.agingKind?agingBadge(g.worstDays,cfg.agingKind):'—');
+      var row='<tr style="background:'+(i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)')+';cursor:pointer" onclick="dmToggleGroupIdx('+i+')"><td class="right" style="color:var(--gold2);font-weight:700">'+(exp?'−':'+')+'</td><td>'+g.name+'</td><td class="right gold">'+fmtFull(g.total)+'</td><td class="right" style="color:var(--muted)">'+pct+'%</td><td class="right">'+g.count+'</td><td style="font-size:12px;color:var(--text2)">'+(g.earliestDisplay||'—')+'</td><td>'+lastCell+'</td></tr>';
       if(exp){
         row+=g.rows.map(function(r){
           var items=cfg.itemsByDoc&&cfg.itemsByDoc[r.docNo];
@@ -827,7 +863,8 @@ function dmRender(){
           var docCell=hasItems
             ?'<td style="padding-left:22px;color:var(--teal);font-size:12px;cursor:pointer;font-weight:600" onclick="dmToggleItems(\''+r.docNo+'\')">'+(itemsExp?'▾':'▸')+' ↳ '+r.docNo+'</td>'
             :'<td style="padding-left:22px;color:var(--muted);font-size:12px">↳ '+(r.docNo||'—')+'</td>';
-          var sub='<tr style="background:rgba(255,255,255,0.015)"><td></td>'+docCell+'<td class="right" style="font-size:12px;color:var(--text2)">'+fmtFull(r.amount)+'</td><td></td><td></td><td style="font-size:12px;color:var(--muted)">'+(r.dateDisplay||'—')+'</td><td>'+((cfg.agingKind&&r.days!==null&&r.days!==undefined)?agingBadge(r.days,cfg.agingKind):'')+'</td></tr>';
+          var subLastCell=cfg.matchBank?bankMatchBadge(findBankMatch(r.amount,r.dateStr,cfg.matchBank)):((cfg.agingKind&&r.days!==null&&r.days!==undefined)?agingBadge(r.days,cfg.agingKind):'');
+          var sub='<tr style="background:rgba(255,255,255,0.015)"><td></td>'+docCell+'<td class="right" style="font-size:12px;color:var(--text2)">'+fmtFull(r.amount)+'</td><td></td><td></td><td style="font-size:12px;color:var(--muted)">'+(r.dateDisplay||'—')+'</td><td>'+subLastCell+'</td></tr>';
           if(itemsExp)sub+=dmItemsRowHtml(items,7);
           return sub;
         }).join('');
@@ -835,10 +872,10 @@ function dmRender(){
       return row;
     }).join('');
   } else {
-    html+='<th>ชื่อ</th><th>เลขที่เอกสาร</th><th style="text-align:right">'+cfg.amountLabel+'</th>'+(cfg.agingKind?'<th style="text-align:right">อายุ (วัน)</th>':'')+'<th>วันที่</th></tr></thead><tbody>';
+    html+='<th>ชื่อ</th><th>เลขที่เอกสาร</th><th style="text-align:right">'+cfg.amountLabel+'</th>'+(cfg.agingKind?'<th style="text-align:right">อายุ (วัน)</th>':'')+(cfg.matchBank?'<th>ตรงกับแบงค์</th>':'')+'<th>วันที่</th></tr></thead><tbody>';
     var flat=filtered.slice();
     flat.sort(function(a,b){return s.sort==='name'?(dateKey(a.dateStr)||'99999999').localeCompare(dateKey(b.dateStr)||'99999999'):(b.amount||0)-(a.amount||0);});
-    var flatCols=4+(cfg.agingKind?1:0);
+    var flatCols=4+(cfg.agingKind?1:0)+(cfg.matchBank?1:0);
     html+=flat.map(function(r,i){
       var items=cfg.itemsByDoc&&cfg.itemsByDoc[r.docNo];
       var hasItems=items&&items.length;
@@ -846,7 +883,8 @@ function dmRender(){
       var docCell=hasItems
         ?'<td style="color:var(--teal);font-size:12px;cursor:pointer;font-weight:600" onclick="dmToggleItems(\''+r.docNo+'\')">'+(itemsExp?'▾':'▸')+' '+r.docNo+'</td>'
         :'<td style="color:var(--muted);font-size:12px">'+(r.docNo||'—')+'</td>';
-      var row='<tr style="background:'+(i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)')+'"><td>'+r.name+'</td>'+docCell+'<td class="right gold">'+fmtFull(r.amount)+'</td>'+(cfg.agingKind?'<td class="right">'+(r.days!==null&&r.days!==undefined?Math.round(r.days).toLocaleString('th-TH'):'—')+'</td>':'')+'<td style="font-size:12px;color:var(--muted)">'+(r.dateDisplay||'—')+'</td></tr>';
+      var matchCell=cfg.matchBank?'<td>'+bankMatchBadge(findBankMatch(r.amount,r.dateStr,cfg.matchBank))+'</td>':'';
+      var row='<tr style="background:'+(i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)')+'"><td>'+r.name+'</td>'+docCell+'<td class="right gold">'+fmtFull(r.amount)+'</td>'+(cfg.agingKind?'<td class="right">'+(r.days!==null&&r.days!==undefined?Math.round(r.days).toLocaleString('th-TH'):'—')+'</td>':'')+matchCell+'<td style="font-size:12px;color:var(--muted)">'+(r.dateDisplay||'—')+'</td></tr>';
       if(itemsExp)row+=dmItemsRowHtml(items,flatCols);
       return row;
     }).join('');
@@ -979,13 +1017,13 @@ function showModalBank(){
 function showModalReceipt(){
   var all=G.recRows||[];
   var norm=all.map(function(r){return {name:r.custName,docNo:r.docNo,amount:r.amt,dateStr:toSlashDMY(r.date),dateDisplay:fmtD(r.date),days:null};});
-  openDetailModal({title:'รายละเอียดเงินรับ',icon:'📥',amountLabel:'จำนวนเงิน',groupable:true,agingKind:null,rows:norm,
+  openDetailModal({title:'รายละเอียดเงินรับ',icon:'📥',amountLabel:'จำนวนเงิน',groupable:true,agingKind:null,matchBank:'credit',rows:norm,
     statsHtml:'<div class="modal-summary">'+mStat('จำนวนทั้งหมด',all.length+' รายการ','var(--gold2)')+mStat('ยอดรวมทั้งหมด',fmtKPI(all.reduce(function(s,r){return s+r.amt;},0)),'var(--green)')+'</div>'});
 }
 function showModalPayment(){
   var all=G.payRows||[];
   var norm=all.map(function(r){return {name:r.vendName,docNo:r.docNo,amount:r.amt,dateStr:toSlashDMY(r.date),dateDisplay:fmtD(r.date),days:null};});
-  openDetailModal({title:'รายละเอียดเงินจ่าย',icon:'📤',amountLabel:'จำนวนเงิน',groupable:true,agingKind:null,rows:norm,
+  openDetailModal({title:'รายละเอียดเงินจ่าย',icon:'📤',amountLabel:'จำนวนเงิน',groupable:true,agingKind:null,matchBank:'debit',rows:norm,
     statsHtml:'<div class="modal-summary">'+mStat('จำนวนทั้งหมด',all.length+' รายการ','var(--gold2)')+mStat('ยอดรวมทั้งหมด',fmtKPI(all.reduce(function(s,r){return s+r.amt;},0)),'var(--red)')+'</div>'});
 }
 function showModalCF(){
