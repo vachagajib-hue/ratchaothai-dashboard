@@ -752,10 +752,20 @@ function findSplitMatch(amount,dateStr,side){
   }
   return null;
 }
+var SPLIT_MIN_AMOUNT=100000; // ยอดต่ำกว่านี้ไม่น่าจะโดนลิมิตโอนของธนาคาร ข้ามการค้นหาแบบรวมหลายรายการ (ประหยัดเวลาคำนวณมาก)
 function findRowMatch(amount,dateStr,side){
   var m=findBankMatch(amount,dateStr,side);
   if(m)return m;
+  if(!amount||amount<SPLIT_MIN_AMOUNT)return null;
   return findSplitMatch(amount,dateStr,side);
+}
+// แคชผลจับคู่ไว้ที่ตัวแถวข้อมูลเอง (r) เพื่อไม่ต้องคำนวณซ้ำทุกครั้งที่ dmRender() ถูกเรียก
+// (ค้นหา/กรอง/เรียง/ขยายกลุ่ม ล้วนเรียก dmRender() ใหม่ทุกครั้ง — ถ้าไม่แคชจะคำนวณ findRowMatch
+// ซ้ำเดิมทุกครั้งที่พิมพ์ค้นหา ทำให้หน้าที่มีหลายพันแถวหน่วงมาก)
+function rowMatchCached(r,side){
+  var key='_m_'+side;
+  if(r[key]===undefined)r[key]=findRowMatch(r.amount,r.dateStr,side);
+  return r[key];
 }
 var BATCH_WINDOW_DAYS=10; // ช่วงวันยอมรับสำหรับจับคู่แบบ "ยอดรวมเป็นก้อนเดียว" (batch payment) กว้างกว่าการจับคู่รายรายการ (±5 วัน) เพราะยอดก้อนอาจตัดช้ากว่าใบแยก
 function findBatchMatch(rows,side){
@@ -784,11 +794,17 @@ function findBatchMatch(rows,side){
   });
   return best;
 }
+var DM_BATCH_CACHE={};
+function findBatchMatchCached(g,side){
+  var key=g.name+'|'+side+'|'+g.total.toFixed(2)+'|'+g.rows.length;
+  if(!(key in DM_BATCH_CACHE))DM_BATCH_CACHE[key]=findBatchMatch(g.rows,side);
+  return DM_BATCH_CACHE[key];
+}
 function groupMatchBadge(g,side){
   var total=g.rows.length,matched=0;
-  g.rows.forEach(function(r){if(findRowMatch(r.amount,r.dateStr,side))matched++;});
+  g.rows.forEach(function(r){if(rowMatchCached(r,side))matched++;});
   if(matched===total)return '<span class="badge badge-green">'+matched+'/'+total+' พบ</span>';
-  var batch=findBatchMatch(g.rows,side);
+  var batch=findBatchMatchCached(g,side);
   if(batch){
     return '<span class="badge badge-blue" title="ยอดรวม '+total+' รายการ ตรงกับ 1 รายการในแบงค์ ('+batch.bank+' '+(batch.acctNo||'')+')">✅ ตรงยอดรวมก้อนเดียว ('+batch.bank+') • '+matched+'/'+total+' แยกรายการ</span>';
   }
@@ -954,7 +970,7 @@ function dmRender(){
           var docCell=hasItems
             ?'<td style="padding-left:22px;color:var(--teal);font-size:12px;cursor:pointer;font-weight:600" onclick="dmToggleItems(\''+r.docNo+'\')">'+(itemsExp?'▾':'▸')+' ↳ '+r.docNo+'</td>'
             :'<td style="padding-left:22px;color:var(--muted);font-size:12px">↳ '+(r.docNo||'—')+'</td>';
-          var subLastCell=cfg.matchBank?bankMatchBadge(findRowMatch(r.amount,r.dateStr,cfg.matchBank)):((cfg.agingKind&&r.days!==null&&r.days!==undefined)?agingBadge(r.days,cfg.agingKind):'');
+          var subLastCell=cfg.matchBank?bankMatchBadge(rowMatchCached(r,cfg.matchBank)):((cfg.agingKind&&r.days!==null&&r.days!==undefined)?agingBadge(r.days,cfg.agingKind):'');
           var sub='<tr style="background:rgba(255,255,255,0.015)"><td></td>'+docCell+'<td class="right" style="font-size:12px;color:var(--text2)">'+fmtFull(r.amount)+'</td><td></td><td></td><td style="font-size:12px;color:var(--muted)">'+(r.dateDisplay||'—')+'</td><td>'+subLastCell+'</td></tr>';
           if(itemsExp)sub+=dmItemsRowHtml(items,7);
           return sub;
@@ -974,7 +990,7 @@ function dmRender(){
       var docCell=hasItems
         ?'<td style="color:var(--teal);font-size:12px;cursor:pointer;font-weight:600" onclick="dmToggleItems(\''+r.docNo+'\')">'+(itemsExp?'▾':'▸')+' '+r.docNo+'</td>'
         :'<td style="color:var(--muted);font-size:12px">'+(r.docNo||'—')+'</td>';
-      var matchCell=cfg.matchBank?'<td>'+bankMatchBadge(findRowMatch(r.amount,r.dateStr,cfg.matchBank))+'</td>':'';
+      var matchCell=cfg.matchBank?'<td>'+bankMatchBadge(rowMatchCached(r,cfg.matchBank))+'</td>':'';
       var row='<tr style="background:'+(i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)')+'"><td>'+r.name+'</td>'+docCell+'<td class="right gold">'+fmtFull(r.amount)+'</td>'+(cfg.agingKind?'<td class="right">'+(r.days!==null&&r.days!==undefined?Math.round(r.days).toLocaleString('th-TH'):'—')+'</td>':'')+matchCell+'<td style="font-size:12px;color:var(--muted)">'+(r.dateDisplay||'—')+'</td></tr>';
       if(itemsExp)row+=dmItemsRowHtml(items,flatCols);
       return row;
