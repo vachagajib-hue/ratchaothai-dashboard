@@ -972,6 +972,13 @@ function dmCalendarHtml(){
   html+='</div>';
   return html;
 }
+function dmSyncCalToFilter(){
+  // ทำให้ปฏิทินแสดงเดือน/ปีตรงกับตัวกรองช่วงเดือน-ปีที่เลือกไว้ (ใช้ "จาก" ก่อน ถ้าไม่มีใช้ "ถึง")
+  var s=DM.state;
+  var y=s.yrFrom||s.yrTo, m=s.moFrom||s.moTo;
+  if(y)s.calYear=+y;
+  if(m)s.calMonth=+m;
+}
 function dmCalShift(n){
   var s=DM.state;
   var d=new Date(s.calYear,s.calMonth-1+n,1);
@@ -1011,19 +1018,23 @@ function dmRender(){
   var s=DM.state, cfg=DM.cfg;
   var filtered=dmFilterRows();
   var totalAll=filtered.reduce(function(a,r){return a+(r.amount||0);},0);
+  if(typeof cfg.statsDynamic==='function'){
+    var statsEl=document.getElementById('dmStats');
+    if(statsEl)statsEl.innerHTML=cfg.statsDynamic(filtered,totalAll);
+  }
   var years=[...new Set(cfg.rows.map(function(r){var my=dmMonthYear(r.dateStr);return my?my.yr:null;}).filter(Boolean))].sort();
   var MOPT=[['','เดือน'],['01','ม.ค.'],['02','ก.พ.'],['03','มี.ค.'],['04','เม.ย.'],['05','พ.ค.'],['06','มิ.ย.'],['07','ก.ค.'],['08','ส.ค.'],['09','ก.ย.'],['10','ต.ค.'],['11','พ.ย.'],['12','ธ.ค.']];
   var html='';
   html+='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">';
   html+='<input class="modal-search" style="flex:1;min-width:180px;margin-bottom:0" placeholder="🔍 ค้นหาชื่อ…" value="'+(s.search||'')+'" oninput="DM.state.search=this.value;dmRender()">';
   if(cfg.groupable){
-    html+='<select class="filter-select" onchange="DM.state.moFrom=this.value;dmRender()" style="font-size:12px">'+MOPT.map(function(o){return'<option value="'+o[0]+'" '+(s.moFrom===o[0]?'selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>';
-    html+='<select class="filter-select" onchange="DM.state.yrFrom=this.value;dmRender()" style="font-size:12px"><option value="">ปี</option>'+years.map(function(y){return'<option value="'+y+'" '+(s.yrFrom===y?'selected':'')+'>'+(+y+543)+'</option>';}).join('')+'</select>';
+    html+='<select class="filter-select" onchange="DM.state.moFrom=this.value;dmSyncCalToFilter();dmRender()" style="font-size:12px">'+MOPT.map(function(o){return'<option value="'+o[0]+'" '+(s.moFrom===o[0]?'selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>';
+    html+='<select class="filter-select" onchange="DM.state.yrFrom=this.value;dmSyncCalToFilter();dmRender()" style="font-size:12px"><option value="">ปี</option>'+years.map(function(y){return'<option value="'+y+'" '+(s.yrFrom===y?'selected':'')+'>'+(+y+543)+'</option>';}).join('')+'</select>';
     html+='<span style="color:var(--muted);font-size:12px">ถึง</span>';
-    html+='<select class="filter-select" onchange="DM.state.moTo=this.value;dmRender()" style="font-size:12px">'+MOPT.map(function(o){return'<option value="'+o[0]+'" '+(s.moTo===o[0]?'selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>';
-    html+='<select class="filter-select" onchange="DM.state.yrTo=this.value;dmRender()" style="font-size:12px"><option value="">ปี</option>'+years.map(function(y){return'<option value="'+y+'" '+(s.yrTo===y?'selected':'')+'>'+(+y+543)+'</option>';}).join('')+'</select>';
+    html+='<select class="filter-select" onchange="DM.state.moTo=this.value;dmSyncCalToFilter();dmRender()" style="font-size:12px">'+MOPT.map(function(o){return'<option value="'+o[0]+'" '+(s.moTo===o[0]?'selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>';
+    html+='<select class="filter-select" onchange="DM.state.yrTo=this.value;dmSyncCalToFilter();dmRender()" style="font-size:12px"><option value="">ปี</option>'+years.map(function(y){return'<option value="'+y+'" '+(s.yrTo===y?'selected':'')+'>'+(+y+543)+'</option>';}).join('')+'</select>';
     html+='<button class="filter-reset" onclick="DM.state.moFrom=DM.state.yrFrom=DM.state.moTo=DM.state.yrTo=\'\';dmRender()">✕ ล้างช่วง</button>';
-    html+='<button class="recon-bank-btn '+(s.calOpen?'active':'')+'" onclick="DM.state.calOpen=!DM.state.calOpen;dmRender()">📅 เลือกวันที่แบบปฏิทิน</button>';
+    html+='<button class="recon-bank-btn '+(s.calOpen?'active':'')+'" onclick="DM.state.calOpen=!DM.state.calOpen;if(DM.state.calOpen)dmSyncCalToFilter();dmRender()">📅 เลือกวันที่แบบปฏิทิน</button>';
   }
   html+='</div>';
   if(cfg.groupable&&s.calOpen){
@@ -1129,8 +1140,8 @@ function openDetailModal(cfg){
     var pk=cfg.presetDays.slice().sort()[0];
     defY=+pk.slice(0,4);defM=+pk.slice(4,6);
   }
-  DM.state={view:'group',sort:'amt',search:'',moFrom:'',yrFrom:'',moTo:'',yrTo:'',expanded:{},expandedItems:{},calOpen:!!cfg.openCalendar,calYear:defY,calMonth:defM,selectedDays:selectedDays};
-  openModal(cfg.icon+' '+cfg.title, (cfg.statsHtml||'')+'<div id="dmDynamic"></div>');
+  DM.state={view:'group',sort:'name',search:'',moFrom:'',yrFrom:'',moTo:'',yrTo:'',expanded:{},expandedItems:{},calOpen:!!cfg.openCalendar,calYear:defY,calMonth:defM,selectedDays:selectedDays};
+  openModal(cfg.icon+' '+cfg.title, '<div id="dmStats">'+(cfg.statsHtml||'')+'</div><div id="dmDynamic"></div>');
   dmRender();
 }
 function dmExportExcel(){
@@ -1221,13 +1232,13 @@ function showModalReceipt(){
   var all=G.recRows||[];
   var norm=all.map(function(r){return {name:r.custName,docNo:r.docNo,amount:r.amt,dateStr:toSlashDMY(r.date),dateDisplay:fmtD(r.date),days:null};});
   openDetailModal({title:'รายละเอียดเงินรับ',icon:'📥',amountLabel:'จำนวนเงิน',groupable:true,agingKind:null,matchBank:'credit',rows:norm,
-    statsHtml:'<div class="modal-summary">'+mStat('จำนวนทั้งหมด',all.length+' รายการ','var(--gold2)')+mStat('ยอดรวมทั้งหมด',fmtKPI(all.reduce(function(s,r){return s+r.amt;},0)),'var(--green)')+'</div>'});
+    statsDynamic:function(filtered,totalAll){return '<div class="modal-summary">'+mStat('จำนวนทั้งหมด',filtered.length+' รายการ','var(--gold2)')+mStat('ยอดรวมทั้งหมด',fmtKPI(totalAll),'var(--green)')+'</div>';}});
 }
 function showModalPayment(){
   var all=G.payRows||[];
   var norm=all.map(function(r){return {name:r.vendName,docNo:r.docNo,amount:r.amt,dateStr:toSlashDMY(r.date),dateDisplay:fmtD(r.date),days:null};});
   openDetailModal({title:'รายละเอียดเงินจ่าย',icon:'📤',amountLabel:'จำนวนเงิน',groupable:true,agingKind:null,matchBank:'debit',rows:norm,
-    statsHtml:'<div class="modal-summary">'+mStat('จำนวนทั้งหมด',all.length+' รายการ','var(--gold2)')+mStat('ยอดรวมทั้งหมด',fmtKPI(all.reduce(function(s,r){return s+r.amt;},0)),'var(--red)')+'</div>'});
+    statsDynamic:function(filtered,totalAll){return '<div class="modal-summary">'+mStat('จำนวนทั้งหมด',filtered.length+' รายการ','var(--gold2)')+mStat('ยอดรวมทั้งหมด',fmtKPI(totalAll),'var(--red)')+'</div>';}});
 }
 function showModalCF(){
   var months=G.allMonths||[];
