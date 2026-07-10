@@ -695,6 +695,7 @@ function findBankMatch(amount,dateStr,side){
 }
 function bankMatchBadge(m){
   if(!m)return '<span class="badge badge-red">❌ ไม่พบ</span>';
+  if(m.crossBatch)return '<span class="badge badge-teal" title="อยู่ในก้อนโอนรวม '+m.parts.length+' รายการข้ามเจ้าหนี้ ('+m.parts.map(function(p){return (p.name||p.docNo||'')+' '+fmtFull(p.amount);}).join(', ')+') = '+fmtFull(m.sumAmt)+'">✅ ก้อนรวมข้ามเจ้าหนี้ ('+m.parts.length+' รายการ, '+m.bank+')</span>';
   if(m.split)return '<span class="badge badge-blue" title="รวม '+m.parts.length+' รายการโอนในแบงค์ ('+m.parts.map(function(p){return fmtFull(p.val);}).join(' + ')+') = '+fmtFull(m.sumAmt)+'">✅ แบ่งโอน '+m.parts.length+' ครั้ง ('+m.bank+')</span>';
   if(m.diffDays===0)return '<span class="badge badge-green">✅ ตรงวัน ('+m.bank+')</span>';
   return '<span class="badge badge-gold">✅ ห่าง '+m.diffDays+' วัน ('+m.bank+')</span>';
@@ -753,18 +754,106 @@ function findSplitMatch(amount,dateStr,side){
   return null;
 }
 var SPLIT_MIN_AMOUNT=100000; // ยอดต่ำกว่านี้ไม่น่าจะโดนลิมิตโอนของธนาคาร ข้ามการค้นหาแบบรวมหลายรายการ (ประหยัดเวลาคำนวณมาก)
-function findRowMatch(amount,dateStr,side){
+function findRowMatchBasic(amount,dateStr,side){
+  // จับคู่ 2 ชั้นแรก (1:1 ตรงตัว, แยกโอนของเอกสารเดียวกัน) — ไม่รวมโหมดข้ามเจ้าหนี้ (ใช้เป็นตัวช่วยสร้าง day-pool ด้านล่าง)
   var m=findBankMatch(amount,dateStr,side);
   if(m)return m;
   if(!amount||amount<SPLIT_MIN_AMOUNT)return null;
   return findSplitMatch(amount,dateStr,side);
+}
+// ===== ก้อนรวมข้ามเจ้าหนี้ (payment run): แบงค์โอนออก/เข้าทีเดียว แต่ครอบคลุมหลายเจ้าหนี้/ลูกหนี้ต่างรายในวันเดียวกัน =====
+var CROSS_MIN_AMOUNT=500000;  // เกณฑ์ขั้นต่ำของ "เอกสารที่จะลองหาก้อนรวม" (จำกัดขอบเขตการค้นหาที่หนักสุดในนี้)
+var CROSS_WINDOW_DAYS=2;      // payment run มักจะวันเดียวกันหรือใกล้กันมาก
+var CROSS_MAX_POOL=18;        // จำกัดจำนวนรายการต่อวันที่นำมาค้นหาสับเซต (ป้องกันค้นหาหนักเกินไป)
+var CROSS_MAX_PARTS=8;        // จำกัดจำนวนรายการย่อยสูงสุดในก้อนรวมที่จะลองรวม
+var DM_DAYPOOL_CACHE={};
+function crossDayPool(dateStr,side){
+  var dk=dateKey(dateStr);
+  if(!dk)return [];
+  var cacheKey=dk+'|'+side;
+  if(DM_DAYPOOL_CACHE[cacheKey])return DM_DAYPOOL_CACHE[cacheKey];
+  var all=(DM.cfg&&DM.cfg.rows)||[];
+  var pool=[];
+  all.forEach(function(r){
+    var k=dateKey(r.dateStr);
+    if(!k)return;
+    if(Math.abs(daysBetweenKeys(k,dk))>CROSS_WINDOW_DAYS)return;
+    if(findRowMatchBasic(r.amount,r.dateStr,side))return; // จับคู่แบบอื่นเจอแล้ว ไม่ต้องเอามารวมซ้ำ
+    pool.push(r);
+  });
+  DM_DAYPOOL_CACHE[cacheKey]=pool;
+  return pool;
+}
+function subsetSumIncluding(mustRow,pool,target,maxParts){
+  var others=pool.filter(function(x){return x!==mustRow;});
+  var need=target-(mustRow.amount||0);
+  if(Math.abs(need)<=0.5)return [mustRow];
+  if(need<-0.5)return null;
+  others.sort(function(a,b){return (b.amount||0)-(a.amount||0);});
+  var n=others.length;
+  var suffix=new Array(n+1); suffix[n]=0;
+  for(var i=n-1;i>=0;i--)suffix[i]=suffix[i+1]+(others[i].amount||0);
+  var found=null, steps=0, STEP_LIMIT=200000;
+  function bt(idx,remaining,picked){
+    if(found||steps>STEP_LIMIT)return;
+    steps++;
+    if(Math.abs(remaining)<=0.5){found=picked.slice();return;}
+    if(idx>=n||picked.length>=maxParts-1)return;
+    if(remaining<-0.5)return;
+    if(remaining>suffix[idx])return; // แม้เอาที่เหลือทั้งหมดก็ไม่ถึง target เลิกลองกิ่งนี้
+    bt(idx+1,remaining-(others[idx].amount||0),picked.concat(others[idx]));
+    if(found)return;
+    bt(idx+1,remaining,picked);
+  }
+  bt(0,need,[]);
+  if(!found)return null;
+  return [mustRow].concat(found);
+}
+function findCrossBatchMatch(row,side){
+  if(!row||!row.amount||row.amount<CROSS_MIN_AMOUNT)return null;
+  var pool=crossDayPool(row.dateStr,side);
+  if(pool.length<2)return null;
+  if(pool.indexOf(row)===-1)return null;
+  if(pool.length>CROSS_MAX_POOL){
+    var trimmed=pool.slice().sort(function(a,b){return (b.amount||0)-(a.amount||0);}).slice(0,CROSS_MAX_POOL);
+    if(trimmed.indexOf(row)===-1)trimmed.push(row);
+    pool=trimmed;
+  }
+  var targetKey=dateKey(row.dateStr);
+  var candidates=[];
+  Object.keys(RBANK_DATA||{}).forEach(function(bk){
+    (RBANK_DATA[bk].accounts||[]).forEach(function(acc){
+      (acc.txns||[]).forEach(function(t){
+        var val=side==='credit'?(t.credit||0):(t.debit||0);
+        if(!val||val<row.amount-0.5)return;
+        var tk=dateKey(t.date);
+        if(!tk)return;
+        var diff=Math.abs(daysBetweenKeys(tk,targetKey));
+        if(diff<=CROSS_WINDOW_DAYS)candidates.push({bank:bk,acctNo:acc.acctNo,date:t.date,val:val,diff:diff});
+      });
+    });
+  });
+  candidates.sort(function(a,b){return a.diff-b.diff;});
+  for(var i=0;i<candidates.length;i++){
+    var c=candidates[i];
+    var subset=subsetSumIncluding(row,pool,c.val,CROSS_MAX_PARTS);
+    if(subset){
+      return {crossBatch:true,bank:c.bank,acctNo:c.acctNo,date:c.date,diffDays:c.diff,parts:subset,sumAmt:c.val};
+    }
+  }
+  return null;
+}
+function findRowMatch(r,side){
+  var m=findRowMatchBasic(r.amount,r.dateStr,side);
+  if(m)return m;
+  return findCrossBatchMatch(r,side);
 }
 // แคชผลจับคู่ไว้ที่ตัวแถวข้อมูลเอง (r) เพื่อไม่ต้องคำนวณซ้ำทุกครั้งที่ dmRender() ถูกเรียก
 // (ค้นหา/กรอง/เรียง/ขยายกลุ่ม ล้วนเรียก dmRender() ใหม่ทุกครั้ง — ถ้าไม่แคชจะคำนวณ findRowMatch
 // ซ้ำเดิมทุกครั้งที่พิมพ์ค้นหา ทำให้หน้าที่มีหลายพันแถวหน่วงมาก)
 function rowMatchCached(r,side){
   var key='_m_'+side;
-  if(r[key]===undefined)r[key]=findRowMatch(r.amount,r.dateStr,side);
+  if(r[key]===undefined)r[key]=findRowMatch(r,side);
   return r[key];
 }
 var BATCH_WINDOW_DAYS=10; // ช่วงวันยอมรับสำหรับจับคู่แบบ "ยอดรวมเป็นก้อนเดียว" (batch payment) กว้างกว่าการจับคู่รายรายการ (±5 วัน) เพราะยอดก้อนอาจตัดช้ากว่าใบแยก
@@ -1024,6 +1113,8 @@ function dmToggleGroupIdx(i){
 }
 function openDetailModal(cfg){
   DM.cfg=cfg;
+  DM_BATCH_CACHE={};
+  DM_DAYPOOL_CACHE={};
   var td=new Date(),defY=td.getFullYear(),defM=td.getMonth()+1;
   var keys=(cfg.rows||[]).map(function(r){return dateKey(r.dateStr);}).filter(Boolean).sort();
   if(keys.length){var lk=keys[keys.length-1];defY=+lk.slice(0,4);defM=+lk.slice(4,6);}
