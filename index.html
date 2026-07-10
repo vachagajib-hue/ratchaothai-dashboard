@@ -695,8 +695,67 @@ function findBankMatch(amount,dateStr,side){
 }
 function bankMatchBadge(m){
   if(!m)return '<span class="badge badge-red">❌ ไม่พบ</span>';
+  if(m.split)return '<span class="badge badge-blue" title="รวม '+m.parts.length+' รายการโอนในแบงค์ ('+m.parts.map(function(p){return fmtFull(p.val);}).join(' + ')+') = '+fmtFull(m.sumAmt)+'">✅ แบ่งโอน '+m.parts.length+' ครั้ง ('+m.bank+')</span>';
   if(m.diffDays===0)return '<span class="badge badge-green">✅ ตรงวัน ('+m.bank+')</span>';
   return '<span class="badge badge-gold">✅ ห่าง '+m.diffDays+' วัน ('+m.bank+')</span>';
+}
+// ===== เอกสาร 1 ชุด แต่แบ่งโอนหลายครั้ง (เช่น ติดลิมิตโอนของธนาคาร) =====
+var SPLIT_WINDOW_DAYS=5;     // ช่วงวันยอมรับเดียวกับการจับคู่รายตัว (การแบ่งโอนมักเกิดวันเดียวกันหรือใกล้กันมาก)
+var SPLIT_MAX_PARTS=3;       // ลองรวมสูงสุดกี่รายการย่อย (2 หรือ 3 ครั้งโอน) ป้องกันการค้นหาหนักเกินไป
+var SPLIT_MAX_CANDIDATES=60; // จำกัดจำนวนรายการแบงค์ที่นำมาลองรวม (เอาที่ใกล้วันที่สุดก่อน) - ปรับเพิ่มได้ถ้าบัญชีมีรายการต่อวันมากกว่านี้
+function splitCandidates(dateStr,side){
+  var targetKey=dateKey(dateStr);
+  if(!targetKey)return [];
+  var list=[];
+  Object.keys(RBANK_DATA||{}).forEach(function(bk){
+    (RBANK_DATA[bk].accounts||[]).forEach(function(acc){
+      (acc.txns||[]).forEach(function(t){
+        var val=side==='credit'?(t.credit||0):(t.debit||0);
+        if(!val)return;
+        var tk=dateKey(t.date);
+        if(!tk)return;
+        var diff=Math.abs(daysBetweenKeys(tk,targetKey));
+        if(diff<=SPLIT_WINDOW_DAYS)list.push({bank:bk,acctNo:acc.acctNo,date:t.date,val:val,diff:diff});
+      });
+    });
+  });
+  list.sort(function(a,b){return a.diff-b.diff;});
+  return list.slice(0,SPLIT_MAX_CANDIDATES);
+}
+function findComboOfSize(cands,n,target){
+  var k=cands.length;
+  if(k<n)return null;
+  var idx=[];
+  for(var i=0;i<n;i++)idx.push(i);
+  while(true){
+    var sum=0;
+    for(var i2=0;i2<n;i2++)sum+=cands[idx[i2]].val;
+    if(Math.abs(sum-target)<=0.5)return idx.map(function(i3){return cands[i3];});
+    var pos=n-1;
+    while(pos>=0&&idx[pos]===k-n+pos)pos--;
+    if(pos<0)return null;
+    idx[pos]++;
+    for(var j=pos+1;j<n;j++)idx[j]=idx[j-1]+1;
+  }
+}
+function findSplitMatch(amount,dateStr,side){
+  if(!amount)return null;
+  var cands=splitCandidates(dateStr,side);
+  if(cands.length<2)return null;
+  for(var n=2;n<=SPLIT_MAX_PARTS&&n<=cands.length;n++){
+    var combo=findComboOfSize(cands,n,amount);
+    if(combo){
+      var maxDiff=0;
+      combo.forEach(function(c){if(c.diff>maxDiff)maxDiff=c.diff;});
+      return {split:true,parts:combo,bank:combo[0].bank,acctNo:combo[0].acctNo,diffDays:maxDiff,sumAmt:amount};
+    }
+  }
+  return null;
+}
+function findRowMatch(amount,dateStr,side){
+  var m=findBankMatch(amount,dateStr,side);
+  if(m)return m;
+  return findSplitMatch(amount,dateStr,side);
 }
 var BATCH_WINDOW_DAYS=10; // ช่วงวันยอมรับสำหรับจับคู่แบบ "ยอดรวมเป็นก้อนเดียว" (batch payment) กว้างกว่าการจับคู่รายรายการ (±5 วัน) เพราะยอดก้อนอาจตัดช้ากว่าใบแยก
 function findBatchMatch(rows,side){
@@ -727,7 +786,7 @@ function findBatchMatch(rows,side){
 }
 function groupMatchBadge(g,side){
   var total=g.rows.length,matched=0;
-  g.rows.forEach(function(r){if(findBankMatch(r.amount,r.dateStr,side))matched++;});
+  g.rows.forEach(function(r){if(findRowMatch(r.amount,r.dateStr,side))matched++;});
   if(matched===total)return '<span class="badge badge-green">'+matched+'/'+total+' พบ</span>';
   var batch=findBatchMatch(g.rows,side);
   if(batch){
@@ -895,7 +954,7 @@ function dmRender(){
           var docCell=hasItems
             ?'<td style="padding-left:22px;color:var(--teal);font-size:12px;cursor:pointer;font-weight:600" onclick="dmToggleItems(\''+r.docNo+'\')">'+(itemsExp?'▾':'▸')+' ↳ '+r.docNo+'</td>'
             :'<td style="padding-left:22px;color:var(--muted);font-size:12px">↳ '+(r.docNo||'—')+'</td>';
-          var subLastCell=cfg.matchBank?bankMatchBadge(findBankMatch(r.amount,r.dateStr,cfg.matchBank)):((cfg.agingKind&&r.days!==null&&r.days!==undefined)?agingBadge(r.days,cfg.agingKind):'');
+          var subLastCell=cfg.matchBank?bankMatchBadge(findRowMatch(r.amount,r.dateStr,cfg.matchBank)):((cfg.agingKind&&r.days!==null&&r.days!==undefined)?agingBadge(r.days,cfg.agingKind):'');
           var sub='<tr style="background:rgba(255,255,255,0.015)"><td></td>'+docCell+'<td class="right" style="font-size:12px;color:var(--text2)">'+fmtFull(r.amount)+'</td><td></td><td></td><td style="font-size:12px;color:var(--muted)">'+(r.dateDisplay||'—')+'</td><td>'+subLastCell+'</td></tr>';
           if(itemsExp)sub+=dmItemsRowHtml(items,7);
           return sub;
@@ -915,7 +974,7 @@ function dmRender(){
       var docCell=hasItems
         ?'<td style="color:var(--teal);font-size:12px;cursor:pointer;font-weight:600" onclick="dmToggleItems(\''+r.docNo+'\')">'+(itemsExp?'▾':'▸')+' '+r.docNo+'</td>'
         :'<td style="color:var(--muted);font-size:12px">'+(r.docNo||'—')+'</td>';
-      var matchCell=cfg.matchBank?'<td>'+bankMatchBadge(findBankMatch(r.amount,r.dateStr,cfg.matchBank))+'</td>':'';
+      var matchCell=cfg.matchBank?'<td>'+bankMatchBadge(findRowMatch(r.amount,r.dateStr,cfg.matchBank))+'</td>':'';
       var row='<tr style="background:'+(i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)')+'"><td>'+r.name+'</td>'+docCell+'<td class="right gold">'+fmtFull(r.amount)+'</td>'+(cfg.agingKind?'<td class="right">'+(r.days!==null&&r.days!==undefined?Math.round(r.days).toLocaleString('th-TH'):'—')+'</td>':'')+matchCell+'<td style="font-size:12px;color:var(--muted)">'+(r.dateDisplay||'—')+'</td></tr>';
       if(itemsExp)row+=dmItemsRowHtml(items,flatCols);
       return row;
