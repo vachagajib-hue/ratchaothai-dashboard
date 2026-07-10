@@ -857,6 +857,7 @@ function rowMatchCached(r,side){
   return r[key];
 }
 var BATCH_WINDOW_DAYS=10; // ช่วงวันยอมรับสำหรับจับคู่แบบ "ยอดรวมเป็นก้อนเดียว" (batch payment) กว้างกว่าการจับคู่รายรายการ (±5 วัน) เพราะยอดก้อนอาจตัดช้ากว่าใบแยก
+var BATCH_MAX_SPREAD_DAYS=15; // ถ้าวันที่ในกลุ่มเองห่างกันเกินนี้ ไม่ลองจับคู่แบบก้อนเดียว (ป้องกันจับคู่ผิดโดยบังเอิญกับกลุ่มที่จริงๆเป็นรายการแยกกันคนละช่วงเวลา)
 function findBatchMatch(rows,side){
   // เทียบ "ยอดรวมทั้งกลุ่ม" กับ 1 รายการเดียวในแบงค์ (กรณีแบงค์โอนเป็นก้อนเดียวแต่จริงๆครอบคลุมหลายใบ/หลายรายการ)
   if(!rows||rows.length<2)return null; // มีรายการเดียวไม่ต้องเช็คก้อน ซ้ำกับจับคู่รายตัว
@@ -865,6 +866,10 @@ function findBatchMatch(rows,side){
   var keys=rows.map(function(r){return dateKey(r.dateStr);}).filter(Boolean).sort();
   if(!keys.length)return null;
   var minK=keys[0],maxK=keys[keys.length-1];
+  // ป้องกัน false positive: ถ้าวันที่ของรายการในกลุ่มเองห่างกันเกินไปอยู่แล้ว (เช่น 2 รายการห่างกันหลายสัปดาห์)
+  // ไม่ควรถือเป็น "จ่ายเป็นก้อนเดียว" เพราะช่วงยอมรับ ±BATCH_WINDOW_DAYS จะกลายเป็นกว้างเกินจริง
+  // (กว้างครอบคลุมได้เป็นเดือน) เสี่ยงจับคู่ผิดกับรายการอื่นที่ยอดตรงกันโดยบังเอิญ
+  if(daysBetweenKeys(maxK,minK)>BATCH_MAX_SPREAD_DAYS)return null;
   var best=null,bestDiff=Infinity;
   Object.keys(RBANK_DATA||{}).forEach(function(bk){
     (RBANK_DATA[bk].accounts||[]).forEach(function(acc){
