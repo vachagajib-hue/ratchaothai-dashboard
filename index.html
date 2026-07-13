@@ -667,7 +667,9 @@ function agingBadge(days,kind){
   }else{
     var cls=days>90?'red':days>60?'gold':days>30?'teal':'green';
   }
-  return '<span class="badge badge-'+cls+'">'+Math.round(days).toLocaleString('th-TH')+' วัน</span>';
+  // ค่าติดลบ = ยังไม่ถึงกำหนดชำระ (ตามหลักบัญชี: เกินกำหนด=บวก, ยังไม่ถึงกำหนด=ลบ) — แสดงเป็นข้อความอ่านง่ายแทนเลขติดลบดิบๆ
+  var label=days<0?'ยังไม่ครบกำหนด (อีก '+Math.round(-days).toLocaleString('th-TH')+' วัน)':Math.round(days).toLocaleString('th-TH')+' วัน';
+  return '<span class="badge badge-'+cls+'">'+label+'</span>';
 }
 // ===== เทียบเงินรับ/เงินจ่าย กับรายการจริงในสเตทเมนต์ธนาคาร (RBANK_DATA) =====
 function daysBetweenKeys(k1,k2){
@@ -1068,7 +1070,7 @@ function dmRender(){
       var lastCell=cfg.matchBank?groupMatchBadge(g,cfg.matchBank):(cfg.agingKind?agingBadge(g.worstDays,cfg.agingKind):'—');
       var row='<tr style="background:'+(i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)')+';cursor:pointer" onclick="dmToggleGroupIdx('+i+')"><td class="right" style="color:var(--gold2);font-weight:700">'+(exp?'−':'+')+'</td><td>'+g.name+'</td><td class="right gold">'+fmtFull(g.total)+'</td><td class="right" style="color:var(--muted)">'+pct+'%</td><td class="right">'+g.count+'</td><td style="font-size:12px;color:var(--text2)">'+(g.earliestDisplay||'—')+'</td><td>'+lastCell+'</td></tr>';
       if(exp){
-        row+=g.rows.map(function(r){
+        row+=g.rows.slice().sort(function(a,b){return (dateKey(a.dateStr)||'').localeCompare(dateKey(b.dateStr)||'');}).map(function(r){
           var items=cfg.itemsByDoc&&cfg.itemsByDoc[r.docNo];
           var hasItems=items&&items.length;
           var itemsExp=hasItems&&!!s.expandedItems[r.docNo];
