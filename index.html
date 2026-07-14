@@ -511,11 +511,17 @@ async function loadAllData(){
     var q07=await fetchSheet('Q07_REVENUE_BY_ACCOUNT');
     var revByAcct={},revByMonth={},revAll=[],totRevYTD=0;
     q07.rows.forEach(function(r){
-      var code=String(r[0]||''),name=String(r[1]||''),ym=String(r[2]||''),amt=parseFloat(r[3])||0;
+      // Columns: #, AcctCode, AcctName, YearMonth, Amount
+      var code=String(r['AcctCode']||r[1]||'').trim();
+      var name=String(r['AcctName']||r[2]||'').trim();
+      var ym=String(r['YearMonth']||r[3]||'').trim();
+      var amt=parseFloat(r['Amount']||r[4])||0;
+      if(!code||!code.match(/^\d/))return;
       if(!revByAcct[code])revByAcct[code]={code:code,name:name,amt:0};
       revByAcct[code].amt+=amt;
-      if(!revByMonth[ym])revByMonth[ym]={rec:0,pay:0};
-      revByMonth[ym].rec=(revByMonth[ym].rec||0)+amt;
+      var ymKey=ym; // YearMonth format: 2026-01
+      if(!revByMonth[ymKey])revByMonth[ymKey]={rec:0};
+      revByMonth[ymKey].rec=(revByMonth[ymKey].rec||0)+amt;
       totRevYTD+=amt;
     });
     revAll=Object.values(revByAcct).sort(function(a,b){return b.amt-a.amt;});
@@ -523,7 +529,12 @@ async function loadAllData(){
     var q08=await fetchSheet('Q08_EXPENSE_BY_ACCOUNT');
     var exps=[],expAll=[],et=0,expByMonth={};
     q08.rows.forEach(function(r){
-      var code=String(r[0]||''),name=String(r[1]||''),ym=String(r[2]||''),amt=parseFloat(r[3])||0;
+      // Columns: #, AcctCode, AcctName, YearMonth, Amount
+      var code=String(r['AcctCode']||r[1]||'').trim();
+      var name=String(r['AcctName']||r[2]||'').trim();
+      var ym=String(r['YearMonth']||r[3]||'').trim();
+      var amt=parseFloat(r['Amount']||r[4])||0;
+      if(!code||!code.match(/^\d/))return;
       expAll.push({code:code,name:name,amt:amt,ym:ym});
       if(amt>0){exps.push({name:name,code:code,amt:amt,ym:ym});et+=amt;}
       if(ym){if(!expByMonth[ym])expByMonth[ym]={};expByMonth[ym][code]=(expByMonth[ym][code]||0)+amt;}
@@ -1473,22 +1484,30 @@ function renderAcctCharts(d,gc,filter){
   var months6=fm.slice(-6);
   var lbl6=months6.map(function(m){return MLBL[m]||m;});
   var mRev=months6.map(function(m){
-    var sum=0;
-    (d.revAll||[]).forEach(function(r){
-      if(filter==='all'||r.code.startsWith(filter)){
-        // sum from revByMonth
-        var rm=(d.revByMonth||{})[m];
-        if(rm)sum=rm.rec||0;
-      }
-    });
+    // m is like '2026-01', revByMonth keys are also '2026-01'
+    var rm=(d.revByMonth||{})[m];
+    var sum=rm?rm.rec||0:0;
+    // Filter by account group if needed
+    if(filter&&filter!=='all'&&sum>0){
+      // Recalculate filtered from expAll equivalent for rev
+      sum=0;
+      (d.revAll||[]).forEach(function(r){
+        if(r.code.startsWith(filter)){
+          // We don't have per-month per-acct for rev easily, use proportion
+          var totalRev=(d.revByMonth||{})[m];
+          if(totalRev)sum+=totalRev.rec*(r.amt/((d.totRevYTD||1)));
+        }
+      });
+    }
     return +(sum/1e6).toFixed(2);
   });
   var mExp=months6.map(function(m){
     var sum=0;
     (d.expAll||[]).forEach(function(e){
+      // e.ym is '2026-01' format, m is also '2026-01'
       if(e.ym===m&&e.amt>0){
-        if(filter==='all'||e.code.startsWith(filter)||(filter==='54'&&(e.code.startsWith('54')||e.code.startsWith('55'))))
-          sum+=e.amt;
+        var match=filter==='all'||e.code.startsWith(filter)||(filter==='54'&&(e.code.startsWith('54')||e.code.startsWith('55')));
+        if(match)sum+=e.amt;
       }
     });
     return +(sum/1e6).toFixed(2);
