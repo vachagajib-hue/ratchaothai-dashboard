@@ -253,6 +253,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <div class="chart-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
 <span>AR vs AP รายเดือน <span class="chart-sub">(ตามวันที่เอกสาร, กรองตามอายุหนี้)</span></span>
 <select id="arApAgeBucket" onchange="renderArApMonthlyBar()" style="background:var(--card2,#0D1B2A);color:#E8EEF5;border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:5px 10px;font-size:12px">
+<option value="all">ทั้งหมด</option>
 <option value="notyet">ยังไม่ครบกำหนด</option>
 <option value="b030">เกิน 0-30 วัน</option>
 <option value="b3160">เกิน 31-60 วัน</option>
@@ -1603,13 +1604,13 @@ function agingBucketOf(days){
 function arApMonthlyByBucket(bucket){
   var arMap={},apMap={};
   (G.arRows2||[]).forEach(function(r){
-    if(agingBucketOf(r.days)!==bucket)return;
+    if(bucket!=='all'&&agingBucketOf(r.days)!==bucket)return;
     var ym=getYM(r.docDate);
     if(!ym)return;
     arMap[ym]=(arMap[ym]||0)+r.bal;
   });
   (G.apRows2||[]).forEach(function(r){
-    if(agingBucketOf(r.days)!==bucket)return;
+    if(bucket!=='all'&&agingBucketOf(r.days)!==bucket)return;
     var ym=getYM(r.docDate);
     if(!ym)return;
     apMap[ym]=(apMap[ym]||0)+r.bal;
@@ -1626,7 +1627,7 @@ function renderArApMonthlyBar(){
   var sel=document.getElementById('arApAgeBucket');
   var canvas=document.getElementById('arApMonthlyBar');
   if(!sel||!canvas)return;
-  var bucket=sel.value||'notyet';
+  var bucket=sel.value||'all';
   var d=arApMonthlyByBucket(bucket);
   var gc='rgba(255,255,255,0.05)';
   makeChart('arApMonthlyBar',{type:'bar',data:{labels:d.labels,datasets:[
