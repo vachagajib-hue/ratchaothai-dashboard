@@ -562,9 +562,18 @@ async function loadAllData(){
 
     st.textContent='\u0e01\u0e33\u0e25\u0e31\u0e07\u0e14\u0e36\u0e07 Q08\u2026';
     var q08=await fetchSheet('Q08_EXPENSE_BY_ACCOUNT');
-    var exps=[],expAll=[],et=0;
-    q08.rows.forEach(function(r){var amt=parseFloat(r[3])||0,name=String(r[2]||''),code=String(r[1]||'');expAll.push({code:code,name:name,amt:amt});if(amt>0){exps.push({name:name,amt:amt});et+=amt;}});
-    exps.sort(function(a,b){return b.amt-a.amt;});
+    var expMap={},expAll=[],et=0;
+    q08.rows.forEach(function(r){
+      var name=String(r[2]||''),code=String(r[1]||'');
+      if(!name)return;
+      var v3=r[3];
+      var ymLike=(v3 instanceof Date)||/^\d{4}-\d{2}/.test(String(v3||''));
+      var amt=ymLike?(parseFloat(r[4])||0):(parseFloat(v3)||0);
+      if(!expMap[name])expMap[name]={code:code,name:name,amt:0};
+      expMap[name].amt+=amt;
+    });
+    Object.keys(expMap).forEach(function(k){var e=expMap[k];expAll.push(e);if(e.amt>0)et+=e.amt;});
+    var exps=expAll.filter(function(e){return e.amt>0;}).slice().sort(function(a,b){return b.amt-a.amt;});
 
     // Q09/Q10: รายละเอียดรายการสินค้า/บริการต่อใบ (ออปชันเสริม — ถ้ายังไม่มีชีตนี้ dashboard ยังทำงานได้ตามปกติ)
     // คอลัมภ์คาดหวัง: [#, CardCode, CardName, DocNum, DocDate, DocDueDate, Balance, AgingDays, LineNum, ItemCode, ItemName, Quantity, Price, LineTotal]
