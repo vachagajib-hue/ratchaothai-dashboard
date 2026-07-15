@@ -467,6 +467,25 @@ function openModal(title,html){document.getElementById('modalTitle').textContent
 function closeModal(e){if(!e||e.target===document.getElementById('modalOverlay'))document.getElementById('modalOverlay').classList.remove('open');}
 function mStat(label,val,color){return '<div class="modal-stat"><div class="modal-stat-label">'+label+'</div><div class="modal-stat-val" style="color:'+color+'">'+val+'</div></div>';}
 
+function repairAcctCode(raw){
+  var s=String(raw==null?'':raw);
+  var m=s.match(/^(\d+)-(\d{2})-(\d{2})T/);
+  if(m){
+    // Google Sheets misread an "XXXX-YY" account code as a YYYY-MM date,
+    // defaulting the day to 1 (local, UTC+7). JSON-serialized as UTC this
+    // shifts back to the previous day/month. Add 1 day in UTC to recover
+    // the true (prefix, suffix) pair.
+    var d=new Date(Date.UTC(+m[1],+m[2]-1,+m[3]));
+    d.setUTCDate(d.getUTCDate()+1);
+    return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0');
+  }
+  if(raw instanceof Date){
+    var d2=new Date(raw.getTime());
+    d2.setUTCDate(d2.getUTCDate()+1);
+    return d2.getUTCFullYear()+'-'+String(d2.getUTCMonth()+1).padStart(2,'0');
+  }
+  return s;
+}
 async function fetchSheet(name){
   var url=APPS_URL+'?sheet='+encodeURIComponent(name);
   var res=await fetch(url,{
@@ -627,7 +646,7 @@ async function loadAllData(){
     try{
       var q12=await fetchSheet('Q12_PL_BY_ACCOUNT_MONTHLY');
       q12.rows.forEach(function(r){
-        var code=String(r[1]||''),name=String(r[2]||''),cat=String(r[3]||'').toUpperCase();
+        var code=repairAcctCode(r[1]),name=String(r[2]||''),cat=String(r[3]||'').toUpperCase();
         if(!code||(cat!=='REVENUE'&&cat!=='EXPENSE'))return;
         var raw=r[4], ym;
         if(raw instanceof Date){
