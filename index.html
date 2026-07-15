@@ -1009,6 +1009,29 @@ function dmGroup(rows){
   });
   return Object.values(map);
 }
+var DM_MTHAI={'01':'ม.ค.','02':'ก.พ.','03':'มี.ค.','04':'เม.ย.','05':'พ.ค.','06':'มิ.ย.','07':'ก.ค.','08':'ส.ค.','09':'ก.ย.','10':'ต.ค.','11':'พ.ย.','12':'ธ.ค.'};
+function dmMonthLabel(mk){
+  if(!mk||mk.length<6)return mk||'—';
+  var y=mk.slice(0,4),m=mk.slice(4,6);
+  return (DM_MTHAI[m]||m)+' '+(+y+543);
+}
+function dmGroupByMonth(rows){
+  var map={};
+  rows.forEach(function(r){
+    var k=(dateKey(r.dateStr)||'').slice(0,6);
+    if(!k)k='ไม่ระบุ';
+    if(!map[k])map[k]={monthKey:k,total:0,count:0,rows:[],byName:{}};
+    var g=map[k];
+    g.total+=r.amount||0; g.count++; g.rows.push(r);
+    g.byName[r.name]=(g.byName[r.name]||0)+(r.amount||0);
+  });
+  return Object.values(map).map(function(g){
+    var names=Object.entries(g.byName).sort(function(a,b){return b[1]-a[1];});
+    g.topName=names.length?names[0]:null;
+    g.names=names;
+    return g;
+  });
+}
 function dmFilterRows(){
   var s=DM.state;
   var rows=DM.cfg.rows;
@@ -1137,6 +1160,7 @@ function dmRender(){
     html+='<span style="font-size:11px;color:var(--muted);font-weight:600">มุมมอง:</span>';
     html+='<button class="recon-bank-btn '+(s.view==='group'?'active':'')+'" onclick="DM.state.view=\'group\';dmRender()">จัดกลุ่มตามชื่อ</button>';
     html+='<button class="recon-bank-btn '+(s.view==='flat'?'active':'')+'" onclick="DM.state.view=\'flat\';dmRender()">รายการทั้งหมด</button>';
+    html+='<button class="recon-bank-btn '+(s.view==='month'?'active':'')+'" onclick="DM.state.view=\'month\';dmRender()">📅 แยกตามเดือน</button>';
     html+='<span style="font-size:11px;color:var(--muted);font-weight:600;margin-left:8px">เรียง:</span>';
     html+='<button class="recon-bank-btn '+(s.sort==='amt'?'active':'')+'" onclick="DM.state.sort=\'amt\';dmRender()">ยอดมาก→น้อย</button>';
     html+='<button class="recon-bank-btn '+(s.sort==='name'?'active':'')+'" onclick="DM.state.sort=\'name\';dmRender()">กำหนดชำระ น้อย→มาก</button>';
@@ -1171,6 +1195,24 @@ function dmRender(){
           var sub='<tr style="background:rgba(255,255,255,0.015)"><td></td>'+docCell+'<td class="right" style="font-size:12px;color:var(--text2)">'+fmtFull(r.amount)+'</td><td></td><td></td><td style="font-size:12px;color:var(--muted)">'+(r.dateDisplay||'—')+'</td><td>'+subLastCell+'</td></tr>';
           if(itemsExp)sub+=dmItemsRowHtml(items,7);
           return sub;
+        }).join('');
+      }
+      return row;
+    }).join('');
+  } else if(cfg.groupable&&s.view==='month'){
+    html+='<th style="width:26px"></th><th>เดือน</th><th style="text-align:right">ยอดรวม</th><th style="text-align:right">จำนวนรายการ</th><th>ลูกค้า/เจ้าหนี้หลักของเดือน</th></tr></thead><tbody>';
+    var monthGroups=dmGroupByMonth(filtered);
+    monthGroups.sort(function(a,b){return a.monthKey.localeCompare(b.monthKey);});
+    s.expandedMonths=s.expandedMonths||{};
+    DM.state.lastMonthGroups=monthGroups;
+    html+=monthGroups.map(function(g,i){
+      var exp=!!s.expandedMonths[g.monthKey];
+      var topLabel=g.topName?(g.topName[0]+' ('+(g.total>0?(g.topName[1]/g.total*100).toFixed(0):0)+'%)'):'—';
+      var row='<tr style="background:'+(i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)')+';cursor:pointer" onclick="dmToggleMonthIdx('+i+')"><td class="right" style="color:var(--gold2);font-weight:700">'+(exp?'−':'+')+'</td><td style="font-weight:700">'+dmMonthLabel(g.monthKey)+'</td><td class="right gold">'+fmtFull(g.total)+'</td><td class="right">'+g.count+'</td><td style="font-size:12px;color:var(--text2)">'+topLabel+'</td></tr>';
+      if(exp){
+        row+=g.names.map(function(nm){
+          var pct=g.total>0?(nm[1]/g.total*100).toFixed(1):'0.0';
+          return '<tr style="background:rgba(255,255,255,0.015)"><td></td><td style="padding-left:22px;font-size:12px;color:var(--text2)">↳ '+nm[0]+'</td><td class="right" style="font-size:12px;color:var(--text2)">'+fmtFull(nm[1])+'</td><td class="right" style="font-size:12px;color:var(--muted)">'+pct+'%</td><td></td></tr>';
         }).join('');
       }
       return row;
@@ -1217,6 +1259,13 @@ function dmToggleGroupIdx(i){
   var g=DM.state.lastGroups&&DM.state.lastGroups[i];
   if(!g)return;
   DM.state.expanded[g.name]=!DM.state.expanded[g.name];
+  dmRender();
+}
+function dmToggleMonthIdx(i){
+  var g=DM.state.lastMonthGroups&&DM.state.lastMonthGroups[i];
+  if(!g)return;
+  DM.state.expandedMonths=DM.state.expandedMonths||{};
+  DM.state.expandedMonths[g.monthKey]=!DM.state.expandedMonths[g.monthKey];
   dmRender();
 }
 function openDetailModal(cfg){
