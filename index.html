@@ -1558,17 +1558,23 @@ function renderNet(){
     return '<tr><td class="rank">'+(i+1)+'</td><td>'+r.label+'</td><td class="right gold">'+fmtFull(r.arTotal)+'</td><td class="right red">'+fmtFull(r.apTotal)+'</td><td class="right '+cls+'" style="font-weight:700">'+fmtFull(r.net)+'</td><td><button class="kpi-btn" style="position:static" onclick="showNetDetail(\''+r.key.replace(/'/g,"\\'")+'\')">📋 ดูรายละเอียด</button></td></tr>';
   }).join('');
 }
+function docSortKey(d){return dateKey(toSlashDMY(d.dueDate))||'99999999';}
 function showNetDetail(key){
   var rows=arApNetRows();
   var r=rows.find(function(x){return x.key===key;});
   if(!r)return;
-  var arRows=r.arDocs.map(function(d){return '<tr><td>'+d.docNo+'</td><td>'+fmtD(d.dueDate)+'</td><td class="right gold">'+fmtFull(d.bal)+'</td></tr>';}).join('');
-  var apRows=r.apDocs.map(function(d){return '<tr><td>'+d.docNo+'</td><td>'+fmtD(d.dueDate)+'</td><td class="right red">'+fmtFull(d.bal)+'</td></tr>';}).join('');
+  var arSorted=r.arDocs.slice().sort(function(a,b){return docSortKey(a).localeCompare(docSortKey(b));});
+  var apSorted=r.apDocs.slice().sort(function(a,b){return docSortKey(a).localeCompare(docSortKey(b));});
+  var arRows=arSorted.map(function(d){return '<tr><td>'+d.docNo+'</td><td>'+fmtD(d.dueDate)+'</td><td class="right gold">'+fmtFull(d.bal)+'</td><td>'+agingBadge(d.days,'AR')+'</td></tr>';}).join('');
+  var apRows=apSorted.map(function(d){return '<tr><td>'+d.docNo+'</td><td>'+fmtD(d.dueDate)+'</td><td class="right red">'+fmtFull(d.bal)+'</td><td>'+agingBadge(d.days,'AP')+'</td></tr>';}).join('');
+  var docCols=[{label:'เลขที่',get:function(d){return d.docNo;}},{label:'ครบกำหนด',get:function(d){return fmtD(d.dueDate);}},{label:'จำนวนเงิน',right:true,get:function(d){return fmtFull(d.bal);}},{label:'อายุ (วัน)',get:function(d){return d.days!==null&&d.days!==undefined?Math.round(d.days):'';}}];
+  dmRegisterSimple('netAR','หักกลบ AR — '+r.label,docCols,arSorted);
+  dmRegisterSimple('netAP','หักกลบ AP — '+r.label,docCols,apSorted);
   openModal('⚖️ หักกลบ AR/AP — '+r.label,
     '<div class="modal-summary">'+mStat('ยอด AR',fmtKPI(r.arTotal),'var(--gold2)')+mStat('ยอด AP',fmtKPI(r.apTotal),'var(--red)')+mStat('ส่วนต่าง',fmtKPI(r.net),r.net>=0?'var(--green)':'var(--red)')+'</div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px">'+
-    '<div><div style="font-weight:700;color:var(--gold2);margin-bottom:8px">📋 เอกสาร AR ('+r.arDocs.length+' รายการ)</div><table><thead><tr><th>เลขที่</th><th>ครบกำหนด</th><th style="text-align:right">จำนวนเงิน</th></tr></thead><tbody>'+arRows+'</tbody></table></div>'+
-    '<div><div style="font-weight:700;color:var(--red);margin-bottom:8px">📝 เอกสาร AP ('+r.apDocs.length+' รายการ)</div><table><thead><tr><th>เลขที่</th><th>ครบกำหนด</th><th style="text-align:right">จำนวนเงิน</th></tr></thead><tbody>'+apRows+'</tbody></table></div>'+
+    '<div><div style="font-weight:700;color:var(--gold2);margin-bottom:8px">📋 เอกสาร AR ('+r.arDocs.length+' รายการ)</div>'+dmExportBtns('netAR')+'<table><thead><tr><th>เลขที่</th><th>ครบกำหนด</th><th style="text-align:right">จำนวนเงิน</th><th>สถานะ</th></tr></thead><tbody>'+arRows+'</tbody></table></div>'+
+    '<div><div style="font-weight:700;color:var(--red);margin-bottom:8px">📝 เอกสาร AP ('+r.apDocs.length+' รายการ)</div>'+dmExportBtns('netAP')+'<table><thead><tr><th>เลขที่</th><th>ครบกำหนด</th><th style="text-align:right">จำนวนเงิน</th><th>สถานะ</th></tr></thead><tbody>'+apRows+'</tbody></table></div>'+
     '</div>');
 }
 function renderDashboard(d){
