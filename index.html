@@ -265,7 +265,20 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <div class="chart-card"><div class="chart-title">AP Aging Breakdown</div><canvas id="apAgingBar" style="max-height:120px;margin-bottom:12px"></canvas><div id="apAgingRows"></div></div>
 <div class="chart-card"><div class="chart-title">Top 10 เจ้าหนี้ค้างสูงสุด</div>
 <table><thead><tr><th>#</th><th>เจ้าหนี้</th><th style="text-align:right">ยอดค้าง (บาท)</th></tr></thead><tbody id="apTbody"></tbody></table>
-</div></div></div>
+</div></div>
+
+<div class="section-sep" style="margin-top:20px">&#128202; เจ้าหนี้ค้างจ่ายตามหมวดหมู่</div>
+<div id="apCatNoDataNote" class="info-box gold" style="display:none;margin-bottom:12px"><div class="info-box-title">&#9888; ยังไม่มีข้อมูล</div>ต้องสร้างชีต Q13_AP_OUTSTANDING_BY_CATEGORY ก่อน (ดูวิธีทำใน Q13_AP_OUTSTANDING_BY_CATEGORY.sql) ส่วนนี้จะแสดงข้อมูลอัตโนมัติเมื่อมีชีตแล้ว</div>
+<div id="apCatContent" style="display:none">
+<div class="kpi-row" id="kpiApCat"></div>
+<div class="chart-card" style="margin-bottom:16px"><div class="chart-title">สัดส่วนยอดค้างจ่ายตามหมวดหมู่</div><canvas id="apCatBar" style="max-height:260px"></canvas></div>
+<input class="modal-search" style="margin-bottom:12px" placeholder="&#128269; ค้นหาหมวดหมู่…" oninput="filterTbl(this,'apCatTbl')">
+<div style="overflow-x:auto"><table id="apCatTbl">
+<thead><tr><th>#</th><th>หมวดหมู่</th><th style="text-align:right">ยอดค้างจ่าย</th><th style="text-align:right">% รวม</th><th style="text-align:right">จำนวนเจ้าหนี้</th><th style="text-align:right">จำนวนเอกสาร</th></tr></thead>
+<tbody id="apCatTbody"></tbody>
+</table></div>
+</div>
+</div>
 
 <div class="page" id="page3">
 <div class="kpi-row" id="kpi3"></div>
@@ -674,16 +687,31 @@ async function loadAllData(){
       });
     }catch(e){}
 
+    // Q13: เจ้าหนี้ค้างจ่ายตามหมวดหมู่ (ออปชันเสริม — ถ้ายังไม่มีชีตนี้ dashboard ยังทำงานได้ตามปกติ)
+    // คอลัมภ์คาดหวัง: [#, CardCode, CardName, DocNum, DocDate, DocDueDate, AllocatedBalance, ExpenseAcctCode, Category]
+    var apCatRows=[];
+    try{
+      var q13=await fetchSheet('Q13_AP_OUTSTANDING_BY_CATEGORY');
+      q13.rows.forEach(function(r){
+        var name=String(r[2]||''),cat=String(r[8]||'').trim();
+        if(!name||!cat)return;
+        var amt=parseFloat(r[6])||0;
+        if(amt<=0)return;
+        apCatRows.push({code:String(r[1]||''),name:name,docNum:String(r[3]||''),dueDate:r[5],amount:amt,acctCode:repairAcctCode(r[7]),category:cat});
+      });
+    }catch(e){}
+
     var allMonths=Object.keys(Object.assign({},recByM,payByM)).sort();
     G={recByM:recByM,payByM:payByM,bankNet:bankNet,bankRows:bankRows,recRows:recRows,payRows:payRows,
        at:at,a30:a30,a60:a60,a90:a90,a90p:a90p,topAR:topAR,arAgeMap:arAgeMap,arRows2:arRows2,arCusts:Object.keys(arByCust).length,
        pt:pt,p30:p30,p60:p60,p60p:p60p,topAP:topAP,apRows2:apRows2,arItemsByDoc:arItemsByDoc,apItemsByDoc:apItemsByDoc,sapMonthlyByAcct:sapMonthlyByAcct,
-       et:et,topExp:exps.slice(0,10),expAll:expAll,arRowCount:q04.rows.length,apRowCount:q05.rows.length,allMonths:allMonths,plRows:plRows};
+       et:et,topExp:exps.slice(0,10),expAll:expAll,arRowCount:q04.rows.length,apRowCount:q05.rows.length,allMonths:allMonths,plRows:plRows,apCatRows:apCatRows};
     ACTIVE_MONTHS=[...allMonths];
     buildFilters(allMonths);
     st.textContent='\u0e2a\u0e23\u0e49\u0e32\u0e07\u0e01\u0e23\u0e32\u0e1f\u2026';st.className='loading-status ok';
     renderDashboard(G);
     try{plBuildFilters();renderPL();}catch(e){}
+    try{renderApCat();}catch(e){}
     document.getElementById('liveText').textContent='\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e08\u0e32\u0e01 Google Sheets (Live)';
     loadBankFromSheets();
     document.getElementById('dateBadge').textContent='\ud83d\udcc5 '+today();
@@ -1625,6 +1653,70 @@ function showNetDetail(key){
     '<div><div style="font-weight:700;color:var(--gold2);margin-bottom:8px">📋 เอกสาร AR ('+r.arDocs.length+' รายการ)</div>'+dmExportBtns('netAR')+'<table><thead><tr><th>เลขที่</th><th>ครบกำหนด</th><th style="text-align:right">จำนวนเงิน</th><th>สถานะ</th></tr></thead><tbody>'+arRows+'</tbody></table></div>'+
     '<div><div style="font-weight:700;color:var(--red);margin-bottom:8px">📝 เอกสาร AP ('+r.apDocs.length+' รายการ)</div>'+dmExportBtns('netAP')+'<table><thead><tr><th>เลขที่</th><th>ครบกำหนด</th><th style="text-align:right">จำนวนเงิน</th><th>สถานะ</th></tr></thead><tbody>'+apRows+'</tbody></table></div>'+
     '</div>');
+}
+function apCatIsUnspec(cat){
+  return String(cat||'').indexOf('ไม่ระบุหมวดหมู่')===0;
+}
+function apCatAggregate(){
+  var rows=G.apCatRows||[];
+  var map={};
+  rows.forEach(function(r){
+    if(!map[r.category])map[r.category]={category:r.category,total:0,docCount:0,vendors:{},rows:[]};
+    var g=map[r.category];
+    g.total+=r.amount; g.docCount++; g.rows.push(r);
+    g.vendors[r.name]=(g.vendors[r.name]||0)+r.amount;
+  });
+  var cats=Object.values(map).map(function(g){
+    g.vendorCount=Object.keys(g.vendors).length;
+    return g;
+  });
+  cats.sort(function(a,b){
+    var au=apCatIsUnspec(a.category),bu=apCatIsUnspec(b.category);
+    if(au!==bu)return au?1:-1;
+    return b.total-a.total;
+  });
+  return cats;
+}
+function renderApCat(){
+  var hasData=(G.apCatRows||[]).length>0;
+  var note=document.getElementById('apCatNoDataNote'),body=document.getElementById('apCatContent');
+  if(!note||!body)return;
+  if(!hasData){note.style.display='';body.style.display='none';return;}
+  note.style.display='none';body.style.display='';
+  var cats=apCatAggregate();
+  var grand=cats.reduce(function(s,c){return s+c.total;},0);
+  var unspec=cats.find(function(c){return apCatIsUnspec(c.category);});
+  var realCats=cats.filter(function(c){return !apCatIsUnspec(c.category);});
+  document.getElementById('kpiApCat').innerHTML=
+    kpi('red','📝','rgba(224,92,92,0.18)','ยอดค้างจ่ายรวม (ตามหมวด)',fmtKPI(grand),'red',cats.length+' หมวดหมู่','')+
+    kpi('blue','🗂️','rgba(91,143,249,0.18)','จำนวนหมวดหมู่ (ระบุได้จริง)',realCats.length+' หมวด','blue','','')+
+    (realCats[0]?kpi('gold','🔑','rgba(212,168,67,0.18)',realCats[0].category,fmtKPI(realCats[0].total),'gold',(grand>0?(realCats[0].total/grand*100).toFixed(1):0)+'% ของยอดรวม',''):'')+
+    (unspec?kpi('blue','❔','rgba(143,163,184,0.18)','ยอดไม่ระบุหมวดหมู่','<span style="color:var(--muted)">'+fmtKPI(unspec.total)+'</span>','','(ยอดยกมา/ไม่มีรายละเอียด) '+(grand>0?(unspec.total/grand*100).toFixed(1):0)+'%',''):'');
+  var top=cats.slice(0,10);
+  var sharedMax=Math.max.apply(null,top.map(function(c){return +fmtM(c.total);}).concat([1]))*1.15;
+  var barColors=top.map(function(c){return apCatIsUnspec(c.category)?'rgba(143,163,184,0.55)':'rgba(224,92,92,0.75)';});
+  makeChart('apCatBar',{type:'bar',data:{labels:top.map(function(c){return c.category;}),datasets:[{data:top.map(function(c){return +fmtM(c.total);}),backgroundColor:barColors,borderRadius:4}]},options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{max:sharedMax,grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}}},y:{grid:{display:false},ticks:{color:'#8FA3B8',font:{size:11}}}}},plugins:[barLblPlugin]});
+  document.getElementById('apCatTbody').innerHTML=cats.map(function(c,i){
+    var pct=grand>0?(c.total/grand*100).toFixed(1):'0.0';
+    var isU=apCatIsUnspec(c.category);
+    var rowStyle=isU?' style="cursor:pointer;opacity:0.75"':' style="cursor:pointer"';
+    var amtCls=isU?'right':'right red';
+    return '<tr'+rowStyle+' onclick="showApCatDetail(\''+c.category.replace(/'/g,"\\'")+'\')"><td class="rank">'+(i+1)+'</td><td>'+c.category+'</td><td class="'+amtCls+'">'+fmtFull(c.total)+'</td><td class="right" style="color:var(--muted)">'+pct+'%</td><td class="right">'+c.vendorCount+'</td><td class="right">'+c.docCount+'</td></tr>';
+  }).join('');
+}
+function showApCatDetail(category){
+  var cats=apCatAggregate();
+  var c=cats.find(function(x){return x.category===category;});
+  if(!c)return;
+  var rows=c.rows.slice().sort(function(a,b){return b.amount-a.amount;});
+  var cols=[{label:'เจ้าหนี้',get:function(r){return r.name;}},{label:'เลขที่เอกสาร',get:function(r){return r.docNum;}},{label:'ครบกำหนด',get:function(r){return fmtD(r.dueDate);}},{label:'ยอดค้างจ่าย',right:true,get:function(r){return fmtFull(r.amount);}}];
+  dmRegisterSimple('apCat',category,cols,rows);
+  openModal('📝 '+category,
+    dmExportBtns('apCat')+
+    '<div class="modal-summary">'+mStat('ยอดรวม',fmtKPI(c.total),'var(--red)')+mStat('จำนวนเจ้าหนี้',c.vendorCount+' ราย','var(--blue)')+mStat('จำนวนเอกสาร',c.docCount+' รายการ','var(--gold2)')+'</div>'+
+    '<table><thead><tr><th>เจ้าหนี้</th><th>เลขที่เอกสาร</th><th>ครบกำหนด</th><th style="text-align:right">ยอดค้างจ่าย</th></tr></thead><tbody>'+
+    rows.map(function(r){return '<tr><td>'+r.name+'</td><td style="color:var(--muted);font-size:12px">'+r.docNum+'</td><td style="font-size:12px;color:var(--text2)">'+fmtD(r.dueDate)+'</td><td class="right red">'+fmtFull(r.amount)+'</td></tr>';}).join('')+
+    '</tbody></table>');
 }
 function renderDashboard(d){
   var fm=ACTIVE_MONTHS.length?ACTIVE_MONTHS:d.allMonths;
@@ -2625,6 +2717,7 @@ function switchTab(i){
   if(i===5)renderRecon();
   if(i===3){try{renderPL();}catch(e){}}
   if(i===7){try{renderNet();}catch(e){}}
+  if(i===2){try{renderApCat();}catch(e){}}
 }
 
 Chart.defaults.color='#8FA3B8';Chart.defaults.font.family='Sarabun';Chart.defaults.font.size=12;
