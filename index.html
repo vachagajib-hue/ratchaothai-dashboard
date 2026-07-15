@@ -1491,6 +1491,24 @@ function showModalAPDue(){
   openDetailModal({title:'AP ใกล้ครบกำหนด (≤ 60 วัน)',icon:'📅',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AP',rows:norm,itemsByDoc:G.apItemsByDoc,
     statsHtml:'<div class="modal-summary">'+mStat('ยอดรวม ≤ 60 วัน',fmtKPI(all.reduce(function(s,r){return s+r.bal;},0)),'var(--gold2)')+mStat('จำนวนรายการ',all.length+' รายการ','var(--gold2)')+'</div>'});
 }
+function showModalAP030(){
+  var all=arApFiltered(G.apRows2||[],ACTIVE_MONTHS).filter(function(r){return r.days<=30;});
+  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),days:r.days};});
+  openDetailModal({title:'AP 0-30 วัน',icon:'✔',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AP',rows:norm,itemsByDoc:G.apItemsByDoc,
+    statsHtml:'<div class="modal-summary">'+mStat('ยอดรวม 0-30 วัน',fmtKPI(all.reduce(function(s,r){return s+r.bal;},0)),'var(--green)')+mStat('จำนวนรายการ',all.length+' รายการ','var(--green)')+'</div>'});
+}
+function showModalAP3160(){
+  var all=arApFiltered(G.apRows2||[],ACTIVE_MONTHS).filter(function(r){return r.days>30&&r.days<=60;});
+  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),days:r.days};});
+  openDetailModal({title:'AP 31-60 วัน',icon:'📅',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AP',rows:norm,itemsByDoc:G.apItemsByDoc,
+    statsHtml:'<div class="modal-summary">'+mStat('ยอดรวม 31-60 วัน',fmtKPI(all.reduce(function(s,r){return s+r.bal;},0)),'var(--gold2)')+mStat('จำนวนรายการ',all.length+' รายการ','var(--gold2)')+'</div>'});
+}
+function showModalAPOver60(){
+  var all=arApFiltered(G.apRows2||[],ACTIVE_MONTHS).filter(function(r){return r.days>60;});
+  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),days:r.days};});
+  openDetailModal({title:'AP เกินกำหนด > 60 วัน',icon:'⏰',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AP',rows:norm,itemsByDoc:G.apItemsByDoc,
+    statsHtml:'<div class="modal-summary">'+mStat('ยอดรวมเกิน 60 วัน',fmtKPI(all.reduce(function(s,r){return s+r.bal;},0)),'var(--red)')+mStat('จำนวนรายการ',all.length+' รายการ','var(--red)')+'</div>'});
+}
 function showModalExp(){
   var rows=(G.expAll||[]).filter(function(r){return r.amt>0;}).sort(function(a,b){return b.amt-a.amt;});
   dmRegisterSimple('exp','รายละเอียดค่าใช้จ่าย',[{label:'รหัส',get:function(r){return r.code;}},{label:'ชื่อบัญชี',get:function(r){return r.name;}},{label:'จำนวนเงิน',right:true,get:function(r){return fmtFull(r.amt);}},{label:'สัดส่วน',right:true,get:function(r){return (G.et>0?(r.amt/G.et*100).toFixed(1):0)+'%';}}],rows);
@@ -1777,9 +1795,9 @@ function renderDashboard(d){
   var apDueSoonSum=apDueSoon.reduce(function(s,r){return s+r.bal;},0);
   document.getElementById('kpi2').innerHTML=
     kpi('red','\ud83d\udcdd','rgba(224,92,92,0.18)','\u0e40\u0e08\u0e49\u0e32\u0e2b\u0e19\u0e35\u0e49\u0e04\u0e49\u0e32\u0e07\u0e08\u0e48\u0e32\u0e22\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14',fmtKPI(d.pt),'red',d.apRowCount.toLocaleString()+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','showModalAP()')+
-    kpi('red','\u23f0','rgba(224,92,92,0.18)','\u0e40\u0e08\u0e49\u0e32\u0e2b\u0e19\u0e35\u0e49\u0e40\u0e01\u0e34\u0e19 60 \u0e27\u0e31\u0e19',fmtKPI(d.p60p),'red','\u0e04\u0e27\u0e23\u0e40\u0e23\u0e48\u0e07\u0e27\u0e32\u0e07\u0e41\u0e1c\u0e19\u0e08\u0e48\u0e32\u0e22','showModalAP()')+
-    kpi('gold','\ud83d\udcc5','rgba(212,168,67,0.18)','\u0e40\u0e08\u0e49\u0e32\u0e2b\u0e19\u0e35\u0e49 31-60 \u0e27\u0e31\u0e19',fmtKPI(d.p60),'gold','\u0e43\u0e01\u0e25\u0e49\u0e16\u0e36\u0e07\u0e01\u0e33\u0e2b\u0e19\u0e14','showModalAPDue()')+
-    kpi('green','\u2714','rgba(76,175,125,0.18)','\u0e40\u0e08\u0e49\u0e32\u0e2b\u0e19\u0e35\u0e49 0-30 \u0e27\u0e31\u0e19',fmtKPI(d.p30),'green','\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e40\u0e23\u0e48\u0e07\u0e14\u0e48\u0e27\u0e19','showModalAPDue()')+
+    kpi('red','\u23f0','rgba(224,92,92,0.18)','\u0e40\u0e08\u0e49\u0e32\u0e2b\u0e19\u0e35\u0e49\u0e40\u0e01\u0e34\u0e19 60 \u0e27\u0e31\u0e19',fmtKPI(d.p60p),'red','\u0e04\u0e27\u0e23\u0e40\u0e23\u0e48\u0e07\u0e27\u0e32\u0e07\u0e41\u0e1c\u0e19\u0e08\u0e48\u0e32\u0e22','showModalAPOver60()')+
+    kpi('gold','\ud83d\udcc5','rgba(212,168,67,0.18)','\u0e40\u0e08\u0e49\u0e32\u0e2b\u0e19\u0e35\u0e49 31-60 \u0e27\u0e31\u0e19',fmtKPI(d.p60),'gold','\u0e43\u0e01\u0e25\u0e49\u0e16\u0e36\u0e07\u0e01\u0e33\u0e2b\u0e19\u0e14','showModalAP3160()')+
+    kpi('green','\u2714','rgba(76,175,125,0.18)','\u0e40\u0e08\u0e49\u0e32\u0e2b\u0e19\u0e35\u0e49 0-30 \u0e27\u0e31\u0e19',fmtKPI(d.p30),'green','\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e40\u0e23\u0e48\u0e07\u0e14\u0e48\u0e27\u0e19','showModalAP030()')+
     kpi('gold','\u23f3','rgba(212,168,67,0.18)','AP \u0e04\u0e23\u0e1a\u0e01\u0e33\u0e2b\u0e19\u0e14 7 \u0e27\u0e31\u0e19\u0e02\u0e49\u0e32\u0e07\u0e2b\u0e19\u0e49\u0e32',fmtKPI(apDueSoonSum),'gold',apDueSoon.length+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','showModalAPDueSoon()');
   makeChart('apAgingBar',{type:'bar',data:{labels:['0-30','31-60','>60'],datasets:[{data:[d.p30,d.p60,d.p60p].map(function(v){return +fmtM(v);}),backgroundColor:['#4CAF7D','#D4A843','#E05C5C'],borderRadius:4}]},options:{plugins:{legend:{display:false}},scales:{x:{grid:{color:gc},ticks:{color:'#8FA3B8'}},y:{grid:{color:gc},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}},afterDataLimits:function(a){a.max=a.max*1.18;}}}},plugins:[barLblPlugin]});
   var apTot=d.pt;
