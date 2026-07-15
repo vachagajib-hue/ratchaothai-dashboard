@@ -224,6 +224,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <div class="tab" onclick="switchTab(4)">&#127959; Cash Flow ตามโครงการ</div>
 <div class="tab" onclick="switchTab(5)">&#127982; กระทบยอดธนาคาร</div>
 <div class="tab" onclick="switchTab(6)">&#128196; อ่าน PDF Bank</div>
+<div class="tab" onclick="switchTab(7)">&#9878;&#65039; หักกลบ AR/AP</div>
 </div>
 <div class="filter-bar">
 <span class="filter-label">&#128197; กรองช่วงเวลา:</span>
@@ -409,6 +410,17 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
   </div>
 </div>
 </div>
+
+<div class="page" id="page7">
+<div class="info-box blue" style="margin-bottom:16px"><div class="info-box-title">&#9878;&#65039; หักกลบ AR/AP</div>รายชื่อที่มีทั้งยอดค้างรับ (AR) และค้างจ่าย (AP) พร้อมกัน — จับคู่ชื่อโดยตัดคำนำหน้า/ประเภทนิติบุคคลออกก่อนเทียบ</div>
+<div class="kpi-row" id="kpiNet"></div>
+<input class="modal-search" style="margin-bottom:12px" placeholder="&#128269; ค้นหาชื่อ…" oninput="filterTbl(this,'netTbl')">
+<div style="overflow-x:auto"><table id="netTbl">
+<thead><tr><th>#</th><th>ชื่อ</th><th style="text-align:right">ยอด AR ค้างรับ</th><th style="text-align:right">ยอด AP ค้างจ่าย</th><th style="text-align:right">ส่วนต่าง (AR-AP)</th><th></th></tr></thead>
+<tbody id="netTbody"></tbody>
+</table></div>
+</div>
+
 </div>
 <script>
 const APPS_URL='https://script.google.com/macros/s/AKfycbxZQG4tERyTX0xqj_xIOAn3fD4Jygk2Ajj2qaXpGOROaicxTJiEkI1xkTqkTRuCl-7Z-A/exec';
@@ -1500,6 +1512,65 @@ function arApAgg(rows){
   var top=Object.entries(byName).sort(function(a,b){return b[1]-a[1];}).slice(0,10);
   return {total:total,a30:b1,a60:b2,a90:b3,a90p:b4,top:top,byName:byName,daysMap:daysMap};
 }
+function normalizeCompanyName(name){
+  var s=String(name||'').trim();
+  s=s.replace(/^(บริษัท|บจก\.?|ห้างหุ้นส่วนจำกัด|หจก\.?|ห้างหุ้นส่วนสามัญ|ร้าน)\s*/,'');
+  s=s.replace(/\s*\(มหาชน\)\s*$/,'');
+  s=s.replace(/\s*จำกัด\s*$/,'');
+  s=s.replace(/\s+/g,' ').trim();
+  return s||String(name||'').trim();
+}
+function arApNetRows(){
+  var fm=ACTIVE_MONTHS.length?ACTIVE_MONTHS:(G.allMonths||[]);
+  var arF=arApFiltered(G.arRows2||[],fm);
+  var apF=arApFiltered(G.apRows2||[],fm);
+  var arMap={},apMap={};
+  arF.forEach(function(r){
+    var key=normalizeCompanyName(r.name);
+    if(!arMap[key])arMap[key]={label:r.name,total:0,docs:[]};
+    arMap[key].total+=r.bal;arMap[key].docs.push(r);
+  });
+  apF.forEach(function(r){
+    var key=normalizeCompanyName(r.name);
+    if(!apMap[key])apMap[key]={label:r.name,total:0,docs:[]};
+    apMap[key].total+=r.bal;apMap[key].docs.push(r);
+  });
+  var rows=[];
+  Object.keys(arMap).forEach(function(key){
+    if(!apMap[key])return; // ต้องมีทั้งสองฝั่งถึงจะนับเป็นรายการหักกลบ
+    rows.push({key:key,label:arMap[key].label,arTotal:arMap[key].total,apTotal:apMap[key].total,net:arMap[key].total-apMap[key].total,arDocs:arMap[key].docs,apDocs:apMap[key].docs});
+  });
+  rows.sort(function(a,b){return Math.abs(b.net)-Math.abs(a.net);});
+  return rows;
+}
+function renderNet(){
+  var rows=arApNetRows();
+  var totAR=rows.reduce(function(s,r){return s+r.arTotal;},0);
+  var totAP=rows.reduce(function(s,r){return s+r.apTotal;},0);
+  var totNet=rows.reduce(function(s,r){return s+r.net;},0);
+  document.getElementById('kpiNet').innerHTML=
+    kpi('blue','⚖️','rgba(91,143,249,0.18)','จำนวนรายที่จับคู่ได้',rows.length+' ราย','blue','มีทั้ง AR และ AP','')+
+    kpi('gold','📋','rgba(212,168,67,0.18)','ยอด AR รวม (ที่จับคู่)',fmtKPI(totAR),'gold','','')+
+    kpi('red','📝','rgba(224,92,92,0.18)','ยอด AP รวม (ที่จับคู่)',fmtKPI(totAP),'red','','')+
+    kpi(totNet>=0?'green':'red',totNet>=0?'✅':'⚠','rgba(76,175,125,0.18)','ส่วนต่างสุทธิ (AR-AP)',fmtKPI(totNet),totNet>=0?'green':'red',totNet>=0?'AR สูงกว่า':'AP สูงกว่า','');
+  document.getElementById('netTbody').innerHTML=rows.map(function(r,i){
+    var cls=r.net>0?'green':r.net<0?'red':'teal';
+    return '<tr><td class="rank">'+(i+1)+'</td><td>'+r.label+'</td><td class="right gold">'+fmtFull(r.arTotal)+'</td><td class="right red">'+fmtFull(r.apTotal)+'</td><td class="right '+cls+'" style="font-weight:700">'+fmtFull(r.net)+'</td><td><button class="kpi-btn" style="position:static" onclick="showNetDetail(\''+r.key.replace(/'/g,"\\'")+'\')">📋 ดูรายละเอียด</button></td></tr>';
+  }).join('');
+}
+function showNetDetail(key){
+  var rows=arApNetRows();
+  var r=rows.find(function(x){return x.key===key;});
+  if(!r)return;
+  var arRows=r.arDocs.map(function(d){return '<tr><td>'+d.docNo+'</td><td>'+fmtD(d.dueDate)+'</td><td class="right gold">'+fmtFull(d.bal)+'</td></tr>';}).join('');
+  var apRows=r.apDocs.map(function(d){return '<tr><td>'+d.docNo+'</td><td>'+fmtD(d.dueDate)+'</td><td class="right red">'+fmtFull(d.bal)+'</td></tr>';}).join('');
+  openModal('⚖️ หักกลบ AR/AP — '+r.label,
+    '<div class="modal-summary">'+mStat('ยอด AR',fmtKPI(r.arTotal),'var(--gold2)')+mStat('ยอด AP',fmtKPI(r.apTotal),'var(--red)')+mStat('ส่วนต่าง',fmtKPI(r.net),r.net>=0?'var(--green)':'var(--red)')+'</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px">'+
+    '<div><div style="font-weight:700;color:var(--gold2);margin-bottom:8px">📋 เอกสาร AR ('+r.arDocs.length+' รายการ)</div><table><thead><tr><th>เลขที่</th><th>ครบกำหนด</th><th style="text-align:right">จำนวนเงิน</th></tr></thead><tbody>'+arRows+'</tbody></table></div>'+
+    '<div><div style="font-weight:700;color:var(--red);margin-bottom:8px">📝 เอกสาร AP ('+r.apDocs.length+' รายการ)</div><table><thead><tr><th>เลขที่</th><th>ครบกำหนด</th><th style="text-align:right">จำนวนเงิน</th></tr></thead><tbody>'+apRows+'</tbody></table></div>'+
+    '</div>');
+}
 function renderDashboard(d){
   var fm=ACTIVE_MONTHS.length?ACTIVE_MONTHS:d.allMonths;
   var arF=arApFiltered(d.arRows2||[],fm);
@@ -2498,6 +2569,7 @@ function switchTab(i){
   document.querySelectorAll('.page').forEach(function(p,j){p.classList.toggle('active',i===j);});
   if(i===5)renderRecon();
   if(i===3){try{renderPL();}catch(e){}}
+  if(i===7){try{renderNet();}catch(e){}}
 }
 
 Chart.defaults.color='#8FA3B8';Chart.defaults.font.family='Sarabun';Chart.defaults.font.size=12;
