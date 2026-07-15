@@ -11,7 +11,7 @@
 :root{--navy:#0D1B2A;--navy2:#1B2E45;--navy3:#243B55;--gold:#D4A843;--gold2:#F0C96B;--teal:#2BBFB3;--red:#E05C5C;--green:#4CAF7D;--blue:#5B8FF9;--muted:#8FA3B8;--border:rgba(255,255,255,0.08);--card:rgba(255,255,255,0.05);--text:#E8EFF7;--text2:#B0C4D8;}
 *{margin:0;padding:0;box-sizing:border-box;}body{font-family:'Sarabun',sans-serif;background:var(--navy);color:var(--text);font-size:14px;min-height:100vh;}
 #loadingOverlay{position:fixed;inset:0;background:rgba(13,27,42,0.97);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity 0.4s;}
-.loading-logo{width:72px;height:72px;background:linear-gradient(135deg,var(--gold),var(--gold2));border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:800;color:var(--navy);margin-bottom:22px;animation:logoPulse 1.5s ease-in-out infinite;}
+.loading-logo{width:auto;min-width:76px;height:56px;padding:0 22px;background:linear-gradient(135deg,var(--gold),var(--gold2));border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;letter-spacing:0.3px;color:var(--navy);margin-bottom:22px;animation:logoPulse 1.5s ease-in-out infinite;}
 @keyframes logoPulse{0%,100%{transform:scale(1);}50%{transform:scale(1.07);}}
 .loading-title{font-size:18px;font-weight:700;margin-bottom:6px;}.loading-sub{font-size:12px;color:var(--muted);margin-bottom:28px;}
 .loading-bar-wrap{width:260px;height:4px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden;}
@@ -198,7 +198,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <div class="modal-body" id="modalBody"></div>
 </div></div>
 <div id="loadingOverlay">
-<div class="loading-logo">TD</div>
+<div class="loading-logo">Thaidrill</div>
 <div class="loading-title">Financial Executive Dashboard</div>
 <div class="loading-sub">บริษัท รถเจาะไทย จำกัด</div>
 <div class="loading-bar-wrap"><div class="loading-bar"></div></div>
@@ -618,6 +618,18 @@ async function loadAllData(){
       expMap[name].amt+=amt;
     });
     Object.keys(expMap).forEach(function(k){var e=expMap[k];expAll.push(e);if(e.amt>0)et+=e.amt;});
+    var expDetailByAcct={};
+    try{
+      var q14=await fetchSheet('Q14_EXPENSE_DETAIL_BY_ACCOUNT');
+      q14.rows.forEach(function(r){
+        var code=String(r[1]||'').trim();
+        if(!code)return;
+        var amt=parseFloat(r[7])||0;
+        if(amt<=0)return;
+        if(!expDetailByAcct[code])expDetailByAcct[code]=[];
+        expDetailByAcct[code].push({date:r[4],ref:String(r[3]||''),name:String(r[5]||'').trim(),refNo:String(r[6]||'').trim(),amt:amt});
+      });
+    }catch(e){}
     var exps=expAll.filter(function(e){return e.amt>0;}).slice().sort(function(a,b){return b.amt-a.amt;});
 
     // Q09/Q10: รายละเอียดรายการสินค้า/บริการต่อใบ (ออปชันเสริม — ถ้ายังไม่มีชีตนี้ dashboard ยังทำงานได้ตามปกติ)
@@ -705,7 +717,7 @@ async function loadAllData(){
     G={recByM:recByM,payByM:payByM,bankNet:bankNet,bankRows:bankRows,recRows:recRows,payRows:payRows,
        at:at,a30:a30,a60:a60,a90:a90,a90p:a90p,topAR:topAR,arAgeMap:arAgeMap,arRows2:arRows2,arCusts:Object.keys(arByCust).length,
        pt:pt,p30:p30,p60:p60,p60p:p60p,topAP:topAP,apRows2:apRows2,arItemsByDoc:arItemsByDoc,apItemsByDoc:apItemsByDoc,sapMonthlyByAcct:sapMonthlyByAcct,
-       et:et,topExp:exps.slice(0,10),expAll:expAll,arRowCount:q04.rows.length,apRowCount:q05.rows.length,allMonths:allMonths,plRows:plRows,apCatRows:apCatRows};
+       et:et,topExp:exps.slice(0,10),expAll:expAll,expDetailByAcct:expDetailByAcct,arRowCount:q04.rows.length,apRowCount:q05.rows.length,allMonths:allMonths,plRows:plRows,apCatRows:apCatRows};
     ACTIVE_MONTHS=[...allMonths];
     buildFilters(allMonths);
     st.textContent='\u0e2a\u0e23\u0e49\u0e32\u0e07\u0e01\u0e23\u0e32\u0e1f\u2026';st.className='loading-status ok';
@@ -1509,7 +1521,9 @@ function showModalAPOver60(){
   openDetailModal({title:'AP เกินกำหนด > 60 วัน',icon:'⏰',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AP',rows:norm,itemsByDoc:G.apItemsByDoc,
     statsHtml:'<div class="modal-summary">'+mStat('ยอดรวมเกิน 60 วัน',fmtKPI(all.reduce(function(s,r){return s+r.bal;},0)),'var(--red)')+mStat('จำนวนรายการ',all.length+' รายการ','var(--red)')+'</div>'});
 }
-function showModalExp(){
+function showModalExp(code,accName){
+  if(!code){
+
   var rows=(G.expAll||[]).filter(function(r){return r.amt>0;}).sort(function(a,b){return b.amt-a.amt;});
   dmRegisterSimple('exp','รายละเอียดค่าใช้จ่าย',[{label:'รหัส',get:function(r){return r.code;}},{label:'ชื่อบัญชี',get:function(r){return r.name;}},{label:'จำนวนเงิน',right:true,get:function(r){return fmtFull(r.amt);}},{label:'สัดส่วน',right:true,get:function(r){return (G.et>0?(r.amt/G.et*100).toFixed(1):0)+'%';}}],rows);
   openModal('\ud83d\udcb0 \u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14\u0e04\u0e48\u0e32\u0e43\u0e0a\u0e49\u0e08\u0e48\u0e32\u0e22',
@@ -1518,7 +1532,45 @@ function showModalExp(){
     '<input class="modal-search" placeholder="\ud83d\udd0d \u0e04\u0e49\u0e19\u0e2b\u0e32\u0e0a\u0e37\u0e48\u0e2d\u0e1a\u0e31\u0e0d\u0e0a\u0e35\u2026" oninput="filterTbl(this,\'expT\')">'+
     '<table id="expT"><thead><tr><th>\u0e23\u0e2b\u0e31\u0e2a</th><th>\u0e0a\u0e37\u0e48\u0e2d\u0e1a\u0e31\u0e0d\u0e0a\u0e35</th><th style="text-align:right">\u0e08\u0e33\u0e19\u0e27\u0e19\u0e40\u0e07\u0e34\u0e19</th><th style="text-align:right">\u0e2a\u0e31\u0e14\u0e2a\u0e48\u0e27\u0e19</th></tr></thead><tbody>'+
     rows.map(function(r){var pct=G.et>0?(r.amt/G.et*100).toFixed(1):0,cls=r.amt>50e6?'red':r.amt>20e6?'gold':'teal';return'<tr><td style="color:var(--muted);font-size:12px">'+r.code+'</td><td>'+r.name+'</td><td class="right '+cls+'">'+fmtFull(r.amt)+'</td><td class="right" style="color:var(--muted)">'+pct+'%</td></tr>';}).join('')+'</tbody></table>');
+    return;
+  }
+  EXP_DETAIL_STATE.expanded={};
+  renderExpDetailModal(code,accName);
 }
+var EXP_DETAIL_STATE={expanded:{}};
+function renderExpDetailModal(code,accName){
+  var acctRows=(G.plRows||[]).filter(function(r){return r.code===code;});
+  var monthMap={};
+  acctRows.forEach(function(r){monthMap[r.ym]=(monthMap[r.ym]||0)+r.amount;});
+  var months=Object.keys(monthMap).sort();
+  var total=months.reduce(function(s,m){return s+monthMap[m];},0);
+  var detailRows=(G.expDetailByAcct&&G.expDetailByAcct[code])||[];
+  var pct=G.et>0?(total/G.et*100).toFixed(1):0;
+  var codeEsc=code.replace(/'/g,"\\'"),nameEsc=(accName||'').replace(/'/g,"\\'");
+  var bodyRows=months.map(function(m){
+    var isOpen=!!EXP_DETAIL_STATE.expanded[m];
+    var head='<tr style="cursor:pointer" onclick="toggleExpDetailMonth(\''+codeEsc+'\',\''+nameEsc+'\',\''+m+'\')"><td style="font-weight:700;color:var(--gold2)">'+(isOpen?'▾':'▸')+' '+mlbl(m)+'</td><td class="right red" style="font-weight:700">'+fmtFull(monthMap[m])+'</td></tr>';
+    var sub='';
+    if(isOpen){
+      var lines=detailRows.filter(function(d){return getYM(d.date)===m;}).sort(function(a,b){return toSlashDMY(a.date).split('/').reverse().join('')>toSlashDMY(b.date).split('/').reverse().join('')?1:-1;});
+      if(lines.length){
+        sub=lines.map(function(d){var who=d.name||d.refNo||'ไม่ระบุคู่ค้า/เอกสารอ้างอิง';return '<tr style="background:rgba(255,255,255,0.03)"><td style="padding-left:24px;color:var(--text2);font-size:12px">'+fmtD(d.date)+' &nbsp;'+who+((d.name&&d.refNo)?' ('+d.refNo+')':'')+'</td><td class="right" style="font-size:12px;color:var(--text2)">'+fmtFull(d.amt)+'</td></tr>';}).join('');
+      }else{
+        sub='<tr><td colspan="2" style="padding-left:24px;color:var(--muted);font-size:12px">ยังไม่มีข้อมูลระดับเอกสาร (ยังไม่ได้เชื่อม Q14)</td></tr>';
+      }
+    }
+    return head+sub;
+  }).join('');
+  openModal('🔑 '+accName,
+    '<div class="modal-summary">'+mStat('ยอดรวม (YTD)',fmtKPI(total),'var(--red)')+mStat('สัดส่วนของค่าใช้จ่ายรวม',pct+'%','var(--gold2)')+'</div>'+
+    '<div style="font-size:11px;color:var(--blue);background:rgba(91,143,249,0.12);border-radius:6px;padding:6px 10px;margin-bottom:10px">แสดงเฉพาะรายการของบัญชีนี้เท่านั้น กดที่แต่ละเดือนเพื่อดูรายละเอียดเอกสาร/คู่ค้า</div>'+
+    '<table><thead><tr><th>เดือน</th><th style="text-align:right">จำนวนเงิน</th></tr></thead><tbody>'+bodyRows+'</tbody></table>');
+}
+function toggleExpDetailMonth(code,accName,m){
+  EXP_DETAIL_STATE.expanded[m]=!EXP_DETAIL_STATE.expanded[m];
+  renderExpDetailModal(code,accName);
+}
+
 
 function normDate(d){
   if(!d)return d;
@@ -1807,7 +1859,7 @@ function renderDashboard(d){
   var topE=d.topExp.slice(0,10);
   document.getElementById('kpi3').innerHTML=
     kpi('red','\ud83d\udcb0','rgba(224,92,92,0.18)','\u0e04\u0e48\u0e32\u0e43\u0e0a\u0e49\u0e08\u0e48\u0e32\u0e22\u0e23\u0e27\u0e21 (YTD)',fmtKPI(d.et),'red','\u0e08\u0e32\u0e01 Q08 Expense','showModalExp()')+
-    (topE[0]?kpi('red','\ud83d\udd11','rgba(224,92,92,0.18)',topE[0].name,fmtKPI(topE[0].amt),'red',(topE[0].amt/d.et*100).toFixed(1)+'%','showModalExp()'):'')+(topE[1]?kpi('gold','\u2699','rgba(212,168,67,0.18)',topE[1].name,fmtKPI(topE[1].amt),'gold',(topE[1].amt/d.et*100).toFixed(1)+'%','showModalExp()'):'')+(topE[2]?kpi('teal','\ud83d\udce6','rgba(43,191,179,0.18)',topE[2].name,fmtKPI(topE[2].amt),'teal',(topE[2].amt/d.et*100).toFixed(1)+'%','showModalExp()'):'');
+    (topE[0]?kpi('red','\ud83d\udd11','rgba(224,92,92,0.18)',topE[0].name,fmtKPI(topE[0].amt),'red',(topE[0].amt/d.et*100).toFixed(1)+'%','showModalExp(\''+topE[0].code.replace(/'/g,"\\'")+'\',\''+topE[0].name.replace(/'/g,"\\'")+'\')'):'')+(topE[1]?kpi('gold','\u2699','rgba(212,168,67,0.18)',topE[1].name,fmtKPI(topE[1].amt),'gold',(topE[1].amt/d.et*100).toFixed(1)+'%','showModalExp(\''+topE[1].code.replace(/'/g,"\\'")+'\',\''+topE[1].name.replace(/'/g,"\\'")+'\')'):'')+(topE[2]?kpi('teal','\ud83d\udce6','rgba(43,191,179,0.18)',topE[2].name,fmtKPI(topE[2].amt),'teal',(topE[2].amt/d.et*100).toFixed(1)+'%','showModalExp(\''+topE[2].code.replace(/'/g,"\\'")+'\',\''+topE[2].name.replace(/'/g,"\\'")+'\')'):'');
   makeChart('expenseBar',{type:'bar',data:{labels:topE.map(function(e){return e.name;}),datasets:[{data:topE.map(function(e){return +fmtM(e.amt);}),backgroundColor:'rgba(212,168,67,0.75)',borderRadius:4}]},options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:gc},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}},afterDataLimits:function(a){a.max=a.max*1.25;}},y:{grid:{display:false},ticks:{color:'#8FA3B8',font:{size:11}}}}},plugins:[barLblPlugin]});
 
   document.getElementById('kpi4').innerHTML=
