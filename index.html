@@ -2174,6 +2174,14 @@ async function loadBankFromSheets() {
     // Show notification
     showBankLoadNotice(total, txnTotal);
 
+    // Auto-select a bank tab that actually has data — otherwise the recon
+    // page silently shows nothing whenever the default tab (BBL) happens to
+    // have no statement rows this period, even though other banks do.
+    if (!RBANK_DATA[RACTIVE] || !RBANK_DATA[RACTIVE].accounts || !RBANK_DATA[RACTIVE].accounts.length) {
+      var bankWithData = Object.keys(RBANK_DATA).find(function(k){ return RBANK_DATA[k].accounts && RBANK_DATA[k].accounts.length; });
+      if (bankWithData) selBank(bankWithData);
+    }
+
     // Re-render recon if on tab 5
     if (document.getElementById('page5').classList.contains('active')) {
       renderRecon();
