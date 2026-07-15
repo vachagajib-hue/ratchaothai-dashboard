@@ -1543,9 +1543,17 @@ function renderExpDetailModal(code,accName){
   var monthMap={};
   acctRows.forEach(function(r){monthMap[r.ym]=(monthMap[r.ym]||0)+r.amount;});
   var months=Object.keys(monthMap).sort();
-  var total=months.reduce(function(s,m){return s+monthMap[m];},0);
+  var monthSum=months.reduce(function(s,m){return s+monthMap[m];},0);
+  // ยอดรวมหลักต้องตรงกับตัวเลขบนการ์ด KPI เสมอ (มาจาก G.expAll/Q08 ซึ่งเป็นแหล่งเดียวกับที่การ์ดใช้)
+  // ไม่ใช่ยอดรวมจาก G.plRows (คิวรี P&L รายเดือนคนละตัว) เพื่อไม่ให้ตัวเลขหน้าหลักกับในโมดัลไม่ตรงกัน
+  var acctEntry=(G.expAll||[]).find(function(e){return e.code===code;});
+  var total=acctEntry?acctEntry.amt:monthSum;
   var detailRows=(G.expDetailByAcct&&G.expDetailByAcct[code])||[];
   var pct=G.et>0?(total/G.et*100).toFixed(1):0;
+  var reconcileNote='';
+  if(total>0&&Math.abs(monthSum-total)/total>0.01){
+    reconcileNote='<div style="font-size:11px;color:var(--gold2);background:rgba(212,168,67,0.12);border-radius:6px;padding:6px 10px;margin-bottom:10px">หมายเหตุ: ยอดรวมรายเดือนด้านล่าง ('+fmtKPI(monthSum)+') ต่างจากยอด YTD บนการ์ดเล็กน้อย เนื่องจากข้อมูลรายเดือน (P&L) กับยอดสรุป (Q08) มาจากคนละคิวรี</div>';
+  }
   var codeEsc=code.replace(/'/g,"\\'"),nameEsc=(accName||'').replace(/'/g,"\\'");
   var bodyRows=months.map(function(m){
     var isOpen=!!EXP_DETAIL_STATE.expanded[m];
@@ -1564,6 +1572,7 @@ function renderExpDetailModal(code,accName){
   openModal('🔑 '+accName,
     '<div class="modal-summary">'+mStat('ยอดรวม (YTD)',fmtKPI(total),'var(--red)')+mStat('สัดส่วนของค่าใช้จ่ายรวม',pct+'%','var(--gold2)')+'</div>'+
     '<div style="font-size:11px;color:var(--blue);background:rgba(91,143,249,0.12);border-radius:6px;padding:6px 10px;margin-bottom:10px">แสดงเฉพาะรายการของบัญชีนี้เท่านั้น กดที่แต่ละเดือนเพื่อดูรายละเอียดเอกสาร/คู่ค้า</div>'+
+    reconcileNote+
     '<table><thead><tr><th>เดือน</th><th style="text-align:right">จำนวนเงิน</th></tr></thead><tbody>'+bodyRows+'</tbody></table>');
 }
 function toggleExpDetailMonth(code,accName,m){
@@ -1596,6 +1605,12 @@ function normDate(d){
   if(dmy2){
     var yr4=parseInt(dmy2[3]);if(yr4>2400)yr4=yr4-543;
     return String(dmy2[1]).padStart(2,'0')+'/'+String(dmy2[2]).padStart(2,'0')+'/'+yr4;
+  }
+  // DD.MM.YYYY (SAP Business One posting-date format, e.g. "01.10.2025")
+  var dmyDot=s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if(dmyDot){
+    var yr5=parseInt(dmyDot[3]);if(yr5>2400)yr5=yr5-543;
+    return String(dmyDot[1]).padStart(2,'0')+'/'+String(dmyDot[2]).padStart(2,'0')+'/'+yr5;
   }
   // Bare Excel/Google-Sheets date serial (e.g. "46269") that leaked through
   // un-formatted because the cell wasn't recognized as a Date type. Plausible
