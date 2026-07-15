@@ -249,6 +249,19 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <div class="chart-card"><div class="chart-title">AR vs AP เปรียบเทียบ</div><canvas id="arApBar"></canvas></div>
 <div class="chart-card"><div class="chart-title">สัดส่วน AR Aging</div><canvas id="arAgingDonut"></canvas></div>
 </div>
+<div class="chart-card" style="margin-bottom:16px">
+<div class="chart-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+<span>AR vs AP รายเดือน <span class="chart-sub">(ตามวันที่เอกสาร, กรองตามอายุหนี้)</span></span>
+<select id="arApAgeBucket" onchange="renderArApMonthlyBar()" style="background:var(--card2,#0D1B2A);color:#E8EEF5;border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:5px 10px;font-size:12px">
+<option value="notyet">ยังไม่ครบกำหนด</option>
+<option value="b030">เกิน 0-30 วัน</option>
+<option value="b3160">เกิน 31-60 วัน</option>
+<option value="b6190">เกิน 61-90 วัน</option>
+<option value="b91p">เกิน 91 วัน</option>
+</select>
+</div>
+<canvas id="arApMonthlyBar"></canvas>
+</div>
 </div>
 
 <div class="page" id="page1">
@@ -1579,6 +1592,48 @@ function toggleExpDetailMonth(code,accName,m){
   EXP_DETAIL_STATE.expanded[m]=!EXP_DETAIL_STATE.expanded[m];
   renderExpDetailModal(code,accName);
 }
+function agingBucketOf(days){
+  if(days===null||days===undefined)return null;
+  if(days<0)return 'notyet';
+  if(days<=30)return 'b030';
+  if(days<=60)return 'b3160';
+  if(days<=90)return 'b6190';
+  return 'b91p';
+}
+function arApMonthlyByBucket(bucket){
+  var arMap={},apMap={};
+  (G.arRows2||[]).forEach(function(r){
+    if(agingBucketOf(r.days)!==bucket)return;
+    var ym=getYM(r.docDate);
+    if(!ym)return;
+    arMap[ym]=(arMap[ym]||0)+r.bal;
+  });
+  (G.apRows2||[]).forEach(function(r){
+    if(agingBucketOf(r.days)!==bucket)return;
+    var ym=getYM(r.docDate);
+    if(!ym)return;
+    apMap[ym]=(apMap[ym]||0)+r.bal;
+  });
+  var months=Array.from(new Set(Object.keys(arMap).concat(Object.keys(apMap)))).sort();
+  return {
+    months:months,
+    labels:months.map(function(m){return mlbl(m);}),
+    ar:months.map(function(m){return arMap[m]||0;}),
+    ap:months.map(function(m){return apMap[m]||0;})
+  };
+}
+function renderArApMonthlyBar(){
+  var sel=document.getElementById('arApAgeBucket');
+  var canvas=document.getElementById('arApMonthlyBar');
+  if(!sel||!canvas)return;
+  var bucket=sel.value||'notyet';
+  var d=arApMonthlyByBucket(bucket);
+  var gc='rgba(255,255,255,0.05)';
+  makeChart('arApMonthlyBar',{type:'bar',data:{labels:d.labels,datasets:[
+    {label:'AR',data:d.ar.map(function(v){return +fmtM(v);}),backgroundColor:'rgba(212,168,67,0.8)',borderRadius:4},
+    {label:'AP',data:d.ap.map(function(v){return +fmtM(v);}),backgroundColor:'rgba(224,92,92,0.8)',borderRadius:4}
+  ]},options:{plugins:{legend:{labels:{color:'#8FA3B8',boxWidth:12}}},scales:{x:{grid:{color:gc},ticks:{color:'#8FA3B8'}},y:{grid:{color:gc},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}},afterDataLimits:function(a){a.max=a.max*1.18;}}}},plugins:[barLblPlugin]});
+}
 
 
 function normDate(d){
@@ -1839,6 +1894,7 @@ function renderDashboard(d){
   makeChart('cashBarChart',{type:'bar',data:{labels:lbl,datasets:[{label:'\u0e40\u0e07\u0e34\u0e19\u0e23\u0e31\u0e1a',data:rD,backgroundColor:'rgba(76,175,125,0.8)',borderRadius:5},{label:'\u0e40\u0e07\u0e34\u0e19\u0e08\u0e48\u0e32\u0e22',data:pD,backgroundColor:'rgba(224,92,92,0.8)',borderRadius:5}]},options:{plugins:{legend:{labels:{color:'#8FA3B8',boxWidth:12}}},scales:{x:{grid:{color:gc},ticks:{color:'#8FA3B8'}},y:{grid:{color:gc},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}},afterDataLimits:function(a){a.max=a.max*1.18;}}}},plugins:[barLblPlugin]});
   makeChart('cfLineChart',{type:'line',data:{labels:lbl,datasets:[{data:cfD,borderColor:'#D4A843',backgroundColor:'rgba(212,168,67,0.08)',pointBackgroundColor:cfD.map(function(v){return v>=0?'#4CAF7D':'#E05C5C';}),pointRadius:6,tension:0.4,fill:true,borderWidth:2.5}]},options:{plugins:{legend:{display:false}},scales:{x:{grid:{color:gc},ticks:{color:'#8FA3B8'}},y:{grid:{color:gc},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}},afterDataLimits:function(a){a.max=a.max*1.22;if(a.min<0)a.min=a.min*1.22;}}}},plugins:[lineLblPlugin]});
   makeChart('arApBar',{type:'bar',data:{labels:['\u0e25\u0e39\u0e01\u0e2b\u0e19\u0e35\u0e49 AR','\u0e40\u0e08\u0e49\u0e32\u0e2b\u0e19\u0e35\u0e49 AP'],datasets:[{data:[+fmtM(d.at),+fmtM(d.pt)],backgroundColor:['rgba(43,191,179,0.75)','rgba(224,92,92,0.75)'],borderRadius:6}]},options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:gc},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}},afterDataLimits:function(a){a.max=a.max*1.2;}},y:{grid:{display:false},ticks:{color:'#8FA3B8'}}}},plugins:[barLblPlugin]});
+  try{renderArApMonthlyBar();}catch(e){}
   makeChart('arAgingDonut',{type:'doughnut',data:{labels:['0-30 \u0e27\u0e31\u0e19','31-60 \u0e27\u0e31\u0e19','61-90 \u0e27\u0e31\u0e19','>90 \u0e27\u0e31\u0e19'],datasets:[{data:[d.a30,d.a60,d.a90,d.a90p].map(function(v){return +fmtM(v);}),backgroundColor:['#4CAF7D','#2BBFB3','#D4A843','#E05C5C'],borderWidth:2,borderColor:'#0D1B2A'}]},options:{plugins:{legend:{position:'bottom',labels:{color:'#8FA3B8',boxWidth:12,padding:12}}},cutout:'62%'}});
 
   var ar90pct2=d.at>0?(d.a90p/d.at*100).toFixed(1):0;
