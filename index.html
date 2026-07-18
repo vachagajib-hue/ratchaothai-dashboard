@@ -2781,6 +2781,51 @@ function plTrendHtml(pct){
   return '<span style="color:'+(up?'var(--green)':'var(--red)')+'">'+(up?'▲':'▼')+' '+Math.abs(pct).toFixed(1)+'%</span>';
 }
 function plMoLbl(ym){var mo=+ym.split('-')[1];return MTHAI[mo]+' '+String(+ym.split('-')[0]+543).slice(-2);}
+function plAccountBreakdown(rows,category){
+  var map={};
+  rows.filter(function(r){return r.category===category;}).forEach(function(r){
+    var key=r.code+'|'+r.name;
+    if(!map[key])map[key]={code:r.code,name:r.name,amt:0};
+    map[key].amt+=r.amount;
+  });
+  return Object.values(map).sort(function(a,b){return b.amt-a.amt;});
+}
+function showPLBreakdown(category){
+  var rows=plFilteredRows();
+  var list=plAccountBreakdown(rows,category);
+  var total=list.reduce(function(s,r){return s+r.amt;},0);
+  var title=category==='REVENUE'?'💵 รายละเอียดรายได้':'💸 รายละเอียดค่าใช้จ่าย';
+  var color=category==='REVENUE'?'var(--green)':'var(--red)';
+  var cols=[{label:'รหัส',get:function(r){return r.code;}},{label:'ชื่อบัญชี',get:function(r){return r.name;}},{label:'จำนวนเงิน',right:true,get:function(r){return fmtFull(r.amt);}},{label:'สัดส่วน',right:true,get:function(r){return (total>0?(r.amt/total*100).toFixed(1):0)+'%';}}];
+  dmRegisterSimple('plBreak',title,cols,list);
+  openModal(title,
+    dmExportBtns('plBreak')+
+    '<div class="modal-summary">'+mStat('ยอดรวม (ตามช่วงที่เลือก)',fmtKPI(total),color)+mStat('จำนวนบัญชี',list.length+' บัญชี','var(--blue)')+'</div>'+
+    '<input class="modal-search" placeholder="🔍 ค้นหาชื่อบัญชี…" oninput="filterTbl(this,\'plBreakT\')">'+
+    '<table id="plBreakT"><thead><tr><th>รหัส</th><th>ชื่อบัญชี</th><th style="text-align:right">จำนวนเงิน</th><th style="text-align:right">สัดส่วน</th></tr></thead><tbody>'+
+    list.map(function(r){var pct=total>0?(r.amt/total*100).toFixed(1):0;return '<tr><td style="color:var(--muted);font-size:12px">'+r.code+'</td><td>'+r.name+'</td><td class="right" style="color:'+color+'">'+fmtFull(r.amt)+'</td><td class="right" style="color:var(--muted)">'+pct+'%</td></tr>';}).join('')+
+    '</tbody></table>');
+}
+function showPLNetDetail(){
+  var rows=plFilteredRows();
+  var months=plMonthsInRows(rows);
+  var revByMonth={},expByMonth={};
+  rows.forEach(function(r){
+    if(r.category==='REVENUE')revByMonth[r.ym]=(revByMonth[r.ym]||0)+r.amount;
+    else if(r.category==='EXPENSE')expByMonth[r.ym]=(expByMonth[r.ym]||0)+r.amount;
+  });
+  var revTotal=Object.values(revByMonth).reduce(function(s,v){return s+v;},0);
+  var expTotal=Object.values(expByMonth).reduce(function(s,v){return s+v;},0);
+  var net=revTotal-expTotal;
+  var margin=revTotal>0?(net/revTotal*100):0;
+  var rowsHtml=months.map(function(m){
+    var rev=revByMonth[m]||0,exp=expByMonth[m]||0,n=rev-exp,mg=rev>0?(n/rev*100):0;
+    return '<tr><td>'+plMoLbl(m)+'</td><td class="right green">'+fmtFull(rev)+'</td><td class="right red">'+fmtFull(exp)+'</td><td class="right '+(n>=0?'green':'red')+'">'+fmtFull(n)+'</td><td class="right" style="color:var(--muted)">'+mg.toFixed(1)+'%</td></tr>';
+  }).join('');
+  openModal('⚖️ กำไร(ขาดทุน)สุทธิ รายเดือน',
+    '<div class="modal-summary">'+mStat('รายได้รวม',fmtKPI(revTotal),'var(--green)')+mStat('ค่าใช้จ่ายรวม',fmtKPI(expTotal),'var(--red)')+mStat('กำไรสุทธิ',fmtKPI(net),net>=0?'var(--green)':'var(--red)')+mStat('% กำไรสุทธิ',margin.toFixed(1)+'%','var(--blue)')+'</div>'+
+    '<table><thead><tr><th>เดือน</th><th style="text-align:right">รายได้</th><th style="text-align:right">ค่าใช้จ่าย</th><th style="text-align:right">กำไร(ขาดทุน)</th><th style="text-align:right">% กำไร</th></tr></thead><tbody>'+rowsHtml+'</tbody></table>');
+}
 function renderPL(){
   if(!G.plRows||!G.plRows.length){
     var noteEl=document.getElementById('plNoDataNote'), contEl=document.getElementById('plContent');
@@ -2796,10 +2841,10 @@ function renderPL(){
   var net=revTotal-expTotal;
   var margin=revTotal>0?(net/revTotal*100):0;
   document.getElementById('plKpi').innerHTML=
-    kpi('green','💵','rgba(76,175,125,0.18)','รายได้รวม',fmtKPI(revTotal),'green','ตามช่วงที่เลือก','')+
-    kpi('red','💸','rgba(224,92,92,0.18)','ค่าใช้จ่ายรวม',fmtKPI(expTotal),'red','ตามช่วงที่เลือก','')+
-    kpi('gold','⚖️','rgba(212,168,67,0.18)','กำไร(ขาดทุน)สุทธิ',fmtKPI(net),(net>=0?'green':'red'),'ตามช่วงที่เลือก','')+
-    kpi('blue','📈','rgba(91,143,249,0.18)','% กำไรสุทธิ',margin.toFixed(1)+'%','blue','ของรายได้รวม','');
+    kpi('green','💵','rgba(76,175,125,0.18)','รายได้รวม',fmtKPI(revTotal),'green','ตามช่วงที่เลือก','showPLBreakdown(\'REVENUE\')')+
+    kpi('red','💸','rgba(224,92,92,0.18)','ค่าใช้จ่ายรวม',fmtKPI(expTotal),'red','ตามช่วงที่เลือก','showPLBreakdown(\'EXPENSE\')')+
+    kpi('gold','⚖️','rgba(212,168,67,0.18)','กำไร(ขาดทุน)สุทธิ',fmtKPI(net),(net>=0?'green':'red'),'ตามช่วงที่เลือก','showPLNetDetail()')+
+    kpi('blue','📈','rgba(91,143,249,0.18)','% กำไรสุทธิ',margin.toFixed(1)+'%','blue','ของรายได้รวม','showPLNetDetail()');
 
   var gc='rgba(255,255,255,0.05)';
   var topRev=plTopN(rows,'REVENUE',10), topExpPl=plTopN(rows,'EXPENSE',10);
