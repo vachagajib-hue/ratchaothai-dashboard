@@ -328,7 +328,10 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <div class="chart-card"><div class="chart-title">Top 10 ค่าใช้จ่าย <span class="chart-sub">(ล้านบาท)</span></div><canvas id="plExpChart" style="max-height:270px"></canvas></div>
 </div>
 <div class="chart-card" style="margin-bottom:16px">
-<div class="chart-title">เงินสดรับจริง-จ่ายจริง <span class="chart-sub">(ตามช่วงเดียวกับตารางด้านล่าง, เทียบเกณฑ์คงค้าง vs เกณฑ์เงินสด)</span></div>
+<div class="chart-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+<span>เงินสดรับจริง-จ่ายจริง <span class="chart-sub">(ตามช่วงเดียวกับตารางด้านล่าง, เทียบเกณฑ์คงค้าง vs เกณฑ์เงินสด)</span></span>
+<button onclick="showCashActualByBankDetail()" style="background:rgba(212,168,67,0.12);border:1px solid rgba(212,168,67,0.3);color:var(--gold2);border-radius:8px;padding:6px 12px;font-size:11px;font-family:'Sarabun',sans-serif;cursor:pointer;font-weight:600">📋 ดูรายละเอียดตามธนาคาร</button>
+</div>
 <canvas id="plCashActualChart"></canvas>
 </div>
 <div style="font-size:11px;color:var(--muted);margin-bottom:8px" id="plRangeLabel"></div>
@@ -587,12 +590,12 @@ async function loadAllData(){
     st.textContent='\u0e01\u0e33\u0e25\u0e31\u0e07\u0e14\u0e36\u0e07 Q01\u2026';
     var q01=await fetchSheet('Q01_CASH_RECEIPT');
     var recByM={},recRows=[];
-    q01.rows.forEach(function(r){var mk=getMK(r[1]),amt=parseFloat(r[5])||0;if(mk)recByM[mk]=(recByM[mk]||0)+amt;recRows.push({date:r[1],docNo:String(r[2]||''),custName:String(r[4]||''),amt:amt});});
+    q01.rows.forEach(function(r){var mk=getMK(r[1]),amt=parseFloat(r[5])||0;if(mk)recByM[mk]=(recByM[mk]||0)+amt;recRows.push({date:r[1],docNo:String(r[2]||''),custName:String(r[4]||''),amt:amt,bankCode:String(r[6]||'').trim(),bankName:String(r[7]||'').trim()});});
 
     st.textContent='\u0e01\u0e33\u0e25\u0e31\u0e07\u0e14\u0e36\u0e07 Q02\u2026';
     var q02=await fetchSheet('Q02_CASH_PAYMENT');
     var payByM={},payRows=[];
-    q02.rows.forEach(function(r){var mk=getMK(r[1]),amt=parseFloat(r[5])||0;if(mk)payByM[mk]=(payByM[mk]||0)+amt;payRows.push({date:r[1],docNo:String(r[2]||''),vendName:String(r[4]||''),amt:amt});});
+    q02.rows.forEach(function(r){var mk=getMK(r[1]),amt=parseFloat(r[5])||0;if(mk)payByM[mk]=(payByM[mk]||0)+amt;payRows.push({date:r[1],docNo:String(r[2]||''),vendName:String(r[4]||''),amt:amt,bankCode:String(r[6]||'').trim(),bankName:String(r[7]||'').trim()});});
 
     st.textContent='\u0e01\u0e33\u0e25\u0e31\u0e07\u0e14\u0e36\u0e07 Q03\u2026';
     var q03=await fetchSheet('Q03_BANK_BALANCE');
@@ -2829,6 +2832,74 @@ function showPLNetDetail(){
   openModal('⚖️ กำไร(ขาดทุน)สุทธิ รายเดือน',
     '<div class="modal-summary">'+mStat('รายได้รวม',fmtKPI(revTotal),'var(--green)')+mStat('ค่าใช้จ่ายรวม',fmtKPI(expTotal),'var(--red)')+mStat('กำไรสุทธิ',fmtKPI(net),net>=0?'var(--green)':'var(--red)')+mStat('% กำไรสุทธิ',margin.toFixed(1)+'%','var(--blue)')+'</div>'+
     '<table><thead><tr><th>เดือน</th><th style="text-align:right">รายได้</th><th style="text-align:right">ค่าใช้จ่าย</th><th style="text-align:right">กำไร(ขาดทุน)</th><th style="text-align:right">% กำไร</th></tr></thead><tbody>'+rowsHtml+'</tbody></table>');
+}
+function cashByBankMonth(rows,months){
+  var map={};
+  rows.forEach(function(r){
+    var mk=getMK(r.date);
+    if(!mk||months.indexOf(mk)===-1)return;
+    var bank=r.bankName||r.bankCode||'ไม่ระบุธนาคาร';
+    if(!map[bank])map[bank]={bank:bank,byMonth:{},total:0};
+    map[bank].byMonth[mk]=(map[bank].byMonth[mk]||0)+r.amt;
+    map[bank].total+=r.amt;
+  });
+  return Object.values(map).sort(function(a,b){return b.total-a.total;});
+}
+function showCashBankTxnDetail(kind,bankName){
+  var rows=plFilteredRows();
+  var months=plMonthsInRows(rows);
+  if(!months.length){months=(G.allMonths||[]).slice(-6);}
+  var src=(kind==='rec'?(G.recRows||[]):(G.payRows||[]));
+  var list=src.filter(function(r){
+    var mk=getMK(r.date);
+    if(!mk||months.indexOf(mk)===-1)return false;
+    var b=r.bankName||r.bankCode||'ไม่ระบุธนาคาร';
+    return b===bankName;
+  }).map(function(r){
+    return {dateStr:toSlashDMY(r.date)||String(r.date||''),docNo:r.docNo,who:kind==='rec'?r.custName:r.vendName,amt:r.amt};
+  }).sort(function(a,b){return dateKey(a.dateStr).localeCompare(dateKey(b.dateStr));});
+  var total=list.reduce(function(s,r){return s+r.amt;},0);
+  var title=(kind==='rec'?'💰 เงินรับจริง':'📤 เงินจ่ายจริง')+' — '+bankName;
+  var color=kind==='rec'?'var(--green)':'var(--red)';
+  var whoLabel=kind==='rec'?'ลูกค้า':'ผู้ขาย/เจ้าหนี้';
+  var cols=[{label:'วันที่',get:function(r){return r.dateStr;}},{label:'เลขที่เอกสาร',get:function(r){return r.docNo;}},{label:whoLabel,get:function(r){return r.who;}},{label:'จำนวนเงิน',right:true,get:function(r){return fmtFull(r.amt);}}];
+  dmRegisterSimple('cashBankTxn',title,cols,list);
+  openModal(title,
+    dmExportBtns('cashBankTxn')+
+    '<div class="modal-summary">'+mStat('ยอดรวม',fmtKPI(total),color)+mStat('จำนวนรายการ',list.length+' รายการ','var(--blue)')+'</div>'+
+    '<table><thead><tr><th>วันที่</th><th>เลขที่เอกสาร</th><th>'+whoLabel+'</th><th style="text-align:right">จำนวนเงิน</th></tr></thead><tbody>'+
+    list.map(function(r){return '<tr><td style="font-size:12px;color:var(--text2)">'+r.dateStr+'</td><td style="color:var(--muted);font-size:12px">'+r.docNo+'</td><td>'+r.who+'</td><td class="right" style="color:'+color+'">'+fmtFull(r.amt)+'</td></tr>';}).join('')+
+    '</tbody></table>');
+}
+function showCashActualByBankDetail(){
+  var rows=plFilteredRows();
+  var months=plMonthsInRows(rows);
+  if(!months.length){months=(G.allMonths||[]).slice(-6);}
+  var recBanks=cashByBankMonth(G.recRows||[],months);
+  var payBanks=cashByBankMonth(G.payRows||[],months);
+  var theadMonths=months.map(function(m){return '<th style="padding:6px 8px;text-align:right">'+plMoLbl(m)+'</th>';}).join('');
+  function sectionRowsHtml(list,label,color,kind){
+    var html='<tr><td colspan="'+(2+months.length)+'" style="padding:6px 8px;color:'+color+';font-weight:700;background:rgba(255,255,255,0.03)">'+label+'</td></tr>';
+    if(!list.length){
+      html+='<tr><td colspan="'+(2+months.length)+'" style="padding:6px 8px;color:var(--muted);font-size:12px">ไม่มีข้อมูลธนาคารในชีตนี้</td></tr>';
+      return html;
+    }
+    list.forEach(function(b){
+      var bankEsc=b.bank.replace(/'/g,"\\'");
+      html+='<tr style="cursor:pointer" onclick="showCashBankTxnDetail(\''+kind+'\',\''+bankEsc+'\')"><td style="padding:6px 8px">'+b.bank+'</td>';
+      months.forEach(function(m){html+='<td style="padding:6px 8px;text-align:right;color:'+color+'">'+(b.byMonth[m]?fmtM(b.byMonth[m]):'—')+'</td>';});
+      html+='<td style="padding:6px 8px;text-align:right;font-weight:700">'+fmtM(b.total)+'</td></tr>';
+    });
+    return html;
+  }
+  var tableHtml='<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#1B2E45;text-align:left">'+
+    '<th style="padding:8px">ธนาคาร</th>'+theadMonths+'<th style="padding:8px;text-align:right">รวม</th></tr></thead><tbody>'+
+    sectionRowsHtml(recBanks,'💰 เงินรับจริง (กดชื่อธนาคารเพื่อดูรายการ)','var(--green)','rec')+
+    sectionRowsHtml(payBanks,'📤 เงินจ่ายจริง (กดชื่อธนาคารเพื่อดูรายการ)','var(--red)','pay')+
+    '</tbody></table>';
+  openModal('🏦 เงินสดรับจริง-จ่ายจริง ตามธนาคาร',
+    '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">ช่วงข้อมูล: '+(months.length?plMoLbl(months[0])+' — '+plMoLbl(months[months.length-1]):'—')+' — หน่วย: ล้านบาท</div>'+
+    tableHtml);
 }
 function renderPL(){
   if(!G.plRows||!G.plRows.length){
