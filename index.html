@@ -513,6 +513,15 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape'){document.ge
 
 function openModal(title,html){document.getElementById('modalTitle').textContent=title;document.getElementById('modalBody').innerHTML=html;document.getElementById('modalOverlay').classList.add('open');}
 function closeModal(e){if(!e||e.target===document.getElementById('modalOverlay'))document.getElementById('modalOverlay').classList.remove('open');}
+var MODAL_BACK_STACK=[];
+function modalGoBack(){
+  var fn=MODAL_BACK_STACK.pop();
+  if(fn)fn();
+}
+function modalBackBtnHtml(){
+  if(!MODAL_BACK_STACK.length)return '';
+  return '<div style="margin-bottom:10px"><button class="hbtn hbtn-muted" onclick="modalGoBack()">← กลับ</button></div>';
+}
 function mStat(label,val,color){return '<div class="modal-stat"><div class="modal-stat-label">'+label+'</div><div class="modal-stat-val" style="color:'+color+'">'+val+'</div></div>';}
 
 function repairAcctCode(raw){
@@ -601,7 +610,7 @@ async function loadAllData(){
     st.textContent='\u0e01\u0e33\u0e25\u0e31\u0e07\u0e14\u0e36\u0e07 Q03\u2026';
     var q03=await fetchSheet('Q03_BANK_BALANCE');
     var bankNet=0,bankRows=[];
-    q03.rows.forEach(function(r){var code=String(r[1]||''),bal=parseFloat(r[3])||0;if(code.includes('-')){bankNet+=bal;bankRows.push({code:code,name:String(r[2]||''),bal:bal});}});
+    q03.rows.forEach(function(r){var code=repairAcctCode(r[1]),bal=parseFloat(r[3])||0;if(code.includes('-')){bankNet+=bal;bankRows.push({code:code,name:String(r[2]||''),bal:bal});}});
 
     st.textContent='\u0e01\u0e33\u0e25\u0e31\u0e07\u0e14\u0e36\u0e07 Q04\u2026';
     var q04=await fetchSheet('Q04_AR_AGING');
@@ -2712,6 +2721,7 @@ async function csvSheetHandle(files){
 
 var PL_STATE={moFrom:'',yrFrom:'',moTo:'',yrTo:'',cat:'ALL',hideEmptyMonths:false};
 var CASH_BANK_CAL={from:'',to:''};
+var CASH_BANK_PICK={openField:null,calYear:0,calMonth:0};
 function plBuildFilters(){
   var months=[...new Set((G.plRows||[]).map(function(r){return r.ym;}))].sort();
   if(!months.length)return;
@@ -2891,21 +2901,64 @@ function showCashBankTxnDetail(kind,bankName){
   var cols=[{label:'วันที่',get:function(r){return r.dateStr;}},{label:'เลขที่เอกสาร',get:function(r){return r.docNo;}},{label:whoLabel,get:function(r){return r.who;}},{label:'จำนวนเงิน',right:true,get:function(r){return fmtFull(r.amt);}}];
   dmRegisterSimple('cashBankTxn',title,cols,list);
   openModal(title,
+    modalBackBtnHtml()+
     dmExportBtns('cashBankTxn')+
     '<div class="modal-summary">'+mStat('ยอดรวม',fmtKPI(total),color)+mStat('จำนวนรายการ',list.length+' รายการ','var(--blue)')+'</div>'+
     '<table><thead><tr><th>วันที่</th><th>เลขที่เอกสาร</th><th>'+whoLabel+'</th><th style="text-align:right">จำนวนเงิน</th></tr></thead><tbody>'+
     list.map(function(r){return '<tr><td style="font-size:12px;color:var(--text2)">'+r.dateStr+'</td><td style="color:var(--muted);font-size:12px">'+r.docNo+'</td><td>'+r.who+'</td><td class="right" style="color:'+color+'">'+fmtFull(r.amt)+'</td></tr>';}).join('')+
     '</tbody></table>');
 }
-function cashBankCalApply(){
-  var f=document.getElementById('cashBankFrom'), t=document.getElementById('cashBankTo');
-  CASH_BANK_CAL.from=f?f.value:'';
-  CASH_BANK_CAL.to=t?t.value:'';
+function cashBankFieldLabel(v){
+  if(!v)return 'เลือกวันที่';
+  var p=v.split('-');
+  return p[2]+'/'+p[1]+'/'+p[0];
+}
+function cashBankOpenCal(field){
+  var cur=(field==='from'?CASH_BANK_CAL.from:CASH_BANK_CAL.to);
+  var now=new Date(), y=now.getFullYear(), m=now.getMonth()+1;
+  if(cur){var p=cur.split('-');y=+p[0];m=+p[1];}
+  CASH_BANK_PICK.openField=(CASH_BANK_PICK.openField===field?null:field);
+  CASH_BANK_PICK.calYear=y;CASH_BANK_PICK.calMonth=m;
+  showCashActualByBankDetail();
+}
+function cashBankCalShift(n){
+  var d=new Date(CASH_BANK_PICK.calYear,CASH_BANK_PICK.calMonth-1+n,1);
+  CASH_BANK_PICK.calYear=d.getFullYear();CASH_BANK_PICK.calMonth=d.getMonth()+1;
+  showCashActualByBankDetail();
+}
+function cashBankCalPick(y,m,d){
+  var iso=String(y)+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+  if(CASH_BANK_PICK.openField==='from')CASH_BANK_CAL.from=iso;else CASH_BANK_CAL.to=iso;
+  CASH_BANK_PICK.openField=null;
   showCashActualByBankDetail();
 }
 function cashBankCalClear(){
   CASH_BANK_CAL.from='';CASH_BANK_CAL.to='';
+  CASH_BANK_PICK.openField=null;
   showCashActualByBankDetail();
+}
+function cashBankCalPopupHtml(){
+  if(!CASH_BANK_PICK.openField)return '';
+  var y=CASH_BANK_PICK.calYear,m=CASH_BANK_PICK.calMonth;
+  var MTHAI=['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  var DOWTHAI=['อา','จ','อ','พ','พฤ','ศ','ส'];
+  var startDow=new Date(y,m-1,1).getDay();
+  var daysInMonth=new Date(y,m,0).getDate();
+  var selIso=(CASH_BANK_PICK.openField==='from')?CASH_BANK_CAL.from:CASH_BANK_CAL.to;
+  var fieldLbl=(CASH_BANK_PICK.openField==='from')?'จากวันที่':'ถึงวันที่';
+  var html='<div class="dm-calendar" style="max-width:280px">';
+  html+='<div style="font-size:11px;color:var(--gold2);font-weight:700;margin-bottom:8px">📅 เลือก'+fieldLbl+'</div>';
+  html+='<div class="dm-cal-head"><button class="dm-cal-nav" onclick="cashBankCalShift(-1)">‹</button><div class="dm-cal-title">'+MTHAI[m]+' '+(y+543)+'</div><button class="dm-cal-nav" onclick="cashBankCalShift(1)">›</button></div>';
+  html+='<div class="dm-cal-grid dm-cal-dow">'+DOWTHAI.map(function(x){return '<div>'+x+'</div>';}).join('')+'</div>';
+  html+='<div class="dm-cal-grid">';
+  for(var i=0;i<startDow;i++)html+='<div class="dm-cal-cell empty"></div>';
+  for(var d=1;d<=daysInMonth;d++){
+    var iso=String(y)+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    var sel=(iso===selIso);
+    html+='<div class="dm-cal-cell has-data'+(sel?' selected':'')+'" onclick="cashBankCalPick('+y+','+m+','+d+')"><span>'+d+'</span></div>';
+  }
+  html+='</div></div>';
+  return html;
 }
 function showCashActualByBankDetail(){
   var months=cashBankMonths();
@@ -2920,7 +2973,7 @@ function showCashActualByBankDetail(){
     }
     list.forEach(function(b){
       var bankEsc=b.bank.replace(/'/g,"\\'");
-      html+='<tr style="cursor:pointer" onclick="showCashBankTxnDetail(\''+kind+'\',\''+bankEsc+'\')"><td style="padding:6px 8px">'+b.bank+'</td>';
+      html+='<tr style="cursor:pointer" onclick="MODAL_BACK_STACK.push(function(){showCashActualByBankDetail();});showCashBankTxnDetail(\''+kind+'\',\''+bankEsc+'\')"><td style="padding:6px 8px">'+b.bank+'</td>';
       months.forEach(function(m){html+='<td style="padding:6px 8px;text-align:right;color:'+color+'">'+(b.byMonth[m]?fmtM(b.byMonth[m]):'—')+'</td>';});
       html+='<td style="padding:6px 8px;text-align:right;font-weight:700">'+fmtM(b.total)+'</td></tr>';
     });
@@ -2932,14 +2985,16 @@ function showCashActualByBankDetail(){
     sectionRowsHtml(payBanks,'📤 เงินจ่ายจริง (กดชื่อธนาคารเพื่อดูรายการ)','var(--red)','pay')+
     '</tbody></table>';
   var rangeNote=(CASH_BANK_CAL.from||CASH_BANK_CAL.to)?
-    ('ช่วงที่เลือกเอง: '+(CASH_BANK_CAL.from||'—')+' — '+(CASH_BANK_CAL.to||'—')):
+    ('ช่วงที่เลือกเอง: '+(CASH_BANK_CAL.from?cashBankFieldLabel(CASH_BANK_CAL.from):'—')+' — '+(CASH_BANK_CAL.to?cashBankFieldLabel(CASH_BANK_CAL.to):'—')):
     ('ช่วงข้อมูล: '+(months.length?plMoLbl(months[0])+' — '+plMoLbl(months[months.length-1]):'—'));
-  var calHtml='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:11px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:8px 10px">'+
+  var calHtml='<div style="margin-bottom:10px;font-size:11px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:8px 10px">'+
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
     '<span style="color:var(--muted);font-weight:600">📅 เลือกช่วงวันที่ (ไม่บังคับ):</span>'+
-    'จาก <input type="date" id="cashBankFrom" value="'+(CASH_BANK_CAL.from||'')+'" style="background:var(--navy);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 8px;font-family:\'Sarabun\',sans-serif;font-size:11px">'+
-    'ถึง <input type="date" id="cashBankTo" value="'+(CASH_BANK_CAL.to||'')+'" style="background:var(--navy);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 8px;font-family:\'Sarabun\',sans-serif;font-size:11px">'+
-    '<button onclick="cashBankCalApply()" style="background:rgba(43,191,179,0.15);border:1px solid rgba(43,191,179,0.4);color:var(--teal);border-radius:6px;padding:5px 12px;cursor:pointer;font-weight:600;font-family:\'Sarabun\',sans-serif;font-size:11px">ใช้ช่วงนี้</button>'+
+    'จาก <span onclick="cashBankOpenCal(\'from\')" style="cursor:pointer;background:var(--navy);border:1px solid '+(CASH_BANK_PICK.openField==='from'?'var(--teal)':'var(--border)')+';color:var(--text);border-radius:6px;padding:5px 10px;min-width:88px;display:inline-block;text-align:center">'+cashBankFieldLabel(CASH_BANK_CAL.from)+'</span>'+
+    'ถึง <span onclick="cashBankOpenCal(\'to\')" style="cursor:pointer;background:var(--navy);border:1px solid '+(CASH_BANK_PICK.openField==='to'?'var(--teal)':'var(--border)')+';color:var(--text);border-radius:6px;padding:5px 10px;min-width:88px;display:inline-block;text-align:center">'+cashBankFieldLabel(CASH_BANK_CAL.to)+'</span>'+
     '<button onclick="cashBankCalClear()" style="background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:5px 12px;cursor:pointer;font-family:\'Sarabun\',sans-serif;font-size:11px">✕ ล้าง (กลับไปใช้ตัวกรองด้านบน)</button>'+
+    '</div>'+
+    cashBankCalPopupHtml()+
     '</div>';
   openModal('🏦 เงินสดรับจริง-จ่ายจริง ตามธนาคาร',
     calHtml+
