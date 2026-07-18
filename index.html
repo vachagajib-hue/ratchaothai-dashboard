@@ -321,6 +321,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <option value="EXPENSE">ค่าใช้จ่ายเท่านั้น</option>
 </select>
 <button class="filter-reset" onclick="plResetFilter()">&#10005; ล้างช่วง</button>
+<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer;margin-left:8px"><input type="checkbox" id="plHideEmptyMo" onchange="PL_STATE.hideEmptyMonths=this.checked;renderPL();">ซ่อนเดือนที่ไม่มีข้อมูล</label>
 </div>
 <div class="kpi-row" id="plKpi"></div>
 <div class="chart-row-2" style="margin-bottom:16px">
@@ -2709,7 +2710,8 @@ async function csvSheetHandle(files){
   }
 }
 
-var PL_STATE={moFrom:'',yrFrom:'',moTo:'',yrTo:'',cat:'ALL'};
+var PL_STATE={moFrom:'',yrFrom:'',moTo:'',yrTo:'',cat:'ALL',hideEmptyMonths:false};
+var CASH_BANK_CAL={from:'',to:''};
 function plBuildFilters(){
   var months=[...new Set((G.plRows||[]).map(function(r){return r.ym;}))].sort();
   if(!months.length)return;
@@ -2833,11 +2835,36 @@ function showPLNetDetail(){
     '<div class="modal-summary">'+mStat('รายได้รวม',fmtKPI(revTotal),'var(--green)')+mStat('ค่าใช้จ่ายรวม',fmtKPI(expTotal),'var(--red)')+mStat('กำไรสุทธิ',fmtKPI(net),net>=0?'var(--green)':'var(--red)')+mStat('% กำไรสุทธิ',margin.toFixed(1)+'%','var(--blue)')+'</div>'+
     '<table><thead><tr><th>เดือน</th><th style="text-align:right">รายได้</th><th style="text-align:right">ค่าใช้จ่าย</th><th style="text-align:right">กำไร(ขาดทุน)</th><th style="text-align:right">% กำไร</th></tr></thead><tbody>'+rowsHtml+'</tbody></table>');
 }
+function cashBankInRange(rawDate){
+  if(!CASH_BANK_CAL.from&&!CASH_BANK_CAL.to)return true;
+  var k=dateKey(toSlashDMY(rawDate));
+  if(!k)return true;
+  if(CASH_BANK_CAL.from&&k<CASH_BANK_CAL.from.replace(/-/g,''))return false;
+  if(CASH_BANK_CAL.to&&k>CASH_BANK_CAL.to.replace(/-/g,''))return false;
+  return true;
+}
+function cashBankMonths(){
+  if(CASH_BANK_CAL.from||CASH_BANK_CAL.to){
+    var mkset={};
+    (G.recRows||[]).concat(G.payRows||[]).forEach(function(r){
+      if(!cashBankInRange(r.date))return;
+      var mk=getMK(r.date);
+      if(mk)mkset[mk]=true;
+    });
+    var arr=Object.keys(mkset).sort();
+    if(arr.length)return arr;
+  }
+  var rows=plFilteredRows();
+  var months=plMonthsInRows(rows);
+  if(!months.length){months=(G.allMonths||[]).slice(-6);}
+  return months;
+}
 function cashByBankMonth(rows,months){
   var map={};
   rows.forEach(function(r){
     var mk=getMK(r.date);
     if(!mk||months.indexOf(mk)===-1)return;
+    if(!cashBankInRange(r.date))return;
     var bank=r.bankName||r.bankCode||'ไม่ระบุธนาคาร';
     if(!map[bank])map[bank]={bank:bank,byMonth:{},total:0};
     map[bank].byMonth[mk]=(map[bank].byMonth[mk]||0)+r.amt;
@@ -2846,13 +2873,12 @@ function cashByBankMonth(rows,months){
   return Object.values(map).sort(function(a,b){return b.total-a.total;});
 }
 function showCashBankTxnDetail(kind,bankName){
-  var rows=plFilteredRows();
-  var months=plMonthsInRows(rows);
-  if(!months.length){months=(G.allMonths||[]).slice(-6);}
+  var months=cashBankMonths();
   var src=(kind==='rec'?(G.recRows||[]):(G.payRows||[]));
   var list=src.filter(function(r){
     var mk=getMK(r.date);
     if(!mk||months.indexOf(mk)===-1)return false;
+    if(!cashBankInRange(r.date))return false;
     var b=r.bankName||r.bankCode||'ไม่ระบุธนาคาร';
     return b===bankName;
   }).map(function(r){
@@ -2871,17 +2897,25 @@ function showCashBankTxnDetail(kind,bankName){
     list.map(function(r){return '<tr><td style="font-size:12px;color:var(--text2)">'+r.dateStr+'</td><td style="color:var(--muted);font-size:12px">'+r.docNo+'</td><td>'+r.who+'</td><td class="right" style="color:'+color+'">'+fmtFull(r.amt)+'</td></tr>';}).join('')+
     '</tbody></table>');
 }
+function cashBankCalApply(){
+  var f=document.getElementById('cashBankFrom'), t=document.getElementById('cashBankTo');
+  CASH_BANK_CAL.from=f?f.value:'';
+  CASH_BANK_CAL.to=t?t.value:'';
+  showCashActualByBankDetail();
+}
+function cashBankCalClear(){
+  CASH_BANK_CAL.from='';CASH_BANK_CAL.to='';
+  showCashActualByBankDetail();
+}
 function showCashActualByBankDetail(){
-  var rows=plFilteredRows();
-  var months=plMonthsInRows(rows);
-  if(!months.length){months=(G.allMonths||[]).slice(-6);}
+  var months=cashBankMonths();
   var recBanks=cashByBankMonth(G.recRows||[],months);
   var payBanks=cashByBankMonth(G.payRows||[],months);
   var theadMonths=months.map(function(m){return '<th style="padding:6px 8px;text-align:right">'+plMoLbl(m)+'</th>';}).join('');
   function sectionRowsHtml(list,label,color,kind){
     var html='<tr><td colspan="'+(2+months.length)+'" style="padding:6px 8px;color:'+color+';font-weight:700;background:rgba(255,255,255,0.03)">'+label+'</td></tr>';
     if(!list.length){
-      html+='<tr><td colspan="'+(2+months.length)+'" style="padding:6px 8px;color:var(--muted);font-size:12px">ไม่มีข้อมูลธนาคารในชีตนี้</td></tr>';
+      html+='<tr><td colspan="'+(2+months.length)+'" style="padding:6px 8px;color:var(--muted);font-size:12px">ไม่มีข้อมูลธนาคารในช่วงนี้</td></tr>';
       return html;
     }
     list.forEach(function(b){
@@ -2897,8 +2931,19 @@ function showCashActualByBankDetail(){
     sectionRowsHtml(recBanks,'💰 เงินรับจริง (กดชื่อธนาคารเพื่อดูรายการ)','var(--green)','rec')+
     sectionRowsHtml(payBanks,'📤 เงินจ่ายจริง (กดชื่อธนาคารเพื่อดูรายการ)','var(--red)','pay')+
     '</tbody></table>';
+  var rangeNote=(CASH_BANK_CAL.from||CASH_BANK_CAL.to)?
+    ('ช่วงที่เลือกเอง: '+(CASH_BANK_CAL.from||'—')+' — '+(CASH_BANK_CAL.to||'—')):
+    ('ช่วงข้อมูล: '+(months.length?plMoLbl(months[0])+' — '+plMoLbl(months[months.length-1]):'—'));
+  var calHtml='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:11px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:8px 10px">'+
+    '<span style="color:var(--muted);font-weight:600">📅 เลือกช่วงวันที่ (ไม่บังคับ):</span>'+
+    'จาก <input type="date" id="cashBankFrom" value="'+(CASH_BANK_CAL.from||'')+'" style="background:var(--navy);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 8px;font-family:\'Sarabun\',sans-serif;font-size:11px">'+
+    'ถึง <input type="date" id="cashBankTo" value="'+(CASH_BANK_CAL.to||'')+'" style="background:var(--navy);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 8px;font-family:\'Sarabun\',sans-serif;font-size:11px">'+
+    '<button onclick="cashBankCalApply()" style="background:rgba(43,191,179,0.15);border:1px solid rgba(43,191,179,0.4);color:var(--teal);border-radius:6px;padding:5px 12px;cursor:pointer;font-weight:600;font-family:\'Sarabun\',sans-serif;font-size:11px">ใช้ช่วงนี้</button>'+
+    '<button onclick="cashBankCalClear()" style="background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:5px 12px;cursor:pointer;font-family:\'Sarabun\',sans-serif;font-size:11px">✕ ล้าง (กลับไปใช้ตัวกรองด้านบน)</button>'+
+    '</div>';
   openModal('🏦 เงินสดรับจริง-จ่ายจริง ตามธนาคาร',
-    '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">ช่วงข้อมูล: '+(months.length?plMoLbl(months[0])+' — '+plMoLbl(months[months.length-1]):'—')+' — หน่วย: ล้านบาท</div>'+
+    calHtml+
+    '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">'+rangeNote+' — หน่วย: ล้านบาท</div>'+
     tableHtml);
 }
 function renderPL(){
@@ -2928,6 +2973,11 @@ function renderPL(){
   makeChart('plExpChart',{type:'bar',data:{labels:topExpPl.map(function(e){return e.name;}),datasets:[{data:topExpPl.map(function(e){return +fmtM(e.amt);}),backgroundColor:'#E05C5C',borderRadius:4}]},options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{max:sharedMax||undefined,grid:{color:gc},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}}},y:{grid:{display:false},ticks:{color:'#8FA3B8',font:{size:11}}}}}});
 
   var months=plMonthsInRows(rows);
+  if(PL_STATE.hideEmptyMonths){
+    var monthHasData={};
+    rows.forEach(function(r){if(r.amount)monthHasData[r.ym]=true;});
+    months=months.filter(function(m){return monthHasData[m];});
+  }
   document.getElementById('plRangeLabel').textContent='ช่วงข้อมูล: '+(months.length?plMoLbl(months[0])+' — '+plMoLbl(months[months.length-1]):'—')+' — '+months.length+' เดือน';
   var actualRec=months.map(function(m){return +fmtM((G.recByM&&G.recByM[m])||0);});
   var actualPay=months.map(function(m){return +fmtM((G.payByM&&G.payByM[m])||0);});
