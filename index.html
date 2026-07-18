@@ -690,7 +690,7 @@ async function loadAllData(){
     try{
       var q11=await fetchSheet('Q11_SAP_MONTHLY_BALANCE');
       q11.rows.forEach(function(r){
-        var code=String(r[1]||'');if(!code)return;
+        var code=repairAcctCode(r[1]);if(!code)return;
         // Google Sheets มักแปลง '2026-01' เป็นวันที่จริงโดยอัตโนมัติ (แม้จอโชว์เป็น '2026-01')
         // พอส่งผ่าน JSON จะกลายเป็น ISO string ยาวๆ เช่น '2026-01-01T00:00:00.000Z'
         // ต้องดึงแค่ YYYY-MM ออกมาเสมอ ไม่ใช้ String(r[3]) ตรงๆ
