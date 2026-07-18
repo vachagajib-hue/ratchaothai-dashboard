@@ -327,6 +327,10 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <div class="chart-card"><div class="chart-title">Top 10 รายได้ <span class="chart-sub">(ล้านบาท)</span></div><canvas id="plRevChart" style="max-height:270px"></canvas></div>
 <div class="chart-card"><div class="chart-title">Top 10 ค่าใช้จ่าย <span class="chart-sub">(ล้านบาท)</span></div><canvas id="plExpChart" style="max-height:270px"></canvas></div>
 </div>
+<div class="chart-card" style="margin-bottom:16px">
+<div class="chart-title">เงินสดรับจริง-จ่ายจริง <span class="chart-sub">(ตามช่วงเดียวกับตารางด้านล่าง, เทียบเกณฑ์คงค้าง vs เกณฑ์เงินสด)</span></div>
+<canvas id="plCashActualChart"></canvas>
+</div>
 <div style="font-size:11px;color:var(--muted);margin-bottom:8px" id="plRangeLabel"></div>
 <div style="overflow-x:auto"><div id="plTableWrap"></div></div>
 </div>
@@ -2854,6 +2858,13 @@ function renderPL(){
 
   var months=plMonthsInRows(rows);
   document.getElementById('plRangeLabel').textContent='ช่วงข้อมูล: '+(months.length?plMoLbl(months[0])+' — '+plMoLbl(months[months.length-1]):'—')+' — '+months.length+' เดือน';
+  var actualRec=months.map(function(m){return +fmtM((G.recByM&&G.recByM[m])||0);});
+  var actualPay=months.map(function(m){return +fmtM((G.payByM&&G.payByM[m])||0);});
+  makeChart('plCashActualChart',{type:'bar',data:{labels:months.map(function(m){return plMoLbl(m);}),datasets:[
+    {label:'เงินรับจริง',data:actualRec,backgroundColor:'rgba(76,175,125,0.8)',borderRadius:4},
+    {label:'เงินจ่ายจริง',data:actualPay,backgroundColor:'rgba(224,92,92,0.8)',borderRadius:4}
+  ]},options:{plugins:{legend:{labels:{color:'#8FA3B8',boxWidth:12}}},scales:{x:{grid:{color:gc},ticks:{color:'#8FA3B8'}},y:{grid:{color:gc},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}},afterDataLimits:function(a){a.max=a.max*1.18;}}}},plugins:[barLblPlugin]});
+
 
   function sectionRows(category,label,color){
     var piv=plMonthlyPivot(rows,category);
@@ -2864,15 +2875,15 @@ function renderPL(){
       months.forEach(function(m){
         var v=a.byMonth[m]||0;
         totalsByMonth[m]=(totalsByMonth[m]||0)+v;
-        html+='<td style="padding:6px 10px;text-align:right">'+(v?fmtM(v):'—')+'</td>';
+        html+='<td style="padding:6px 10px;text-align:right'+(v<0?';color:var(--red)':'')+'">'+(v?fmtM(v):'—')+'</td>';
       });
-      html+='<td style="padding:6px 10px;text-align:right;font-weight:500">'+fmtM(a.total)+'</td>';
+      html+='<td style="padding:6px 10px;text-align:right;font-weight:500'+(a.total<0?';color:var(--red)':'')+'">'+fmtM(a.total)+'</td>';
       html+='<td style="padding:6px 10px;text-align:right">'+plTrendHtml(plTrendPct(a.byMonth,months))+'</td></tr>';
     });
     var grandTotal=piv.accounts.reduce(function(s,a){return s+a.total;},0);
     html+='<tr style="background:'+(category==='REVENUE'?'rgba(76,175,125,0.12)':'rgba(224,92,92,0.12)')+'"><td></td><td style="padding:7px 10px;font-weight:600">รวม'+label.replace(/^\S+\s/,'')+'</td>';
-    months.forEach(function(m){html+='<td style="padding:7px 10px;text-align:right;font-weight:600">'+fmtM(totalsByMonth[m]||0)+'</td>';});
-    html+='<td style="padding:7px 10px;text-align:right;font-weight:600">'+fmtM(grandTotal)+'</td>';
+    months.forEach(function(m){var tv=totalsByMonth[m]||0;html+='<td style="padding:7px 10px;text-align:right;font-weight:600'+(tv<0?';color:var(--red)':'')+'">'+fmtM(tv)+'</td>';});
+    html+='<td style="padding:7px 10px;text-align:right;font-weight:600'+(grandTotal<0?';color:var(--red)':'')+'">'+fmtM(grandTotal)+'</td>';
     html+='<td style="padding:7px 10px;text-align:right;font-weight:600">'+plTrendHtml(plTrendPct(totalsByMonth,months))+'</td></tr>';
     return {html:html,totalsByMonth:totalsByMonth,grandTotal:grandTotal};
   }
@@ -2891,8 +2902,8 @@ function renderPL(){
   if(revSec&&expSec){
     tableHtml+='<tr style="background:rgba(212,168,67,0.15);border-top:1px solid rgba(212,168,67,0.3)"><td></td><td style="padding:9px 10px;font-weight:700;color:var(--gold2)">กำไร(ขาดทุน)สุทธิ</td>';
     var netByMonth={};
-    months.forEach(function(m){netByMonth[m]=(revSec.totalsByMonth[m]||0)-(expSec.totalsByMonth[m]||0);tableHtml+='<td style="padding:9px 10px;text-align:right;font-weight:700;color:var(--gold2)">'+fmtM(netByMonth[m])+'</td>';});
-    tableHtml+='<td style="padding:9px 10px;text-align:right;font-weight:700;color:var(--gold2)">'+fmtM(revSec.grandTotal-expSec.grandTotal)+'</td>';
+    months.forEach(function(m){netByMonth[m]=(revSec.totalsByMonth[m]||0)-(expSec.totalsByMonth[m]||0);var nv=netByMonth[m];tableHtml+='<td style="padding:9px 10px;text-align:right;font-weight:700;color:'+(nv<0?'var(--red)':'var(--gold2)')+'">'+fmtM(nv)+'</td>';});
+    var netGrand=revSec.grandTotal-expSec.grandTotal;tableHtml+='<td style="padding:9px 10px;text-align:right;font-weight:700;color:'+(netGrand<0?'var(--red)':'var(--gold2)')+'">'+fmtM(netGrand)+'</td>';
     tableHtml+='<td style="padding:9px 10px;text-align:right;font-weight:700;color:var(--gold2)">'+plTrendHtml(plTrendPct(netByMonth,months))+'</td></tr>';
   }
   tableHtml+='</tbody></table><div style="font-size:11px;color:var(--muted);margin-top:8px">หน่วย: ล้านบาท</div>';
