@@ -171,6 +171,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
   #printArea td.pr-right{text-align:right;color:#1B4F91;font-weight:600;}
   #printArea .pr-sub{font-weight:800;background:#EAF1FB;color:#1B4F91;}
   #printArea .pr-sub .pr-right{color:#1B4F91;}
+  #printArea .pr-subrow td{color:#666;font-size:9px;background:#fff;}
 }
 </style>
 </head>
@@ -1384,8 +1385,22 @@ function dmPrint(){
   if(cfg.groupable&&s.view==='group'){
     var groups=dmGroup(filtered);
     groups.sort(function(a,b){return s.sort==='name'?(a.earliestKey||'99999999').localeCompare(b.earliestKey||'99999999'):b.total-a.total;});
-    rowsHtml='<tr><th>ชื่อ</th><th class="pr-right">'+cfg.amountLabel+'</th><th class="pr-right">% รวม</th><th class="pr-right">จำนวนรายการ</th><th>กำหนดชำระใกล้สุด</th><th>Aging สูงสุด</th></tr>'+
-      groups.map(function(g){var pct=totalAll>0?(g.total/totalAll*100).toFixed(1):'0.0';return '<tr><td>'+g.name+'</td><td class="pr-right">'+fmtFull(g.total)+'</td><td class="pr-right">'+pct+'%</td><td class="pr-right">'+g.count+'</td><td>'+(g.earliestDisplay||'—')+'</td><td>'+(g.worstDays!==null?Math.round(g.worstDays).toLocaleString('th-TH')+' วัน':'—')+'</td></tr>';}).join('')+
+    var dateColLbl=cfg.matchBank?'วันที่แรกสุด':'กำหนดชำระใกล้สุด';
+    var lastColLbl=cfg.matchBank?'ตรงกับแบงค์':'Aging สูงสุด';
+    rowsHtml='<tr><th>ชื่อ</th><th class="pr-right">'+cfg.amountLabel+'</th><th class="pr-right">% รวม</th><th class="pr-right">จำนวนรายการ</th><th>'+dateColLbl+'</th><th>'+lastColLbl+'</th></tr>'+
+      groups.map(function(g){
+        var pct=totalAll>0?(g.total/totalAll*100).toFixed(1):'0.0';
+        var lastCell=cfg.matchBank?groupMatchBadge(g,cfg.matchBank):(g.worstDays!==null?Math.round(g.worstDays).toLocaleString('th-TH')+' วัน':'—');
+        var row='<tr><td>'+g.name+'</td><td class="pr-right">'+fmtFull(g.total)+'</td><td class="pr-right">'+pct+'%</td><td class="pr-right">'+g.count+'</td><td>'+(g.earliestDisplay||'—')+'</td><td>'+lastCell+'</td></tr>';
+        // ถ้ากลุ่มนี้ถูกกด + (ขยาย) อยู่บนหน้าจอ ให้แสดงรายการย่อยในรายงานด้วยเช่นกัน
+        if(s.expanded&&s.expanded[g.name]){
+          row+=g.rows.slice().sort(function(a,b){return (dateKey(a.dateStr)||'').localeCompare(dateKey(b.dateStr)||'');}).map(function(r){
+            var subLastCell=cfg.matchBank?bankMatchBadge(rowMatchCached(r,cfg.matchBank)):((r.days!==null&&r.days!==undefined)?Math.round(r.days).toLocaleString('th-TH')+' วัน':'—');
+            return '<tr class="pr-subrow"><td>&nbsp;&nbsp;↳ '+(r.docNo||'—')+'</td><td class="pr-right">'+fmtFull(r.amount)+'</td><td></td><td></td><td>'+(r.dateDisplay||'—')+'</td><td>'+subLastCell+'</td></tr>';
+          }).join('');
+        }
+        return row;
+      }).join('')+
       '<tr class="pr-sub"><td>รวมทั้งหมด</td><td class="pr-right">'+fmtFull(totalAll)+'</td><td></td><td></td><td></td><td></td></tr>';
   } else {
     var flat=filtered.slice();
