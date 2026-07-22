@@ -78,6 +78,9 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 .info-box-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;opacity:0.7;}
 .modal-overlay{position:fixed;inset:0;background:rgba(5,12,22,0.85);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;pointer-events:none;transition:opacity 0.25s;}
 .modal-overlay.open{opacity:1;pointer-events:all;}
+.mm-overlay{position:fixed;inset:0;background:rgba(5,12,22,0.55);z-index:550;display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;pointer-events:none;transition:opacity 0.2s;}
+.mm-overlay.open{opacity:1;pointer-events:all;}
+.mm-box{background:#152233;border:1px solid rgba(255,255,255,0.12);border-radius:16px;width:100%;max-width:520px;box-shadow:0 24px 80px rgba(0,0,0,0.6);padding:22px 24px;}
 .modal{background:#152233;border:1px solid rgba(255,255,255,0.1);border-radius:16px;width:100%;max-width:1320px;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,0.6);transform:translateY(16px);transition:transform 0.25s;}
 .modal-overlay.open .modal{transform:translateY(0);}
 .modal-header{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid var(--border);flex-shrink:0;}
@@ -201,6 +204,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 </div>
 <div class="modal-body" id="modalBody"></div>
 </div></div>
+<div class="mm-overlay" id="mmOverlay" onclick="if(event.target.id==='mmOverlay')mmCloseDialog()"><div class="mm-box"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><div style="font-size:15px;font-weight:700">✔️ ยืนยันสถานะการจับคู่แบงค์</div><button class="modal-close" onclick="mmCloseDialog()">&#10005;</button></div><div id="mmBody"></div></div></div>
 <div id="loadingOverlay">
 <div class="loading-logo">Thaidrill</div>
 <div class="loading-title">Financial Executive Dashboard</div>
@@ -1113,7 +1117,11 @@ function openManualMatchDialog(side,docNo){
     '<button onclick="mmSave()" style="background:linear-gradient(135deg,var(--gold),var(--gold2));color:var(--navy);border:none;padding:9px 20px;border-radius:8px;font-weight:700;cursor:pointer;font-family:\'Sarabun\',sans-serif">บันทึก</button>'+
     '</div>'+
     '<div id="mmStatusMsg" style="margin-top:10px;font-size:12px;color:var(--muted)"></div>';
-  openModal('✔️ ยืนยันสถานะการจับคู่แบงค์',html);
+  document.getElementById('mmBody').innerHTML=html;
+  document.getElementById('mmOverlay').classList.add('open');
+}
+function mmCloseDialog(){
+  document.getElementById('mmOverlay').classList.remove('open');
 }
 function mmSetStatus(st){
   if(!MANUAL_MATCH_PENDING)return;
@@ -1151,7 +1159,7 @@ async function mmSave(){
     if(!p.status)delete G.manualMatch[p.side+'|'+p.docNo];
     else G.manualMatch[p.side+'|'+p.docNo]={status:p.status,note:note};
     if(msgEl){msgEl.style.color='var(--green)';msgEl.textContent='✅ บันทึกแล้ว';}
-    setTimeout(function(){closeModal();try{dmRender();}catch(e){}},500);
+    setTimeout(function(){mmCloseDialog();try{dmRender();}catch(e){}},500);
   } else {
     if(msgEl){msgEl.style.color='var(--red)';msgEl.textContent='❌ บันทึกไม่สำเร็จ: '+(res.error||'ไม่ทราบสาเหตุ')+' — ต้องเพิ่มฟังก์ชัน saveManualMatch ใน Apps Script ก่อน';}
   }
