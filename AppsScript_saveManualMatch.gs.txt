@@ -1,0 +1,104 @@
+// ============================================================
+// ฟีเจอร์ใหม่: "ยืนยันสถานะการจับคู่แบงค์เอง" (Manual Match Override)
+// ============================================================
+// แดชบอร์ด (index_new.html v61) ถูกปรับให้มีปุ่มยืนยัน/แก้ไขสถานะ "ตรงกับแบงค์"
+// เองได้แล้วในฝั่งหน้าเว็บ แต่การบันทึกสถานะนี้ต้องพึ่ง Apps Script (.gs) ฝั่ง
+// Google Sheets ที่ยังไม่มีอยู่ — ทำตามขั้นตอนนี้เพื่อให้ปุ่ม "บันทึก" ในหน้าเว็บทำงานได้จริง
+//
+// ---- ขั้นตอนติดตั้ง ----
+// 1. เปิด Google Sheets "SAP_B1 Data" (หรือไฟล์ที่แดชบอร์ดเชื่อมอยู่)
+// 2. สร้างชีตใหม่ชื่อ "MANUAL_MATCH" (ตัวใหญ่-เล็กต้องตรงเป๊ะ ห้ามมีช่องว่าง)
+//    ใส่หัวตารางแถวที่ 1 ตามนี้:
+//    A=# (เว้นว่างไว้ก่อน)  B=Side  C=DocNo  D=Status  E=Note  F=UpdatedAt
+//    (ไม่ต้องใส่ข้อมูลอะไรเพิ่ม ฟังก์ชันด้านล่างจะสร้างชีตนี้ให้อัตโนมัติได้เหมือนกัน
+//     ถ้ายังไม่มี แต่แนะนำให้สร้างเองไว้ก่อนเพื่อความชัดเจน)
+//
+// 3. เปิด เมนู "ส่วนขยาย" (Extensions) > "Apps Script" จากไฟล์ Google Sheets เดียวกัน
+//    (ต้องเป็นโปรเจกต์เดียวกับที่มีฟังก์ชัน doPost ที่รองรับ action:'saveBankStatement'
+//    อยู่แล้ว เพราะแดชบอร์ดยิง request ไปที่ URL เดียวกันสำหรับทุก action)
+//
+// 4. หาฟังก์ชัน doPost(e) ที่มีอยู่แล้ว จะมีลักษณะประมาณนี้ (ตัวอย่าง):
+//
+//      function doPost(e) {
+//        var data = JSON.parse(e.postData.contents);
+//        var result;
+//        if (data.action === 'saveBankStatement') {
+//          result = handleSaveBankStatement(data);
+//        }
+//        // <<< เพิ่มโค้ดตรงนี้ >>>
+//        return ContentService.createTextOutput(JSON.stringify(result))
+//          .setMimeType(ContentService.MimeType.JSON);
+//      }
+//
+//    เพิ่ม else if บล็อกใหม่ต่อจาก if เดิม (ก่อนวงเล็บปิดของเงื่อนไข action ทั้งหมด):
+//
+//      else if (data.action === 'saveManualMatch') {
+//        result = handleSaveManualMatch(data);
+//      }
+//
+//    ถ้า doPost ของจริงเขียนด้วย switch(data.action) แทน if/else ให้เพิ่มเป็น
+//    case 'saveManualMatch': result = handleSaveManualMatch(data); break;
+//
+// 5. วางฟังก์ชัน handleSaveManualMatch() ด้านล่างนี้ไว้ที่ไหนก็ได้ในไฟล์ .gs
+//    (นอกฟังก์ชัน doPost เช่นเดียวกับ handleSaveBankStatement ที่มีอยู่แล้ว)
+//
+// 6. บันทึก (Ctrl+S) แล้ว Deploy ใหม่:
+//    Deploy > Manage deployments > กดไอคอนดินสอ (แก้ไข) ที่ deployment เดิม
+//    > Version: เลือก "New version" > Deploy
+//    *** ถ้าลืมขั้นตอนนี้ โค้ดที่เพิ่มจะไม่มีผลกับ URL ที่แดชบอร์ดเรียกอยู่เลย ***
+//
+// 7. ทดสอบ: เปิดแดชบอร์ด กดปุ่ม "✎" ข้างสถานะ "ตรงกับแบงค์" แถวไหนก็ได้ ยืนยันสถานะ
+//    แล้วกดบันทึก ถ้าขึ้น "✅ บันทึกแล้ว" แสดงว่าติดตั้งสำเร็จ ถ้าขึ้น error ให้ส่ง error
+//    message ที่เห็นกลับมาบอก จะช่วยตรวจให้
+// ============================================================
+
+function handleSaveManualMatch(data) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheetName = 'MANUAL_MATCH';
+    var sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+      sheet.getRange(1, 1, 1, 6).setValues([['#', 'Side', 'DocNo', 'Status', 'Note', 'UpdatedAt']]);
+    }
+
+    var side = String(data.side || '');
+    var docNo = String(data.docNo || '');
+    var status = String(data.status || '');   // 'matched' / 'unmatched' / '' (ว่าง = ล้างการยืนยัน)
+    var note = String(data.note || '');
+
+    if (!side || !docNo) {
+      return { success: false, error: 'ไม่มี side หรือ docNo ส่งมา' };
+    }
+
+    var values = sheet.getDataRange().getValues();
+    var foundRow = -1; // เลขแถวจริงในชีต (1-indexed)
+    for (var i = 1; i < values.length; i++) {
+      if (String(values[i][1]) === side && String(values[i][2]) === docNo) {
+        foundRow = i + 1;
+        break;
+      }
+    }
+
+    var now = new Date();
+
+    // status ว่าง = ผู้ใช้กด "ล้างการยืนยัน" ในหน้าเว็บ -> ลบแถวนี้ทิ้ง กลับไปใช้ระบบจับคู่อัตโนมัติ
+    if (!status) {
+      if (foundRow > 0) sheet.deleteRow(foundRow);
+      return { success: true, action: 'cleared' };
+    }
+
+    if (foundRow > 0) {
+      // มีแถวนี้อยู่แล้ว -> อัปเดตทับ (คงเลข # เดิมไว้ที่คอลัมภ์ A ไม่ต้องแก้)
+      sheet.getRange(foundRow, 2, 1, 5).setValues([[side, docNo, status, note, now]]);
+    } else {
+      // ยังไม่มี -> เพิ่มแถวใหม่ต่อท้าย
+      var nextRow = sheet.getLastRow() + 1;
+      sheet.getRange(nextRow, 1, 1, 6).setValues([[nextRow - 1, side, docNo, status, note, now]]);
+    }
+
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message || String(err) };
+  }
+}
