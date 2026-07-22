@@ -68,6 +68,9 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 .rank{color:var(--muted);font-size:12px;}
 .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;}
 .badge-red{background:rgba(224,92,92,0.15);color:var(--red);}.badge-gold{background:rgba(212,168,67,0.15);color:var(--gold2);}.badge-green{background:rgba(76,175,125,0.15);color:var(--green);}.badge-teal{background:rgba(43,191,179,0.15);color:var(--teal);}.badge-blue{background:rgba(91,143,249,0.15);color:var(--blue);}
+.mm-status-btn{flex:1;padding:12px;border-radius:10px;cursor:pointer;font-family:'Sarabun',sans-serif;font-weight:700;font-size:13px;background:rgba(255,255,255,0.05);color:var(--text2);border:1px solid var(--border);}
+.mm-status-btn.active-green{background:var(--green);color:#fff;border-color:var(--green);}
+.mm-status-btn.active-red{background:var(--red);color:#fff;border-color:var(--red);}
 .aging-item{display:flex;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);}
 .aging-label{font-size:12px;color:var(--text2);min-width:80px;}.aging-bar-wrap{flex:1;margin:0 12px;height:7px;background:rgba(255,255,255,0.06);border-radius:4px;overflow:hidden;}
 .aging-fill{height:7px;border-radius:4px;}.aging-amt{font-weight:600;font-size:12px;min-width:85px;text-align:right;}.aging-pct{font-size:11px;color:var(--muted);min-width:35px;text-align:right;margin-left:8px;}
@@ -745,11 +748,23 @@ async function loadAllData(){
       });
     }catch(e){}
 
+    // MANUAL_MATCH: สถานะ "ยืนยันการตรวจสอบเอง" ของผู้ใช้ ทับผลจับคู่อัตโนมัติ (ออปชันเสริม — ถ้ายังไม่มีชีตนี้ dashboard ยังทำงานได้ปกติ)
+    // คอลัมภ์คาดหวัง: [#, Side('credit'/'debit'), DocNo, Status('matched'/'unmatched'), Note, UpdatedAt]
+    var manualMatch={};
+    try{
+      var qmm=await fetchSheet('MANUAL_MATCH');
+      qmm.rows.forEach(function(r){
+        var side=String(r[1]||''),docNo=String(r[2]||''),status=String(r[3]||'').trim(),note=String(r[4]||'');
+        if(!side||!docNo||!status)return;
+        manualMatch[side+'|'+docNo]={status:status,note:note};
+      });
+    }catch(e){}
+
     var allMonths=Object.keys(Object.assign({},recByM,payByM)).sort();
     G={recByM:recByM,payByM:payByM,bankNet:bankNet,bankRows:bankRows,recRows:recRows,payRows:payRows,
        at:at,a30:a30,a60:a60,a90:a90,a90p:a90p,topAR:topAR,arAgeMap:arAgeMap,arRows2:arRows2,arCusts:Object.keys(arByCust).length,
        pt:pt,p30:p30,p60:p60,p60p:p60p,topAP:topAP,apRows2:apRows2,arItemsByDoc:arItemsByDoc,apItemsByDoc:apItemsByDoc,sapMonthlyByAcct:sapMonthlyByAcct,
-       et:et,topExp:exps.slice(0,10),expAll:expAll,expDetailByAcct:expDetailByAcct,arRowCount:q04.rows.length,apRowCount:q05.rows.length,allMonths:allMonths,plRows:plRows,apCatRows:apCatRows};
+       et:et,topExp:exps.slice(0,10),expAll:expAll,expDetailByAcct:expDetailByAcct,arRowCount:q04.rows.length,apRowCount:q05.rows.length,allMonths:allMonths,plRows:plRows,apCatRows:apCatRows,manualMatch:manualMatch};
     ACTIVE_MONTHS=[...allMonths];
     buildFilters(allMonths);
     st.textContent='\u0e2a\u0e23\u0e49\u0e32\u0e07\u0e01\u0e23\u0e32\u0e1f\u2026';st.className='loading-status ok';
@@ -1058,9 +1073,92 @@ function findBatchMatchCached(g,side){
   if(!(key in DM_BATCH_CACHE))DM_BATCH_CACHE[key]=findBatchMatch(g.rows,side);
   return DM_BATCH_CACHE[key];
 }
+// ===== ยืนยันสถานะการจับคู่แบงค์เอง (manual override) — บันทึกลง Google Sheets (MANUAL_MATCH) =====
+function manualMatchFor(side,docNo){
+  return (G.manualMatch||{})[side+'|'+String(docNo||'')]||null;
+}
+function effectiveRowMatch(r,side){
+  var ov=manualMatchFor(side,r.docNo);
+  if(ov)return ov.status==='matched'?{manual:true,note:ov.note}:null;
+  return rowMatchCached(r,side);
+}
+function renderMatchBadge(side,docNo,autoMatch,opts){
+  opts=opts||{};
+  var ov=manualMatchFor(side,docNo);
+  var inner;
+  if(ov){
+    inner=ov.status==='matched'
+      ?'<span class="badge badge-green">✅ ยืนยันเอง'+(ov.note?' — '+ov.note:'')+'</span>'
+      :'<span class="badge badge-red">❌ ยืนยันว่าไม่ตรง'+(ov.note?' — '+ov.note:'')+'</span>';
+  } else {
+    inner=bankMatchBadge(autoMatch);
+  }
+  if(opts.clickable===false)return inner;
+  var docEsc=String(docNo||'').replace(/'/g,"\\'");
+  return '<span style="cursor:pointer" onclick="event.stopPropagation();openManualMatchDialog(\''+side+'\',\''+docEsc+'\')" title="กดเพื่อยืนยัน/แก้ไขสถานะเอง">'+inner+' <span style="opacity:0.45;font-size:10px">✎</span></span>';
+}
+var MANUAL_MATCH_PENDING=null;
+function openManualMatchDialog(side,docNo){
+  var ov=manualMatchFor(side,docNo)||{status:'',note:''};
+  MANUAL_MATCH_PENDING={side:side,docNo:docNo,status:ov.status||''};
+  var html=
+    '<div style="font-size:13px;margin-bottom:14px">เอกสาร <strong style="color:var(--gold2)">'+docNo+'</strong> — เลือกสถานะที่ตรวจสอบเองแล้ว</div>'+
+    '<div style="display:flex;gap:10px;margin-bottom:14px">'+
+    '<button id="mmBtnMatched" class="mm-status-btn'+(ov.status==='matched'?' active-green':'')+'" onclick="mmSetStatus(\'matched\')">✅ ยืนยันว่าตรงกับแบงค์แล้ว</button>'+
+    '<button id="mmBtnUnmatched" class="mm-status-btn'+(ov.status==='unmatched'?' active-red':'')+'" onclick="mmSetStatus(\'unmatched\')">❌ ยืนยันว่าไม่ตรง/ต้องตรวจใหม่</button>'+
+    '</div>'+
+    '<textarea id="mmNote" placeholder="หมายเหตุ (เช่น จ่ายจากบัญชี KKP ไม่ใช่ KBANK ตามที่ระบบจับคู่)" style="width:100%;min-height:70px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-family:\'Sarabun\',sans-serif;font-size:12px;margin-bottom:14px">'+(ov.note||'')+'</textarea>'+
+    '<div style="display:flex;gap:8px;justify-content:flex-end">'+
+    (ov.status?'<button onclick="mmClear()" style="background:transparent;border:1px solid var(--border);color:var(--muted);padding:9px 16px;border-radius:8px;cursor:pointer;font-family:\'Sarabun\',sans-serif">ล้างการยืนยัน (กลับไปใช้ระบบอัตโนมัติ)</button>':'')+
+    '<button onclick="mmSave()" style="background:linear-gradient(135deg,var(--gold),var(--gold2));color:var(--navy);border:none;padding:9px 20px;border-radius:8px;font-weight:700;cursor:pointer;font-family:\'Sarabun\',sans-serif">บันทึก</button>'+
+    '</div>'+
+    '<div id="mmStatusMsg" style="margin-top:10px;font-size:12px;color:var(--muted)"></div>';
+  openModal('✔️ ยืนยันสถานะการจับคู่แบงค์',html);
+}
+function mmSetStatus(st){
+  if(!MANUAL_MATCH_PENDING)return;
+  MANUAL_MATCH_PENDING.status=st;
+  var bm=document.getElementById('mmBtnMatched'), bu=document.getElementById('mmBtnUnmatched');
+  if(bm)bm.classList.toggle('active-green',st==='matched');
+  if(bu)bu.classList.toggle('active-red',st==='unmatched');
+}
+function mmClear(){
+  if(!MANUAL_MATCH_PENDING)return;
+  MANUAL_MATCH_PENDING.status='';
+  var note=document.getElementById('mmNote');if(note)note.value='';
+  var bm=document.getElementById('mmBtnMatched'), bu=document.getElementById('mmBtnUnmatched');
+  if(bm)bm.classList.remove('active-green');
+  if(bu)bu.classList.remove('active-red');
+}
+async function saveManualMatchToSheet(side,docNo,status,note){
+  try{
+    var payload={action:'saveManualMatch',side:side,docNo:docNo,status:status,note:note};
+    var res=await fetch(APPS_URL,{method:'POST',mode:'cors',credentials:'omit',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)});
+    if(!res.ok)return{success:false,error:'HTTP '+res.status};
+    var data=await res.json();
+    if(data.success)return{success:true};
+    return{success:false,error:data.error||'Apps Script returned no error detail'};
+  }catch(err){return{success:false,error:err.message||String(err)};}
+}
+async function mmSave(){
+  var p=MANUAL_MATCH_PENDING;if(!p)return;
+  var note=(document.getElementById('mmNote')||{}).value||'';
+  var msgEl=document.getElementById('mmStatusMsg');
+  if(msgEl){msgEl.style.color='var(--muted)';msgEl.textContent='กำลังบันทึก…';}
+  var res=await saveManualMatchToSheet(p.side,p.docNo,p.status,note);
+  if(res.success){
+    G.manualMatch=G.manualMatch||{};
+    if(!p.status)delete G.manualMatch[p.side+'|'+p.docNo];
+    else G.manualMatch[p.side+'|'+p.docNo]={status:p.status,note:note};
+    if(msgEl){msgEl.style.color='var(--green)';msgEl.textContent='✅ บันทึกแล้ว';}
+    setTimeout(function(){closeModal();try{dmRender();}catch(e){}},500);
+  } else {
+    if(msgEl){msgEl.style.color='var(--red)';msgEl.textContent='❌ บันทึกไม่สำเร็จ: '+(res.error||'ไม่ทราบสาเหตุ')+' — ต้องเพิ่มฟังก์ชัน saveManualMatch ใน Apps Script ก่อน';}
+  }
+}
 function groupMatchBadge(g,side){
   var total=g.rows.length,matched=0;
-  g.rows.forEach(function(r){if(rowMatchCached(r,side))matched++;});
+  g.rows.forEach(function(r){if(effectiveRowMatch(r,side))matched++;});
   if(matched===total)return '<span class="badge badge-green">'+matched+'/'+total+' พบ</span>';
   var batch=findBatchMatchCached(g,side);
   if(batch){
@@ -1264,7 +1362,7 @@ function dmRender(){
           var docCell=hasItems
             ?'<td style="padding-left:22px;color:var(--teal);font-size:12px;cursor:pointer;font-weight:600" onclick="dmToggleItems(\''+r.docNo+'\')">'+(itemsExp?'▾':'▸')+' ↳ '+r.docNo+'</td>'
             :'<td style="padding-left:22px;color:var(--muted);font-size:12px">↳ '+(r.docNo||'—')+'</td>';
-          var subLastCell=cfg.matchBank?bankMatchBadge(rowMatchCached(r,cfg.matchBank)):((cfg.agingKind&&r.days!==null&&r.days!==undefined)?agingBadge(r.days,cfg.agingKind):'');
+          var subLastCell=cfg.matchBank?renderMatchBadge(cfg.matchBank,r.docNo,rowMatchCached(r,cfg.matchBank)):((cfg.agingKind&&r.days!==null&&r.days!==undefined)?agingBadge(r.days,cfg.agingKind):'');
           var sub='<tr style="background:rgba(255,255,255,0.015)"><td></td>'+docCell+'<td class="right" style="font-size:12px;color:var(--text2)">'+fmtFull(r.amount)+'</td><td></td><td></td><td style="font-size:12px;color:var(--muted)">'+(r.dateDisplay||'—')+'</td><td>'+subLastCell+'</td></tr>';
           if(itemsExp)sub+=dmItemsRowHtml(items,7);
           return sub;
@@ -1302,7 +1400,7 @@ function dmRender(){
       var docCell=hasItems
         ?'<td style="color:var(--teal);font-size:12px;cursor:pointer;font-weight:600" onclick="dmToggleItems(\''+r.docNo+'\')">'+(itemsExp?'▾':'▸')+' '+r.docNo+'</td>'
         :'<td style="color:var(--muted);font-size:12px">'+(r.docNo||'—')+'</td>';
-      var matchCell=cfg.matchBank?'<td>'+bankMatchBadge(rowMatchCached(r,cfg.matchBank))+'</td>':'';
+      var matchCell=cfg.matchBank?'<td>'+renderMatchBadge(cfg.matchBank,r.docNo,rowMatchCached(r,cfg.matchBank))+'</td>':'';
       var row='<tr style="background:'+(i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)')+'"><td>'+r.name+'</td>'+docCell+'<td class="right gold">'+fmtFull(r.amount)+'</td>'+(cfg.agingKind?'<td class="right">'+(r.days!==null&&r.days!==undefined?Math.round(r.days).toLocaleString('th-TH'):'—')+'</td>':'')+matchCell+'<td style="font-size:12px;color:var(--muted)">'+(r.dateDisplay||'—')+'</td></tr>';
       if(itemsExp)row+=dmItemsRowHtml(items,flatCols);
       return row;
@@ -1395,7 +1493,7 @@ function dmPrint(){
         // ถ้ากลุ่มนี้ถูกกด + (ขยาย) อยู่บนหน้าจอ ให้แสดงรายการย่อยในรายงานด้วยเช่นกัน
         if(s.expanded&&s.expanded[g.name]){
           row+=g.rows.slice().sort(function(a,b){return (dateKey(a.dateStr)||'').localeCompare(dateKey(b.dateStr)||'');}).map(function(r){
-            var subLastCell=cfg.matchBank?bankMatchBadge(rowMatchCached(r,cfg.matchBank)):((r.days!==null&&r.days!==undefined)?Math.round(r.days).toLocaleString('th-TH')+' วัน':'—');
+            var subLastCell=cfg.matchBank?renderMatchBadge(cfg.matchBank,r.docNo,rowMatchCached(r,cfg.matchBank),{clickable:false}):((r.days!==null&&r.days!==undefined)?Math.round(r.days).toLocaleString('th-TH')+' วัน':'—');
             return '<tr class="pr-subrow"><td>&nbsp;&nbsp;↳ '+(r.docNo||'—')+'</td><td class="pr-right">'+fmtFull(r.amount)+'</td><td></td><td></td><td>'+(r.dateDisplay||'—')+'</td><td>'+subLastCell+'</td></tr>';
           }).join('');
         }
