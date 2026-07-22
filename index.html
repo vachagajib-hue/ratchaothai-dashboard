@@ -1201,6 +1201,7 @@ function dmRangeLabel(){
   return (from||'เริ่ม')+' — '+(to||'ปัจจุบัน');
 }
 function dmRender(){
+  var dmPrevScroll=(document.getElementById('dmScrollWrap')||{}).scrollTop||0;
   var s=DM.state, cfg=DM.cfg;
   var filtered=dmFilterRows();
   var totalAll=filtered.reduce(function(a,r){return a+(r.amount||0);},0);
@@ -1242,7 +1243,7 @@ function dmRender(){
   html+='</div>';
   html+='<div style="font-size:11px;color:var(--muted);margin-bottom:8px">ช่วงข้อมูล: <strong style="color:var(--gold2)">'+dmRangeLabel()+'</strong> — พบ '+filtered.length+' รายการ, ยอดรวม <strong style="color:var(--text)">'+fmtFull(totalAll)+'</strong> บาท</div>';
 
-  html+='<div style="overflow-x:auto;max-height:420px;overflow-y:auto"><table><thead style="position:sticky;top:0;background:#1B2E45;z-index:2"><tr>';
+  html+='<div id="dmScrollWrap" style="overflow-x:auto;max-height:420px;overflow-y:auto"><table><thead style="position:sticky;top:0;background:#1B2E45;z-index:2"><tr>';
   if(cfg.groupable&&s.view==='group'){
     html+='<th style="width:26px"></th><th>ชื่อ</th><th style="text-align:right">ยอดรวม</th><th style="text-align:right">% รวม</th><th style="text-align:right">จำนวนรายการ</th><th>'+(cfg.matchBank?'วันที่แรกสุด':'กำหนดชำระใกล้สุด')+'</th><th>'+(cfg.matchBank?'ตรงกับแบงค์':'Aging สูงสุด')+'</th></tr></thead><tbody>';
     var groups=dmGroup(filtered);
@@ -1309,6 +1310,8 @@ function dmRender(){
   html+='</tbody></table></div>';
 
   document.getElementById('dmDynamic').innerHTML=html;
+  var dmNewWrap=document.getElementById('dmScrollWrap');
+  if(dmNewWrap)dmNewWrap.scrollTop=dmPrevScroll;
   DM.state.lastFiltered=filtered;
 }
 function dmToggleItems(docNo){
@@ -2089,14 +2092,19 @@ async function rHandleFiles(files){
       el.textContent=tag+'❌ '+file.name+' — อ่านไฟล์ได้แต่ไม่พบรายการ ตรวจสอบ format CSV (แทง 1: วันที่,รายละเอียด,Debit,Credit,Balance)';
       continue;
     }
+    // ใช้วิธีดึงเลขบัญชีแบบเดียวกับโซน CSV ในแท็บ "อ่าน PDF Bank" (csvSheetHandle)
+    // เพื่อไม่ให้ AcctNo/AcctName/Period ออกมาไม่เหมือนกันแล้วแต่ว่าอัปโหลดผ่านโซนไหน
+    var acctMatch=file.name.match(/(\d[\d\-x]{5,})/i);
+    var acctNo=acctMatch?acctMatch[1]:file.name.replace(/\.(csv|txt)$/i,'');
+    var period=txns.length?txns[0].date+'-'+txns[txns.length-1].date:'';
     if(!RBANK_DATA[bk])RBANK_DATA[bk]={uploaded:true,accounts:[]};
     RBANK_DATA[bk].uploaded=true;
-    RBANK_DATA[bk].accounts.push({acctNo:file.name.replace(/\.(csv|txt)$/i,''),name:file.name,bal:lastBal,txns:txns});
+    RBANK_DATA[bk].period=period||RBANK_DATA[bk].period;
+    RBANK_DATA[bk].accounts.push({acctNo:acctNo,name:acctNo+' (CSV)',bal:lastBal,txns:txns});
     el.className='upload-result';el.textContent=tag+'✅ '+file.name+' ('+bk+') — '+txns.length+' รายการ — กำลังบันทึกลง Google Sheets…';
     RACTIVE=bk;document.querySelectorAll('.recon-bank-btn').forEach(function(b){b.classList.remove('active');});var btn=document.getElementById('rbtn-'+bk);if(btn)btn.classList.add('active');
     renderRecon();
-    var acctNo=file.name.replace(/\.(csv|txt)$/i,'');
-    var res=await saveBankToSheetsRetry(bk, acctNo, acctNo, '', txns.map(function(t){return{date:t.date,description:t.desc,debit:t.debit,credit:t.credit,balance:t.bal};}));
+    var res=await saveBankToSheetsRetry(bk, acctNo, acctNo+' (CSV)', period, txns.map(function(t){return{date:t.date,description:t.desc,debit:t.debit,credit:t.credit,balance:t.bal};}));
     if(res.success){el.className='upload-result';el.textContent=tag+'✅ '+file.name+' ('+bk+') — '+txns.length+' รายการ — ✅ บันทึกลง Google Sheets แล้ว';}
     else{el.className='upload-error';el.textContent=tag+'⚠️ '+file.name+' — อ่านไฟล์สำเร็จ แต่บันทึกลง Google Sheets ไม่สำเร็จ (ลอง 2 ครั้งแล้ว): '+(res.error||'ไม่ทราบสาเหตุ');}
     await new Promise(function(r){setTimeout(r,300);});
@@ -2481,11 +2489,28 @@ function pdfDownloadCSV(pdfId){
   var url=URL.createObjectURL(blob);var a=document.createElement('a');
   a.href=url;a.download=(r.bank||'BANK')+'_'+r.accountNumber+'_'+(r.period||'').replace(/\//g,'')+'.csv';a.click();URL.revokeObjectURL(url);
 }
-function pdfSendToRecon(pdfId){
-  var pf=pdfFiles.find(function(f){return f.id===pdfId;});if(!pf||!pf.result)return;
-  var bk=pf.result.bank||pf.bank;
+async function pdfSendToRecon(pdfId){
+  var pf=pdfFiles.find(function(f){return f.id===pdfId;});
+  if(!pf||!pf.result){alert('ยังไม่มีข้อมูลจาก PDF นี้ — อ่าน PDF ให้เสร็จก่อน');return;}
+  var r=pf.result;
+  var bk=r.bank||pf.bank;
+  var acctNo=r.accountNumber||pf.file.name.replace(/\.pdf$/i,'');
   switchTab(5);selBank(bk);
-  setTimeout(function(){var el=document.getElementById('rUploadResult');if(el){el.className='upload-result';el.textContent='\u2705 \u0e42\u0e2d\u0e19\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e08\u0e32\u0e01 PDF: '+pf.result.accountNumber+' ('+pf.result.txns.length+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23)';}},200);
+  var el=document.getElementById('rUploadResult');
+  if(el){el.className='upload-result';el.textContent='กำลังบันทึกข้อมูลจาก PDF: '+acctNo+' ('+r.txns.length+' รายการ) ลง Google Sheets…';}
+  var res=await saveBankToSheetsRetry(bk, acctNo, r.accountName||acctNo, r.period||'', r.txns);
+  if(res.success){
+    if(!RBANK_DATA[bk])RBANK_DATA[bk]={uploaded:true,period:r.period,accounts:[]};
+    RBANK_DATA[bk].uploaded=true;
+    RBANK_DATA[bk].period=r.period||RBANK_DATA[bk].period;
+    var acctData={acctNo:acctNo,name:r.accountName||acctNo,bal:r.closingBalance||0,txns:r.txns.map(function(t){return{date:t.date,desc:t.description,debit:t.debit,credit:t.credit,bal:t.balance};})};
+    var existIdx=RBANK_DATA[bk].accounts.findIndex(function(a){return a.acctNo===acctNo;});
+    if(existIdx>=0)RBANK_DATA[bk].accounts[existIdx]=acctData;else RBANK_DATA[bk].accounts.push(acctData);
+    if(el){el.className='upload-result';el.textContent='✅ บันทึกข้อมูลจาก PDF: '+acctNo+' ('+r.txns.length+' รายการ) ลง Google Sheets สำเร็จ';}
+    if(document.getElementById('page5').classList.contains('active'))renderRecon();
+  } else {
+    if(el){el.className='upload-error';el.textContent='❌ บันทึกข้อมูลจาก PDF ไม่สำเร็จ: '+(res.error||'ไม่ทราบสาเหตุ')+' — ลองกด "ส่งไปกระทบยอด" อีกครั้ง';}
+  }
 }
 
 
