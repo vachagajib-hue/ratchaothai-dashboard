@@ -601,31 +601,44 @@ function resetFilter(){
   renderDashboard(G);
 }
 
+// ดึงข้อมูลเป็น "ชุดละ N ตัวพร้อมกัน" แทนพร้อมกันหมดทีเดียว หรือทีละตัวเรียงกัน
+// เหตุผล: ยิงพร้อมกันหมด 13 ตัวทำให้ Apps Script endpoint รับคำขอชนกันเยอะเกินไปในเวลาเดียว
+// (โควต้าจำนวนงานที่ทำพร้อมกันต่อผู้ใช้ของ Google Apps Script) ทำให้บางครั้งบางชีตพัง
+// การยิงเป็นชุดเล็กๆ (batch) ยังเร็วกว่าทีละตัวมาก แต่ไม่โหลด endpoint หนักเกินไปจนล้ม
+async function fetchBatched(fns, batchSize){
+  var out=[];
+  for(var i=0;i<fns.length;i+=batchSize){
+    var batch=fns.slice(i,i+batchSize).map(function(fn){return fn();});
+    var batchResults=await Promise.all(batch);
+    out=out.concat(batchResults);
+  }
+  return out;
+}
 async function loadAllData(){
   var ov=document.getElementById('loadingOverlay'),st=document.getElementById('loadStatus');
   ov.style.display='flex';ov.style.opacity='1';
   try{
-    st.textContent='กำลังดึงข้อมูลทั้งหมด (พร้อมกัน)…';
-    // ดึงทุกชีตพร้อมกันแทนการรอทีละชีต (Promise.all) — เร็วขึ้นมาก เพราะเป็นแค่การอ่านข้อมูล
-    // ไม่มีการเขียนทับกัน จึงไม่มีความเสี่ยงแบบตอนบันทึก (save) ที่ยังคงต้องทำทีละรายการเหมือนเดิม
+    st.textContent='กำลังดึงข้อมูลทั้งหมด (ทยอยพร้อมกันเป็นชุด)…';
+    // ดึงข้อมูลเป็นชุดละ 4 ตัวพร้อมกัน (ไม่ใช่พร้อมกันหมดทีเดียว) — เร็วกว่าทีละตัวเรียงกันมาก
+    // แต่ไม่โหลด Apps Script endpoint หนักเกินไปจนบางคำขอล้มเหลว (ดูคอมเมนต์ fetchBatched ด้านบน)
     // ชีตออปชันเสริม (Q09/Q10/Q11/Q12/Q13/Q14/MANUAL_MATCH) ถ้าดึงไม่ได้ (ยังไม่มีชีต) จะ fallback
     // เป็น {rows:[]} เงียบๆ เหมือนพฤติกรรม try/catch เดิม ไม่กระทบชีตหลัก
     var optionalFallback=function(){return {rows:[]};};
-    var results=await Promise.all([
-      fetchSheet('Q01_CASH_RECEIPT'),
-      fetchSheet('Q02_CASH_PAYMENT'),
-      fetchSheet('Q03_BANK_BALANCE'),
-      fetchSheet('Q04_AR_AGING'),
-      fetchSheet('Q05_AP_AGING'),
-      fetchSheet('Q08_EXPENSE_BY_ACCOUNT'),
-      fetchSheet('Q14_EXPENSE_DETAIL_BY_ACCOUNT').catch(optionalFallback),
-      fetchSheet('Q09_AR_INVOICE_ITEMS').catch(optionalFallback),
-      fetchSheet('Q10_AP_INVOICE_ITEMS').catch(optionalFallback),
-      fetchSheet('Q11_SAP_MONTHLY_BALANCE').catch(optionalFallback),
-      fetchSheet('Q12_PL_BY_ACCOUNT_MONTHLY').catch(optionalFallback),
-      fetchSheet('Q13_AP_OUTSTANDING_BY_CATEGORY').catch(optionalFallback),
-      fetchSheet('MANUAL_MATCH').catch(optionalFallback)
-    ]);
+    var results=await fetchBatched([
+      function(){return fetchSheet('Q01_CASH_RECEIPT');},
+      function(){return fetchSheet('Q02_CASH_PAYMENT');},
+      function(){return fetchSheet('Q03_BANK_BALANCE');},
+      function(){return fetchSheet('Q04_AR_AGING');},
+      function(){return fetchSheet('Q05_AP_AGING');},
+      function(){return fetchSheet('Q08_EXPENSE_BY_ACCOUNT');},
+      function(){return fetchSheet('Q14_EXPENSE_DETAIL_BY_ACCOUNT').catch(optionalFallback);},
+      function(){return fetchSheet('Q09_AR_INVOICE_ITEMS').catch(optionalFallback);},
+      function(){return fetchSheet('Q10_AP_INVOICE_ITEMS').catch(optionalFallback);},
+      function(){return fetchSheet('Q11_SAP_MONTHLY_BALANCE').catch(optionalFallback);},
+      function(){return fetchSheet('Q12_PL_BY_ACCOUNT_MONTHLY').catch(optionalFallback);},
+      function(){return fetchSheet('Q13_AP_OUTSTANDING_BY_CATEGORY').catch(optionalFallback);},
+      function(){return fetchSheet('MANUAL_MATCH').catch(optionalFallback);}
+    ], 4);
     var q01=results[0],q02=results[1],q03=results[2],q04=results[3],q05=results[4],q08=results[5],
         q14=results[6],q09=results[7],q10=results[8],q11=results[9],q12=results[10],q13=results[11],qmm=results[12];
 
