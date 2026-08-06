@@ -605,23 +605,40 @@ async function loadAllData(){
   var ov=document.getElementById('loadingOverlay'),st=document.getElementById('loadStatus');
   ov.style.display='flex';ov.style.opacity='1';
   try{
-    st.textContent='\u0e01\u0e33\u0e25\u0e31\u0e07\u0e14\u0e36\u0e07 Q01\u2026';
-    var q01=await fetchSheet('Q01_CASH_RECEIPT');
+    st.textContent='กำลังดึงข้อมูลทั้งหมด (พร้อมกัน)…';
+    // ดึงทุกชีตพร้อมกันแทนการรอทีละชีต (Promise.all) — เร็วขึ้นมาก เพราะเป็นแค่การอ่านข้อมูล
+    // ไม่มีการเขียนทับกัน จึงไม่มีความเสี่ยงแบบตอนบันทึก (save) ที่ยังคงต้องทำทีละรายการเหมือนเดิม
+    // ชีตออปชันเสริม (Q09/Q10/Q11/Q12/Q13/Q14/MANUAL_MATCH) ถ้าดึงไม่ได้ (ยังไม่มีชีต) จะ fallback
+    // เป็น {rows:[]} เงียบๆ เหมือนพฤติกรรม try/catch เดิม ไม่กระทบชีตหลัก
+    var optionalFallback=function(){return {rows:[]};};
+    var results=await Promise.all([
+      fetchSheet('Q01_CASH_RECEIPT'),
+      fetchSheet('Q02_CASH_PAYMENT'),
+      fetchSheet('Q03_BANK_BALANCE'),
+      fetchSheet('Q04_AR_AGING'),
+      fetchSheet('Q05_AP_AGING'),
+      fetchSheet('Q08_EXPENSE_BY_ACCOUNT'),
+      fetchSheet('Q14_EXPENSE_DETAIL_BY_ACCOUNT').catch(optionalFallback),
+      fetchSheet('Q09_AR_INVOICE_ITEMS').catch(optionalFallback),
+      fetchSheet('Q10_AP_INVOICE_ITEMS').catch(optionalFallback),
+      fetchSheet('Q11_SAP_MONTHLY_BALANCE').catch(optionalFallback),
+      fetchSheet('Q12_PL_BY_ACCOUNT_MONTHLY').catch(optionalFallback),
+      fetchSheet('Q13_AP_OUTSTANDING_BY_CATEGORY').catch(optionalFallback),
+      fetchSheet('MANUAL_MATCH').catch(optionalFallback)
+    ]);
+    var q01=results[0],q02=results[1],q03=results[2],q04=results[3],q05=results[4],q08=results[5],
+        q14=results[6],q09=results[7],q10=results[8],q11=results[9],q12=results[10],q13=results[11],qmm=results[12];
+
+    st.textContent='กำลังประมวลผล…';
     var recByM={},recRows=[];
     q01.rows.forEach(function(r){var mk=getMK(r[1]),amt=parseFloat(r[5])||0;if(mk)recByM[mk]=(recByM[mk]||0)+amt;recRows.push({date:r[1],docNo:String(r[2]||''),custName:String(r[4]||''),amt:amt,bankCode:String(r[6]||'').trim(),bankName:String(r[7]||'').trim()});});
 
-    st.textContent='\u0e01\u0e33\u0e25\u0e31\u0e07\u0e14\u0e36\u0e07 Q02\u2026';
-    var q02=await fetchSheet('Q02_CASH_PAYMENT');
     var payByM={},payRows=[];
     q02.rows.forEach(function(r){var mk=getMK(r[1]),amt=parseFloat(r[5])||0;if(mk)payByM[mk]=(payByM[mk]||0)+amt;payRows.push({date:r[1],docNo:String(r[2]||''),vendName:String(r[4]||''),amt:amt,bankCode:String(r[6]||'').trim(),bankName:String(r[7]||'').trim()});});
 
-    st.textContent='\u0e01\u0e33\u0e25\u0e31\u0e07\u0e14\u0e36\u0e07 Q03\u2026';
-    var q03=await fetchSheet('Q03_BANK_BALANCE');
     var bankNet=0,bankRows=[];
     q03.rows.forEach(function(r){var code=repairAcctCode(r[1]),bal=parseFloat(r[3])||0;if(code.includes('-')){bankNet+=bal;bankRows.push({code:code,name:String(r[2]||''),bal:bal});}});
 
-    st.textContent='\u0e01\u0e33\u0e25\u0e31\u0e07\u0e14\u0e36\u0e07 Q04\u2026';
-    var q04=await fetchSheet('Q04_AR_AGING');
     var at=0,a30=0,a60=0,a90=0,a90p=0;
     var arByCust={},arAgeMap={},arRows2=[];
     q04.rows.forEach(function(r){
@@ -632,8 +649,6 @@ async function loadAllData(){
     });
     var topAR=Object.entries(arByCust).sort(function(a,b){return b[1]-a[1];}).slice(0,10);
 
-    st.textContent='\u0e01\u0e33\u0e25\u0e31\u0e07\u0e14\u0e36\u0e07 Q05\u2026';
-    var q05=await fetchSheet('Q05_AP_AGING');
     var pt=0,p30=0,p60=0,p60p=0;
     var apByVen={},apRows2=[];
     q05.rows.forEach(function(r){
@@ -644,8 +659,6 @@ async function loadAllData(){
     });
     var topAP=Object.entries(apByVen).sort(function(a,b){return b[1]-a[1];}).slice(0,10);
 
-    st.textContent='\u0e01\u0e33\u0e25\u0e31\u0e07\u0e14\u0e36\u0e07 Q08\u2026';
-    var q08=await fetchSheet('Q08_EXPENSE_BY_ACCOUNT');
     var expMap={},expAll=[],et=0;
     q08.rows.forEach(function(r){
       var name=String(r[2]||''),code=String(r[1]||'');
@@ -659,7 +672,6 @@ async function loadAllData(){
     Object.keys(expMap).forEach(function(k){var e=expMap[k];expAll.push(e);if(e.amt>0)et+=e.amt;});
     var expDetailByAcct={};
     try{
-      var q14=await fetchSheet('Q14_EXPENSE_DETAIL_BY_ACCOUNT');
       q14.rows.forEach(function(r){
         var code=String(r[1]||'').trim();
         if(!code)return;
@@ -675,7 +687,6 @@ async function loadAllData(){
     // คอลัมภ์คาดหวัง: [#, CardCode, CardName, DocNum, DocDate, DocDueDate, Balance, AgingDays, LineNum, ItemCode, ItemName, Quantity, Price, LineTotal]
     var arItemsByDoc={};
     try{
-      var q09=await fetchSheet('Q09_AR_INVOICE_ITEMS');
       q09.rows.forEach(function(r){
         var docNo=String(r[3]||'');if(!docNo)return;
         if(!arItemsByDoc[docNo])arItemsByDoc[docNo]=[];
@@ -684,7 +695,6 @@ async function loadAllData(){
     }catch(e){}
     var apItemsByDoc={};
     try{
-      var q10=await fetchSheet('Q10_AP_INVOICE_ITEMS');
       q10.rows.forEach(function(r){
         var docNo=String(r[3]||'');if(!docNo)return;
         if(!apItemsByDoc[docNo])apItemsByDoc[docNo]=[];
@@ -696,7 +706,6 @@ async function loadAllData(){
     // คอลัมภ์คาดหวัง: [#, AcctCode, AcctName, YearMonth('YYYY-MM'), EndOfMonthBalance]
     var sapMonthlyByAcct={};
     try{
-      var q11=await fetchSheet('Q11_SAP_MONTHLY_BALANCE');
       q11.rows.forEach(function(r){
         var code=repairAcctCode(r[1]);if(!code)return;
         // Google Sheets มักแปลง '2026-01' เป็นวันที่จริงโดยอัตโนมัติ (แม้จอโชว์เป็น '2026-01')
@@ -721,7 +730,6 @@ async function loadAllData(){
     // คอลัมภ์คาดหวัง: [#, AcctCode, AcctName, Category('REVENUE'/'EXPENSE'), YearMonth('YYYY-MM'), Amount]
     var plRows=[];
     try{
-      var q12=await fetchSheet('Q12_PL_BY_ACCOUNT_MONTHLY');
       q12.rows.forEach(function(r){
         var code=repairAcctCode(r[1]),name=String(r[2]||''),cat=String(r[3]||'').toUpperCase();
         if(!code||(cat!=='REVENUE'&&cat!=='EXPENSE'))return;
@@ -742,7 +750,6 @@ async function loadAllData(){
     // คอลัมภ์คาดหวัง: [#, CardCode, CardName, DocNum, DocDate, DocDueDate, AllocatedBalance, ExpenseAcctCode, Category]
     var apCatRows=[];
     try{
-      var q13=await fetchSheet('Q13_AP_OUTSTANDING_BY_CATEGORY');
       q13.rows.forEach(function(r){
         var name=String(r[2]||''),cat=String(r[8]||'').trim();
         if(!name||!cat)return;
@@ -756,7 +763,6 @@ async function loadAllData(){
     // คอลัมภ์คาดหวัง: [#, Side('credit'/'debit'), DocNo, Status('matched'/'unmatched'), Note, UpdatedAt]
     var manualMatch={};
     try{
-      var qmm=await fetchSheet('MANUAL_MATCH');
       qmm.rows.forEach(function(r){
         var side=String(r[1]||''),docNo=String(r[2]||''),status=String(r[3]||'').trim(),note=String(r[4]||'');
         if(!side||!docNo||!status)return;
@@ -764,6 +770,7 @@ async function loadAllData(){
       });
     }catch(e){}
 
+    
     var allMonths=Object.keys(Object.assign({},recByM,payByM)).sort();
     G={recByM:recByM,payByM:payByM,bankNet:bankNet,bankRows:bankRows,recRows:recRows,payRows:payRows,
        at:at,a30:a30,a60:a60,a90:a90,a90p:a90p,topAR:topAR,arAgeMap:arAgeMap,arRows2:arRows2,arCusts:Object.keys(arByCust).length,
