@@ -391,7 +391,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <div class="recon-section" id="reconMonthlyBalSection" style="display:none">
 <div class="recon-section-title">&#128197; ยอดคงเหลือสิ้นเดือน (Month-end Balance)</div>
 <div style="overflow-x:auto"><table id="reconMonthlyBalTbl">
-<thead><tr><th>บัญชี</th><th style="text-align:right">ม.ค.</th><th style="text-align:right">ก.พ.</th><th style="text-align:right">มี.ค.</th><th style="text-align:right">เม.ย.</th><th style="text-align:right">พ.ค.</th><th style="text-align:right">มิ.ย.</th></tr></thead>
+<thead><tr id="reconMonthlyBalHead"><th>บัญชี</th></tr></thead>
 <tbody id="reconMonthlyBalBody"></tbody>
 </table></div>
 </div>
@@ -2385,6 +2385,8 @@ function renderRecon(){
     // Month-end balance per account: last transaction on/before the end of
     // each month (carried forward if no transaction that month).
     document.getElementById('reconMonthlyBalSection').style.display='block';
+    document.getElementById('reconMonthlyBalHead').innerHTML=
+      '<th>บัญชี</th>'+mlbls.map(function(l){return '<th style="text-align:right">'+l+'</th>';}).join('');
     var balRows=bd.accounts.map(function(a){
       var sorted=(a.txns||[]).slice().sort(function(x,y){return dateKey(x.date).localeCompare(dateKey(y.date));});
       var vals=months.map(function(m){
