@@ -2364,8 +2364,16 @@ function renderRecon(){
 
   if(hasData){
     var allTxns=bd.accounts.reduce(function(arr,a){return arr.concat(a.txns||[]);;},[]);
-    var months=['01','02','03','04','05','06'];
-    var mlbls=['\u0e21.\u0e04.','\u0e01.\u0e1e.','\u0e21\u0e35.\u0e04.','\u0e40\u0e21.\u0e22.','\u0e1e.\u0e04.','\u0e21\u0e34.\u0e22.'];
+    // Month range must follow the actual data present (was hardcoded '01'-'06',
+    // which silently hid every month from July onward regardless of uploaded data).
+    // Scoped to the latest year seen in the transactions so older legacy rows
+    // (e.g. Dec of a prior year) don't stretch the range to all 12 months.
+    var maxYear=0;
+    allTxns.forEach(function(t){var dk0=dateKey(t.date||'');if(dk0&&dk0.length===8){var y0=parseInt(dk0.slice(0,4),10);if(y0>maxYear)maxYear=y0;}});
+    var maxMonthNum=6;
+    allTxns.forEach(function(t){var dk1=dateKey(t.date||'');if(dk1&&dk1.length===8&&parseInt(dk1.slice(0,4),10)===maxYear){var mn1=parseInt(dk1.slice(4,6),10);if(mn1>=1&&mn1<=12&&mn1>maxMonthNum)maxMonthNum=mn1;}});
+    var months=[];for(var _mi=1;_mi<=maxMonthNum;_mi++){months.push(String(_mi).padStart(2,'0'));}
+    var mlbls=months.map(function(m){return DM_MTHAI[m]||m;});
     var cr=months.map(function(m){return allTxns.filter(function(t){return getMonth(t.date||'')===m;}).reduce(function(s,t){return s+(t.credit||0);},0)/1e6;});
     var dr=months.map(function(m){return allTxns.filter(function(t){return getMonth(t.date||'')===m;}).reduce(function(s,t){return s+(t.debit||0);},0)/1e6;});
     chartInstances['reconMonthlyBar']=new Chart(document.getElementById('reconMonthlyBar'),{type:'bar',data:{labels:mlbls,datasets:[{label:'\u0e23\u0e31\u0e1a (Credit)',data:cr,backgroundColor:'rgba(76,175,125,0.8)',borderRadius:4},{label:'\u0e08\u0e48\u0e32\u0e22 (Debit)',data:dr,backgroundColor:'rgba(224,92,92,0.8)',borderRadius:4}]},options:{plugins:{legend:{labels:{color:'#8FA3B8',boxWidth:10}}},scales:{x:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#8FA3B8'}},y:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}},afterDataLimits:function(a){if(a.max>0)a.max=a.max*1.15;}}}},plugins:[barLblPlugin]});
