@@ -1230,6 +1230,18 @@ function dmGroupByMonth(rows){
     return g;
   });
 }
+function dmGroupByBank(rows){
+  var map={};
+  rows.forEach(function(r){
+    var code=(r.bankCode||'').trim();
+    var name=(r.bankName||'').trim();
+    var k=code||name||'ไม่ระบุธนาคาร';
+    if(!map[k])map[k]={bankKey:k,bankCode:code,bankName:name||code||'ไม่ระบุธนาคาร',total:0,count:0,rows:[]};
+    var g=map[k];
+    g.total+=r.amount||0; g.count++; g.rows.push(r);
+  });
+  return Object.values(map);
+}
 function dmFilterRows(){
   var s=DM.state;
   var rows=DM.cfg.rows;
@@ -1360,6 +1372,9 @@ function dmRender(){
     html+='<button class="recon-bank-btn '+(s.view==='group'?'active':'')+'" onclick="DM.state.view=\'group\';dmRender()">จัดกลุ่มตามชื่อ</button>';
     html+='<button class="recon-bank-btn '+(s.view==='flat'?'active':'')+'" onclick="DM.state.view=\'flat\';dmRender()">รายการทั้งหมด</button>';
     html+='<button class="recon-bank-btn '+(s.view==='month'?'active':'')+'" onclick="DM.state.view=\'month\';dmRender()">📅 แยกตามเดือน</button>';
+    if(cfg.bankGroupable){
+      html+='<button class="recon-bank-btn '+(s.view==='bank'?'active':'')+'" onclick="DM.state.view=\'bank\';dmRender()">🏦 แยกตามธนาคาร</button>';
+    }
     html+='<span style="font-size:11px;color:var(--muted);font-weight:600;margin-left:8px">เรียง:</span>';
     html+='<button class="recon-bank-btn '+(s.sort==='amt'?'active':'')+'" onclick="DM.state.sort=\'amt\';dmRender()">ยอดมาก→น้อย</button>';
     html+='<button class="recon-bank-btn '+(s.sort==='name'?'active':'')+'" onclick="DM.state.sort=\'name\';dmRender()">กำหนดชำระ น้อย→มาก</button>';
@@ -1416,6 +1431,23 @@ function dmRender(){
       }
       return row;
     }).join('');
+  } else if(cfg.groupable&&cfg.bankGroupable&&s.view==='bank'){
+    html+='<th style="width:26px"></th><th>ธนาคาร</th><th style="text-align:right">ยอดรวม</th><th style="text-align:right">% รวม</th><th style="text-align:right">จำนวนรายการ</th></tr></thead><tbody>';
+    var bankGroups=dmGroupByBank(filtered);
+    bankGroups.sort(function(a,b){return b.total-a.total;});
+    s.expandedBanks=s.expandedBanks||{};
+    DM.state.lastBankGroups=bankGroups;
+    html+=bankGroups.map(function(g,i){
+      var pct=totalAll>0?(g.total/totalAll*100).toFixed(1):'0.0';
+      var exp=!!s.expandedBanks[g.bankKey];
+      var row='<tr style="background:'+(i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)')+';cursor:pointer" onclick="dmToggleBankIdx('+i+')"><td class="right" style="color:var(--gold2);font-weight:700">'+(exp?'−':'+')+'</td><td style="font-weight:700">🏦 '+g.bankName+(g.bankCode&&g.bankCode!==g.bankName?' <span style="color:var(--muted);font-size:12px">('+g.bankCode+')</span>':'')+'</td><td class="right gold">'+fmtFull(g.total)+'</td><td class="right" style="color:var(--muted)">'+pct+'%</td><td class="right">'+g.count+'</td></tr>';
+      if(exp){
+        row+=g.rows.slice().sort(function(a,b){return (dateKey(a.dateStr)||'').localeCompare(dateKey(b.dateStr)||'');}).map(function(r){
+          return '<tr style="background:rgba(255,255,255,0.015)"><td></td><td style="padding-left:22px;font-size:12px;color:var(--text2)">↳ '+r.name+(r.docNo?' <span style="color:var(--muted)">('+r.docNo+')</span>':'')+'</td><td class="right" style="font-size:12px;color:var(--text2)">'+fmtFull(r.amount)+'</td><td></td><td style="font-size:12px;color:var(--muted)">'+(r.dateDisplay||'—')+'</td></tr>';
+        }).join('');
+      }
+      return row;
+    }).join('');
   } else {
     html+='<th>ชื่อ</th><th>เลขที่เอกสาร</th><th style="text-align:right">'+cfg.amountLabel+'</th>'+(cfg.agingKind?'<th style="text-align:right">อายุ (วัน)</th>':'')+(cfg.matchBank?'<th>ตรงกับแบงค์</th>':'')+'<th>วันที่</th></tr></thead><tbody>';
     var flat=filtered.slice();
@@ -1462,6 +1494,13 @@ function dmToggleGroupIdx(i){
   DM.state.expanded[g.name]=!DM.state.expanded[g.name];
   dmRender();
 }
+function dmToggleBankIdx(i){
+  var g=DM.state.lastBankGroups&&DM.state.lastBankGroups[i];
+  if(!g)return;
+  DM.state.expandedBanks=DM.state.expandedBanks||{};
+  DM.state.expandedBanks[g.bankKey]=!DM.state.expandedBanks[g.bankKey];
+  dmRender();
+}
 function dmToggleMonthIdx(i){
   var g=DM.state.lastMonthGroups&&DM.state.lastMonthGroups[i];
   if(!g)return;
@@ -1482,7 +1521,7 @@ function openDetailModal(cfg){
     var pk=cfg.presetDays.slice().sort()[0];
     defY=+pk.slice(0,4);defM=+pk.slice(4,6);
   }
-  DM.state={view:'group',sort:'name',search:'',moFrom:'',yrFrom:'',moTo:'',yrTo:'',expanded:{},expandedItems:{},calOpen:!!cfg.openCalendar,calYear:defY,calMonth:defM,selectedDays:selectedDays};
+  DM.state={view:'group',sort:'name',search:'',moFrom:'',yrFrom:'',moTo:'',yrTo:'',expanded:{},expandedItems:{},expandedBanks:{},calOpen:!!cfg.openCalendar,calYear:defY,calMonth:defM,selectedDays:selectedDays};
   openModal(cfg.icon+' '+cfg.title, '<div id="dmStats">'+(cfg.statsHtml||'')+'</div><div id="dmDynamic"></div>');
   dmRender();
 }
@@ -1494,6 +1533,11 @@ function dmExportExcel(){
     var totalAll=filtered.reduce(function(a,r){return a+(r.amount||0);},0);
     groups.sort(function(a,b){return s.sort==='name'?(a.earliestKey||'99999999').localeCompare(b.earliestKey||'99999999'):b.total-a.total;});
     data=groups.map(function(g){return {'ชื่อ':g.name,[cfg.amountLabel]:g.total,'% รวม':totalAll>0?+(g.total/totalAll*100).toFixed(1):0,'จำนวนรายการ':g.count,'กำหนดชำระใกล้สุด':g.earliestDisplay||'','Aging สูงสุด (วัน)':g.worstDays||''};});
+  } else if(cfg.groupable&&cfg.bankGroupable&&s.view==='bank'){
+    var bankGroups=dmGroupByBank(filtered);
+    var totalAllB=filtered.reduce(function(a,r){return a+(r.amount||0);},0);
+    bankGroups.sort(function(a,b){return b.total-a.total;});
+    data=bankGroups.map(function(g){return {'ธนาคาร':g.bankName,'รหัสบัญชี':g.bankCode||'',[cfg.amountLabel]:g.total,'% รวม':totalAllB>0?+(g.total/totalAllB*100).toFixed(1):0,'จำนวนรายการ':g.count};});
   } else {
     var flat=filtered.slice();
     flat.sort(function(a,b){return s.sort==='name'?(dateKey(a.dateStr)||'99999999').localeCompare(dateKey(b.dateStr)||'99999999'):(b.amount||0)-(a.amount||0);});
@@ -1528,6 +1572,15 @@ function dmPrint(){
         return row;
       }).join('')+
       '<tr class="pr-sub"><td>รวมทั้งหมด</td><td class="pr-right">'+fmtFull(totalAll)+'</td><td></td><td></td><td></td><td></td></tr>';
+  } else if(cfg.groupable&&cfg.bankGroupable&&s.view==='bank'){
+    var bankGroups=dmGroupByBank(filtered);
+    bankGroups.sort(function(a,b){return b.total-a.total;});
+    rowsHtml='<tr><th>ธนาคาร</th><th class="pr-right">'+cfg.amountLabel+'</th><th class="pr-right">% รวม</th><th class="pr-right">จำนวนรายการ</th></tr>'+
+      bankGroups.map(function(g){
+        var pct=totalAll>0?(g.total/totalAll*100).toFixed(1):'0.0';
+        return '<tr><td>'+g.bankName+(g.bankCode&&g.bankCode!==g.bankName?' ('+g.bankCode+')':'')+'</td><td class="pr-right">'+fmtFull(g.total)+'</td><td class="pr-right">'+pct+'%</td><td class="pr-right">'+g.count+'</td></tr>';
+      }).join('')+
+      '<tr class="pr-sub"><td>รวมทั้งหมด</td><td class="pr-right">'+fmtFull(totalAll)+'</td><td></td><td></td></tr>';
   } else {
     var flat=filtered.slice();
     flat.sort(function(a,b){return s.sort==='name'?(dateKey(a.dateStr)||'99999999').localeCompare(dateKey(b.dateStr)||'99999999'):(b.amount||0)-(a.amount||0);});
@@ -1586,14 +1639,14 @@ function showModalBank(){
 }
 function showModalReceipt(){
   var all=G.recRows||[];
-  var norm=all.map(function(r){return {name:r.custName,docNo:r.docNo,amount:r.amt,dateStr:toSlashDMY(r.date),dateDisplay:fmtD(r.date),days:null};});
-  openDetailModal({title:'รายละเอียดเงินรับ',icon:'📥',amountLabel:'จำนวนเงิน',groupable:true,agingKind:null,matchBank:'credit',rows:norm,
+  var norm=all.map(function(r){return {name:r.custName,docNo:r.docNo,amount:r.amt,dateStr:toSlashDMY(r.date),dateDisplay:fmtD(r.date),days:null,bankCode:r.bankCode||'',bankName:r.bankName||''};});
+  openDetailModal({title:'รายละเอียดเงินรับ',icon:'📥',amountLabel:'จำนวนเงิน',groupable:true,agingKind:null,matchBank:'credit',bankGroupable:true,rows:norm,
     statsDynamic:function(filtered,totalAll){return '<div class="modal-summary">'+mStat('จำนวนทั้งหมด',filtered.length+' รายการ','var(--gold2)')+mStat('ยอดรวมทั้งหมด',fmtKPI(totalAll),'var(--green)')+'</div>';}});
 }
 function showModalPayment(){
   var all=G.payRows||[];
-  var norm=all.map(function(r){return {name:r.vendName,docNo:r.docNo,amount:r.amt,dateStr:toSlashDMY(r.date),dateDisplay:fmtD(r.date),days:null};});
-  openDetailModal({title:'รายละเอียดเงินจ่าย',icon:'📤',amountLabel:'จำนวนเงิน',groupable:true,agingKind:null,matchBank:'debit',rows:norm,
+  var norm=all.map(function(r){return {name:r.vendName,docNo:r.docNo,amount:r.amt,dateStr:toSlashDMY(r.date),dateDisplay:fmtD(r.date),days:null,bankCode:r.bankCode||'',bankName:r.bankName||''};});
+  openDetailModal({title:'รายละเอียดเงินจ่าย',icon:'📤',amountLabel:'จำนวนเงิน',groupable:true,agingKind:null,matchBank:'debit',bankGroupable:true,rows:norm,
     statsDynamic:function(filtered,totalAll){return '<div class="modal-summary">'+mStat('จำนวนทั้งหมด',filtered.length+' รายการ','var(--gold2)')+mStat('ยอดรวมทั้งหมด',fmtKPI(totalAll),'var(--red)')+'</div>';}});
 }
 function showModalCF(){
