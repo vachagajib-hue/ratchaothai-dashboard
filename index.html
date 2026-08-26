@@ -155,30 +155,40 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 .pdf-dl-btn{background:linear-gradient(135deg,var(--gold),var(--gold2));color:var(--navy);border:none;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;font-family:'Sarabun',sans-serif;cursor:pointer;margin-right:6px;}
 .pdf-send-btn{background:linear-gradient(135deg,var(--teal),#5DDDD6);color:var(--navy);border:none;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;font-family:'Sarabun',sans-serif;cursor:pointer;}
 #printArea{display:none;}
-#printArea .pr-header{display:flex;align-items:center;justify-content:space-between;background:linear-gradient(90deg,#C0392B,#E8722C);color:#fff;padding:14px 20px;margin:-16px -16px 0 -16px;}
-#printArea .pr-brand{display:flex;align-items:center;gap:10px;}
-#printArea .pr-brand-badge{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,0.22);border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;color:#fff;}
-#printArea .pr-brand-name{font-size:17px;font-weight:800;letter-spacing:0.5px;line-height:1.1;}
-#printArea .pr-brand-sub{font-size:9px;font-weight:600;letter-spacing:3px;opacity:0.9;line-height:1.1;}
-#printArea .pr-company{font-size:15px;font-weight:700;}
-#printArea .pr-titleblock{padding:12px 4px 10px 4px;margin:0 -16px;border-bottom:3px solid #2461B3;background:#fff;}
-#printArea .pr-title{font-size:16px;font-weight:800;color:#1B4F91;padding:0 16px;}
+/* ===== หัวรายงาน ThaiDrill ===== */
+#printArea .pr-redbar{position:relative;background:linear-gradient(180deg,#ef4444 0%,#e11d2e 55%,#b91c1c 100%);padding:7px 22px 8px;margin:-16px -16px 0 -16px;color:#fff;}
+#printArea .pr-companyname{position:absolute;top:5px;right:22px;font-size:10.5px;font-weight:700;color:#fff;letter-spacing:.2px;}
+#printArea .pr-logorow{display:flex;align-items:center;justify-content:center;gap:16px;margin-top:8px;}
+#printArea .pr-dline{flex:1 1 auto;height:2.5px;background:#fff;}
+#printArea .pr-logowrap{display:flex;flex-direction:column;align-items:center;flex:0 0 auto;}
+#printArea .pr-logotext{font-style:italic;font-weight:800;font-size:26px;color:#fff;line-height:1;letter-spacing:.5px;text-shadow:0 1px 0 rgba(0,0,0,.35),0 2px 0 rgba(0,0,0,.3),0 4px 8px rgba(0,0,0,.45);}
+#printArea .pr-logounderline{width:100%;height:2.5px;background:#fff;margin-top:4px;}
+#printArea .pr-finance{text-align:right;margin-top:2px;font-style:italic;font-weight:800;font-size:10px;letter-spacing:2px;color:#fff;text-transform:uppercase;text-shadow:0 1px 0 rgba(0,0,0,.35),0 2px 4px rgba(0,0,0,.4);}
+#printArea .pr-graytop{height:9px;margin:0 -16px;background:linear-gradient(180deg,#e2e8f0 0%,#94a3b8 100%);}
+#printArea .pr-graybottom{height:9px;margin:0 -16px;background:linear-gradient(180deg,#64748b 0%,#334155 100%);}
+#printArea .pr-titleblock{padding:14px 4px 10px 4px;margin:0 -16px;background:#fff;text-align:center;}
+#printArea .pr-title{font-size:17px;font-weight:700;color:#1a2332;padding:0 16px;}
 #printArea .pr-title span{font-weight:600;}
-#printArea .pr-meta{font-size:10.5px;color:#666;margin-top:4px;padding:0 16px;}
+#printArea .pr-meta{font-size:12.5px;font-weight:700;color:#b91c1c;margin-top:4px;padding:0 16px;}
+/* ===== ส่วนลงชื่อท้ายรายงาน ===== */
+#printArea .pr-signwrap{display:flex;justify-content:space-between;gap:18px;padding:34px 10px 10px;page-break-inside:avoid;}
+#printArea .pr-signcol{flex:1;text-align:center;}
+#printArea .pr-signrole{font-weight:700;font-size:12.5px;color:#1a2332;margin-bottom:26px;}
+#printArea .pr-signline{font-size:13px;color:#333;letter-spacing:1px;}
+#printArea .pr-signname{font-size:12.5px;color:#333;margin-top:6px;}
+#printArea .pr-signdate{font-size:11.5px;color:#555;margin-top:10px;}
 @media print{
   body *{visibility:hidden;}
   #printArea,#printArea *{visibility:visible;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;}
   #printArea{display:block;position:absolute;top:0;left:0;width:100%;padding:16px;background:#fff;color:#222;}
   #printArea table{width:100%;border-collapse:collapse;font-size:10px;margin-top:14px;}
   #printArea th,#printArea td{border:1px solid #d5dbe3;padding:5px 7px;text-align:left;}
-  #printArea th{background:#2461B3;color:#fff;font-weight:700;}
+  #printArea th{background:#2461B3;color:#fff;font-weight:700;text-align:center;}
   #printArea tbody tr:nth-child(even){background:#F5F8FC;}
-  #printArea th.pr-right{text-align:right;}
+  #printArea th.pr-right{text-align:center;}
   #printArea td.pr-right{text-align:right;color:#1B4F91;font-weight:600;}
-  #printArea .pr-sub{font-weight:800;background:#EAF1FB;color:#1B4F91;}
-  #printArea .pr-sub .pr-right{color:#1B4F91;}
-  #printArea .pr-subrow td{color:#666;font-size:9px;background:#fff;}
-  #printArea .pr-bankhead td{font-weight:700;background:#DCE8FA;color:#123A6B;}
+  #printArea .pr-sub{font-weight:800;background:#FBE1E1;color:#b91c1c;}
+  #printArea .pr-sub .pr-right{color:#b91c1c;}
   #printArea .pr-itemdetail{color:#2E8B57;font-size:9px;font-style:italic;}
 }
 </style>
@@ -1588,56 +1598,43 @@ function dmExportExcel(){
   XLSX.utils.book_append_sheet(wb,ws,'รายงาน');
   XLSX.writeFile(wb, dmTitleWithBank().replace(/[\\/:*?"<>|]/g,'_')+'.xlsx');
 }
+function prHeaderHtml(title,metaHtml){
+  return '<div class="pr-redbar">'+
+      '<div class="pr-companyname">บริษัท รถเจาะไทย จำกัด</div>'+
+      '<div class="pr-logorow">'+
+        '<div class="pr-dline"></div>'+
+        '<div class="pr-logowrap"><div class="pr-logotext">ThaiDrill</div><div class="pr-logounderline"></div></div>'+
+        '<div class="pr-dline"></div>'+
+      '</div>'+
+      '<div class="pr-finance">FINANCE</div>'+
+    '</div>'+
+    '<div class="pr-graytop"></div><div class="pr-graybottom"></div>'+
+    '<div class="pr-titleblock"><div class="pr-title">'+title+'</div><div class="pr-meta">'+metaHtml+'</div></div>';
+}
+function prSignatureHtml(){
+  var roles=['ผู้จัดทำ','ผู้ตรวจสอบ (การเงิน)','ผู้ตรวจสอบ (บัญชี)'];
+  return '<div class="pr-signwrap">'+roles.map(function(role){
+    return '<div class="pr-signcol">'+
+      '<div class="pr-signrole">'+role+'</div>'+
+      '<div class="pr-signline">- - - - - - - - - - - - - - - - - - - -</div>'+
+      '<div class="pr-signname">( &nbsp;.......................................&nbsp; )</div>'+
+      '<div class="pr-signdate">วันที่ ....... / ....... / .......</div>'+
+    '</div>';
+  }).join('')+'</div>';
+}
 function dmPrint(){
   var cfg=DM.cfg, s=DM.state, filtered=DM.state.lastFiltered||[];
   var totalAll=filtered.reduce(function(a,r){return a+(r.amount||0);},0);
-  var rowsHtml='';
-  if(cfg.groupable&&s.view==='group'){
-    var groups=dmGroup(filtered);
-    groups.sort(function(a,b){return s.sort==='name'?(a.earliestKey||'99999999').localeCompare(b.earliestKey||'99999999'):b.total-a.total;});
-    var dateColLbl=cfg.matchBank?'วันที่แรกสุด':'กำหนดชำระใกล้สุด';
-    var lastColLbl=cfg.matchBank?'ตรงกับแบงค์':'Aging สูงสุด';
-    rowsHtml='<tr><th>ชื่อ</th><th class="pr-right">'+cfg.amountLabel+'</th><th class="pr-right">% รวม</th><th class="pr-right">จำนวนรายการ</th><th>'+dateColLbl+'</th><th>'+lastColLbl+'</th></tr>'+
-      groups.map(function(g){
-        var pct=totalAll>0?(g.total/totalAll*100).toFixed(1):'0.0';
-        var lastCell=cfg.matchBank?groupMatchBadge(g,cfg.matchBank):(g.worstDays!==null?Math.round(g.worstDays).toLocaleString('th-TH')+' วัน':'—');
-        var row='<tr><td>'+g.name+'</td><td class="pr-right">'+fmtFull(g.total)+'</td><td class="pr-right">'+pct+'%</td><td class="pr-right">'+g.count+'</td><td>'+(g.earliestDisplay||'—')+'</td><td>'+lastCell+'</td></tr>';
-        // ถ้ากลุ่มนี้ถูกกด + (ขยาย) อยู่บนหน้าจอ ให้แสดงรายการย่อยในรายงานด้วยเช่นกัน
-        if(s.expanded&&s.expanded[g.name]){
-          row+=g.rows.slice().sort(function(a,b){return (dateKey(a.dateStr)||'').localeCompare(dateKey(b.dateStr)||'');}).map(function(r){
-            var subLastCell=cfg.matchBank?renderMatchBadge(cfg.matchBank,r.docNo,rowMatchCached(r,cfg.matchBank),{clickable:false}):((r.days!==null&&r.days!==undefined)?Math.round(r.days).toLocaleString('th-TH')+' วัน':'—');
-            return '<tr class="pr-subrow"><td>&nbsp;&nbsp;↳ '+(r.docNo||'—')+dmItemDetailSubPrint(r)+'</td><td class="pr-right">'+fmtFull(r.amount)+'</td><td></td><td></td><td>'+(r.dateDisplay||'—')+'</td><td>'+subLastCell+'</td></tr>';
-          }).join('');
-        }
-        return row;
-      }).join('')+
-      '<tr class="pr-sub"><td>รวมทั้งหมด</td><td class="pr-right">'+fmtFull(totalAll)+'</td><td></td><td></td><td></td><td></td></tr>';
-  } else if(cfg.groupable&&cfg.bankGroupable&&s.view==='bank'){
-    var bankGroups=dmGroupByBank(filtered);
-    bankGroups.sort(function(a,b){return b.total-a.total;});
-    rowsHtml='<tr><th>ธนาคาร / รายการ</th><th>เลขที่เอกสาร</th><th class="pr-right">'+cfg.amountLabel+'</th><th class="pr-right">% รวม</th><th>วันที่</th></tr>'+
-      bankGroups.map(function(g){
-        var pct=totalAll>0?(g.total/totalAll*100).toFixed(1):'0.0';
-        // แถวหัวธนาคาร (สรุปยอด) ตามด้วยรายการย่อยทั้งหมดในธนาคารนั้นเสมอ — ให้เห็นว่ายอดรวมประกอบด้วยรายการอะไรบ้าง
-        var row='<tr class="pr-bankhead"><td colspan="2">🏦 '+g.bankName+'</td><td class="pr-right">'+fmtFull(g.total)+'</td><td class="pr-right">'+pct+'%</td><td>'+g.count+' รายการ</td></tr>';
-        row+=g.rows.slice().sort(function(a,b){return (dateKey(a.dateStr)||'').localeCompare(dateKey(b.dateStr)||'');}).map(function(r){
-          return '<tr class="pr-subrow"><td>&nbsp;&nbsp;↳ '+r.name+dmItemDetailSubPrint(r)+'</td><td>'+(r.docNo||'—')+'</td><td class="pr-right">'+fmtFull(r.amount)+'</td><td></td><td>'+(r.dateDisplay||'—')+'</td></tr>';
-        }).join('');
-        return row;
-      }).join('')+
-      '<tr class="pr-sub"><td colspan="2">รวมทั้งหมด</td><td class="pr-right">'+fmtFull(totalAll)+'</td><td></td><td></td></tr>';
-  } else {
-    var flat=filtered.slice();
-    flat.sort(function(a,b){return s.sort==='name'?(dateKey(a.dateStr)||'99999999').localeCompare(dateKey(b.dateStr)||'99999999'):(b.amount||0)-(a.amount||0);});
-    rowsHtml='<tr><th>ชื่อ</th><th>เลขที่เอกสาร</th><th class="pr-right">'+cfg.amountLabel+'</th><th>วันที่</th></tr>'+
-      flat.map(function(r){return '<tr><td>'+r.name+'</td><td>'+(r.docNo||'—')+dmItemDetailSubPrint(r)+'</td><td class="pr-right">'+fmtFull(r.amount)+'</td><td>'+(r.dateDisplay||'—')+'</td></tr>';}).join('')+
-      '<tr class="pr-sub"><td colspan="2">รวมทั้งหมด</td><td class="pr-right">'+fmtFull(totalAll)+'</td><td></td></tr>';
-  }
+  // รายงาน PDF แสดงรายการทั้งหมดแบบละเอียดเสมอ (ไม่ต้องกด + ขยาย) เรียงคอลัมน์: วันที่ / เลขที่เอกสาร / ชื่อ / รายละเอียด / จำนวนเงิน
+  var flat=filtered.slice();
+  flat.sort(function(a,b){return s.sort==='name'?(dateKey(a.dateStr)||'99999999').localeCompare(dateKey(b.dateStr)||'99999999'):(b.amount||0)-(a.amount||0);});
+  var rowsHtml='<tr><th>วันที่</th><th>เลขที่เอกสาร</th><th>ชื่อ</th><th>รายละเอียด</th><th class="pr-right">'+cfg.amountLabel+'</th></tr>'+
+    flat.map(function(r){return '<tr><td>'+(r.dateDisplay||'—')+'</td><td>'+(r.docNo||'—')+'</td><td>'+r.name+'</td><td class="pr-itemdetail">'+(r.itemDetail||'')+'</td><td class="pr-right">'+fmtFull(r.amount)+'</td></tr>';}).join('')+
+    '<tr class="pr-sub"><td colspan="4">รวมทั้งหมด</td><td class="pr-right">'+fmtFull(totalAll)+'</td></tr>';
   document.getElementById('printArea').innerHTML=
-    '<div class="pr-header"><div class="pr-brand"><div class="pr-brand-badge">TD</div><div><div class="pr-brand-name">ThaiDrill</div><div class="pr-brand-sub">FINANCE</div></div></div><div class="pr-company">บริษัท รถเจาะไทย จำกัด</div></div>'+
-    '<div class="pr-titleblock"><div class="pr-title">'+dmTitleWithBank()+' <span>— '+dmRangeLabel()+'</span></div>'+
-    '<div class="pr-meta">จำนวน '+filtered.length+' รายการ &nbsp;·&nbsp; ยอดรวม '+fmtFull(totalAll)+' บาท &nbsp;·&nbsp; พิมพ์เมื่อ '+today()+'</div></div>'+
-    '<table>'+rowsHtml+'</table>';
+    prHeaderHtml(dmTitleWithBank()+' <span>— '+dmRangeLabel()+'</span>','จำนวน '+filtered.length+' รายการ &nbsp;·&nbsp; ยอดรวม '+fmtFull(totalAll)+' บาท &nbsp;·&nbsp; พิมพ์เมื่อ '+today())+
+    '<table>'+rowsHtml+'</table>'+
+    prSignatureHtml();
   setTimeout(function(){window.print();},80);
 }
 
@@ -1659,8 +1656,9 @@ function dmSimplePrintDoc(title,columns,rows){
   var rowsHtml='<tr>'+columns.map(function(c){return '<th'+(c.right?' class="pr-right"':'')+'>'+c.label+'</th>';}).join('')+'</tr>'+
     rows.map(function(r){return '<tr>'+columns.map(function(c){return '<td'+(c.right?' class="pr-right"':'')+'>'+c.get(r)+'</td>';}).join('')+'</tr>';}).join('');
   document.getElementById('printArea').innerHTML=
-    '<div class="pr-header"><div class="pr-brand"><div class="pr-brand-badge">TD</div><div><div class="pr-brand-name">ThaiDrill</div><div class="pr-brand-sub">FINANCE</div></div></div><div class="pr-company">บริษัท รถเจาะไทย จำกัด</div></div>'+
-    '<div class="pr-titleblock"><div class="pr-title">'+title+'</div><div class="pr-meta">จำนวน '+rows.length+' รายการ &nbsp;·&nbsp; พิมพ์เมื่อ '+today()+'</div></div><table>'+rowsHtml+'</table>';
+    prHeaderHtml(title,'จำนวน '+rows.length+' รายการ &nbsp;·&nbsp; พิมพ์เมื่อ '+today())+
+    '<table>'+rowsHtml+'</table>'+
+    prSignatureHtml();
   setTimeout(function(){window.print();},80);
 }
 function dmSimpleExcelById(id){var d=DM_SIMPLE[id];if(d)dmSimpleExcel(d.title,d.columns,d.rows);}
