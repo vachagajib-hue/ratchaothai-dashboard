@@ -8,9 +8,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
-:root{--navy:#0D1B2A;--navy2:#1B2E45;--navy3:#243B55;--gold:#D4A843;--gold2:#F0C96B;--teal:#2BBFB3;--red:#E05C5C;--green:#4CAF7D;--blue:#5B8FF9;--muted:#8FA3B8;--border:rgba(255,255,255,0.08);--card:rgba(255,255,255,0.05);--text:#E8EFF7;--text2:#B0C4D8;}
+:root{--navy:#070f1c;--navy2:#0b1626;--navy3:#243B55;--gold:#D4A843;--gold2:#F0C96B;--teal:#2BBFB3;--red:#E05C5C;--green:#4CAF7D;--blue:#5B8FF9;--muted:#8FA3B8;--border:rgba(255,255,255,0.08);--card:#0f1e32;--text:#E8EFF7;--text2:#B0C4D8;}
 *{margin:0;padding:0;box-sizing:border-box;}body{font-family:'Sarabun',sans-serif;background:var(--navy);color:var(--text);font-size:14px;min-height:100vh;}
-#loadingOverlay{position:fixed;inset:0;background:rgba(13,27,42,0.97);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity 0.4s;}
+#loadingOverlay{position:fixed;inset:0;background:rgba(7,15,28,0.97);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity 0.4s;}
 .loading-logo{width:auto;min-width:76px;height:56px;padding:0 22px;background:linear-gradient(135deg,var(--gold),var(--gold2));border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;letter-spacing:0.3px;color:var(--navy);margin-bottom:22px;animation:logoPulse 1.5s ease-in-out infinite;}
 @keyframes logoPulse{0%,100%{transform:scale(1);}50%{transform:scale(1.07);}}
 .loading-title{font-size:18px;font-weight:700;margin-bottom:6px;}.loading-sub{font-size:12px;color:var(--muted);margin-bottom:28px;}
@@ -18,7 +18,7 @@
 .loading-bar{height:4px;background:linear-gradient(90deg,var(--gold),var(--gold2));border-radius:2px;animation:loadBar 1.8s ease-in-out infinite;}
 @keyframes loadBar{0%{width:0%;margin-left:0}50%{width:70%;margin-left:0}100%{width:0%;margin-left:100%}}
 .loading-status{font-size:11px;color:var(--muted);margin-top:14px;min-height:18px;}.loading-status.ok{color:var(--green);}.loading-status.err{color:var(--red);}
-header{background:linear-gradient(90deg,var(--navy2),var(--navy3));border-bottom:2px solid var(--gold);padding:0 24px;height:58px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
+header{background:var(--navy2);border-bottom:2px solid var(--gold);padding:0 24px;height:58px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
 .header-left{display:flex;align-items:center;gap:12px;}.logo-mark{width:38px;height:38px;background:linear-gradient(135deg,var(--gold),var(--gold2));border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--navy);font-size:15px;}
 .company-name{font-size:15px;font-weight:700;}.sub-name{font-size:11px;color:var(--muted);margin-top:1px;}
 .header-right{display:flex;align-items:center;gap:10px;}
@@ -36,7 +36,7 @@ header{background:linear-gradient(90deg,var(--navy2),var(--navy3));border-bottom
 .filter-bar{background:rgba(255,255,255,0.025);border-bottom:1px solid var(--border);padding:10px 24px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
 .filter-label{font-size:12px;color:var(--muted);font-weight:600;white-space:nowrap;}
 .filter-select{background:rgba(255,255,255,0.07);border:1px solid var(--border);color:var(--text);padding:6px 12px;border-radius:8px;font-family:'Sarabun',sans-serif;font-size:13px;cursor:pointer;outline:none;}
-.filter-select option{background:#1B2E45;}
+.filter-select option{background:#0b1626;}
 .filter-apply{background:linear-gradient(135deg,var(--gold),var(--gold2));color:var(--navy);border:none;padding:6px 18px;border-radius:8px;font-family:'Sarabun',sans-serif;font-size:13px;font-weight:700;cursor:pointer;}
 .filter-reset{background:transparent;border:1px solid var(--border);color:var(--muted);padding:6px 14px;border-radius:8px;font-family:'Sarabun',sans-serif;font-size:12px;cursor:pointer;}
 .filter-range{font-size:11px;color:var(--gold2);background:rgba(212,168,67,0.1);padding:4px 10px;border-radius:6px;border:1px solid rgba(212,168,67,0.2);}
@@ -273,7 +273,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <div class="chart-card" style="margin-bottom:16px">
 <div class="chart-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
 <span>AR vs AP รายเดือน <span class="chart-sub">(ตามวันที่เอกสาร, กรองตามอายุหนี้)</span></span>
-<select id="arApAgeBucket" onchange="renderArApMonthlyBar()" style="background:var(--card2,#0D1B2A);color:#E8EEF5;border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:5px 10px;font-size:12px">
+<select id="arApAgeBucket" onchange="renderArApMonthlyBar()" style="background:var(--card2,#070f1c);color:#E8EEF5;border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:5px 10px;font-size:12px">
 <option value="all">ทั้งหมด</option>
 <option value="notyet">ยังไม่ครบกำหนด</option>
 <option value="b030">เกิน 0-30 วัน</option>
@@ -424,7 +424,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <div class="recon-section" id="reconTxnSection" style="display:none">
 <div class="recon-section-title">&#128221; รายการเดินบัญชีจาก CSV <span class="chart-sub" id="reconTxnCount"></span></div>
 <div style="overflow:auto;max-height:480px;border:1px solid var(--border);border-radius:8px"><table id="reconTxnTbl">
-<thead style="position:sticky;top:0;z-index:2;background:#1B2E45"><tr><th>วันที่</th><th>รายละเอียด</th><th style="text-align:right">Debit</th><th style="text-align:right">Credit</th><th style="text-align:right">ยอดคงเหลือ</th></tr></thead>
+<thead style="position:sticky;top:0;z-index:2;background:#0b1626"><tr><th>วันที่</th><th>รายละเอียด</th><th style="text-align:right">Debit</th><th style="text-align:right">Credit</th><th style="text-align:right">ยอดคงเหลือ</th></tr></thead>
 <tbody id="reconTxnBody"></tbody>
 </table></div>
 </div>
@@ -1443,7 +1443,7 @@ function dmRender(){
   html+='</div>';
   html+='<div style="font-size:11px;color:var(--muted);margin-bottom:8px">ช่วงข้อมูล: <strong style="color:var(--gold2)">'+dmRangeLabel()+'</strong> — พบ '+filtered.length+' รายการ, ยอดรวม <strong style="color:var(--text)">'+fmtFull(totalAll)+'</strong> บาท</div>';
 
-  html+='<div id="dmScrollWrap" style="overflow-x:auto;max-height:420px;overflow-y:auto"><table><thead style="position:sticky;top:0;background:#1B2E45;z-index:2"><tr>';
+  html+='<div id="dmScrollWrap" style="overflow-x:auto;max-height:420px;overflow-y:auto"><table><thead style="position:sticky;top:0;background:#0b1626;z-index:2"><tr>';
   if(cfg.groupable&&s.view==='group'){
     html+='<th style="width:26px"></th><th>ชื่อ</th><th style="text-align:right">ยอดรวม</th><th style="text-align:right">% รวม</th><th style="text-align:right">จำนวนรายการ</th><th>'+(cfg.matchBank?'วันที่แรกสุด':'กำหนดชำระใกล้สุด')+'</th><th>'+(cfg.matchBank?'ตรงกับแบงค์':'Aging สูงสุด')+'</th></tr></thead><tbody>';
     var groups=dmGroup(filtered);
@@ -2161,7 +2161,7 @@ function renderDashboard(d){
   makeChart('cfLineChart',{type:'line',data:{labels:lbl,datasets:[{data:cfD,borderColor:'#D4A843',backgroundColor:'rgba(212,168,67,0.08)',pointBackgroundColor:cfD.map(function(v){return v>=0?'#4CAF7D':'#E05C5C';}),pointRadius:6,tension:0.4,fill:true,borderWidth:2.5}]},options:{plugins:{legend:{display:false}},scales:{x:{grid:{color:gc},ticks:{color:'#8FA3B8'}},y:{grid:{color:gc},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}},afterDataLimits:function(a){a.max=a.max*1.22;if(a.min<0)a.min=a.min*1.22;}}}},plugins:[lineLblPlugin]});
   makeChart('arApBar',{type:'bar',data:{labels:['\u0e25\u0e39\u0e01\u0e2b\u0e19\u0e35\u0e49 AR','\u0e40\u0e08\u0e49\u0e32\u0e2b\u0e19\u0e35\u0e49 AP'],datasets:[{data:[+fmtM(d.at),+fmtM(d.pt)],backgroundColor:['rgba(43,191,179,0.75)','rgba(224,92,92,0.75)'],borderRadius:6}]},options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:gc},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}},afterDataLimits:function(a){a.max=a.max*1.2;}},y:{grid:{display:false},ticks:{color:'#8FA3B8'}}}},plugins:[barLblPlugin]});
   try{renderArApMonthlyBar();}catch(e){}
-  makeChart('arAgingDonut',{type:'doughnut',data:{labels:['0-30 \u0e27\u0e31\u0e19','31-60 \u0e27\u0e31\u0e19','61-90 \u0e27\u0e31\u0e19','>90 \u0e27\u0e31\u0e19'],datasets:[{data:[d.a30,d.a60,d.a90,d.a90p].map(function(v){return +fmtM(v);}),backgroundColor:['#4CAF7D','#2BBFB3','#D4A843','#E05C5C'],borderWidth:2,borderColor:'#0D1B2A'}]},options:{plugins:{legend:{position:'bottom',labels:{color:'#8FA3B8',boxWidth:12,padding:12}}},cutout:'62%'}});
+  makeChart('arAgingDonut',{type:'doughnut',data:{labels:['0-30 \u0e27\u0e31\u0e19','31-60 \u0e27\u0e31\u0e19','61-90 \u0e27\u0e31\u0e19','>90 \u0e27\u0e31\u0e19'],datasets:[{data:[d.a30,d.a60,d.a90,d.a90p].map(function(v){return +fmtM(v);}),backgroundColor:['#4CAF7D','#2BBFB3','#D4A843','#E05C5C'],borderWidth:2,borderColor:'#070f1c'}]},options:{plugins:{legend:{position:'bottom',labels:{color:'#8FA3B8',boxWidth:12,padding:12}}},cutout:'62%'}});
 
   var ar90pct2=d.at>0?(d.a90p/d.at*100).toFixed(1):0;
   var arDueSoon=filterDueSoon(d.arRows2||[],7);
@@ -2207,7 +2207,7 @@ function renderDashboard(d){
   var pL=['\u0e40\u0e2b\u0e21\u0e37\u0e2d\u0e07\u0e25\u0e33\u0e1b\u0e32\u0e07','Hongsa','\u0e28\u0e34\u0e25\u0e32\u0e2a\u0e32\u0e19\u0e19\u0e17\u0e4c','EGAT','\u0e17\u0e23\u0e32\u0e22\u0e01\u0e23\u0e38\u0e07\u0e28\u0e23\u0e35','\u0e0b\u0e35\u0e41\u0e1e\u0e04'];
   var pR=[45.2,120,28.5,85,60,32],pP=[32.1,98,31.2,62,55,38];
   makeChart('projectBar',{type:'bar',data:{labels:pL,datasets:[{label:'\u0e40\u0e07\u0e34\u0e19\u0e23\u0e31\u0e1a',data:pR,backgroundColor:'rgba(76,175,125,0.8)',borderRadius:4},{label:'\u0e40\u0e07\u0e34\u0e19\u0e08\u0e48\u0e32\u0e22',data:pP,backgroundColor:'rgba(224,92,92,0.8)',borderRadius:4}]},options:{plugins:{legend:{labels:{color:'#8FA3B8',boxWidth:12}}},scales:{x:{grid:{color:gc},ticks:{color:'#8FA3B8',font:{size:10}}},y:{grid:{color:gc},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}},afterDataLimits:function(a){a.max=a.max*1.18;}}}},plugins:[barLblPlugin]});
-  makeChart('projectPie',{type:'doughnut',data:{labels:pL,datasets:[{data:pR,backgroundColor:['#4CAF7D','#2BBFB3','#D4A843','#E05C5C','#5B8FF9','#F06292'],borderWidth:2,borderColor:'#0D1B2A'}]},options:{plugins:{legend:{position:'bottom',labels:{color:'#8FA3B8',boxWidth:10,padding:10,font:{size:10}}}},cutout:'55%'}});
+  makeChart('projectPie',{type:'doughnut',data:{labels:pL,datasets:[{data:pR,backgroundColor:['#4CAF7D','#2BBFB3','#D4A843','#E05C5C','#5B8FF9','#F06292'],borderWidth:2,borderColor:'#070f1c'}]},options:{plugins:{legend:{position:'bottom',labels:{color:'#8FA3B8',boxWidth:10,padding:10,font:{size:10}}}},cutout:'55%'}});
 
   renderRecon();
 }
@@ -3259,7 +3259,7 @@ function showCashActualByBankDetail(){
     });
     return html;
   }
-  var tableHtml='<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#1B2E45;text-align:left">'+
+  var tableHtml='<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#0b1626;text-align:left">'+
     '<th style="padding:8px">ธนาคาร</th>'+theadMonths+'<th style="padding:8px;text-align:right">รวม</th></tr></thead><tbody>'+
     sectionRowsHtml(recBanks,'💰 เงินรับจริง (กดชื่อธนาคารเพื่อดูรายการ)','var(--green)','rec')+
     sectionRowsHtml(payBanks,'📤 เงินจ่ายจริง (กดชื่อธนาคารเพื่อดูรายการ)','var(--red)','pay')+
@@ -3345,7 +3345,7 @@ function renderPL(){
   }
 
   var theadMonths=months.map(function(m){return '<th style="padding:8px 10px;text-align:right">'+plMoLbl(m)+'</th>';}).join('');
-  var tableHtml='<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#1B2E45;text-align:left">'+
+  var tableHtml='<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#0b1626;text-align:left">'+
     '<th style="padding:8px 10px">รหัสบัญชี</th><th style="padding:8px 10px">ชื่อบัญชี</th>'+theadMonths+
     '<th style="padding:8px 10px;text-align:right">รวม</th><th style="padding:8px 10px;text-align:right">แนวโน้ม</th></tr></thead><tbody>';
 
