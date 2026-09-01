@@ -418,7 +418,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <div class="recon-section-title">&#128269; รายละเอียดการกระทบยอดรายบัญชี</div>
 <input class="modal-search" style="margin-bottom:12px" placeholder="&#128269; ค้นหาชื่อบัญชี…" oninput="filterTbl(this,'reconDetailTbl')">
 <div style="overflow-x:auto"><table id="reconDetailTbl">
-<thead><tr><th>#</th><th>รหัส SAP</th><th>ชื่อบัญชี</th><th style="text-align:right">ยอด SAP</th><th style="text-align:right">ยอด Bank</th><th style="text-align:right">ส่วนต่าง</th><th>สถานะ</th></tr></thead>
+<thead><tr><th>#</th><th>รหัส SAP</th><th>ชื่อบัญชี</th><th style="text-align:right">ยอด SAP</th><th style="text-align:right">ยอด Bank</th><th>ข้อมูล Bank ณ วันที่</th><th style="text-align:right">ส่วนต่าง</th><th>สถานะ</th></tr></thead>
 <tbody id="reconDetailBody"></tbody>
 </table></div>
 </div>
@@ -2385,7 +2385,23 @@ function renderRecon(){
   var sapLive=(G.bankRows&&G.bankRows.length?G.bankRows:SAP_Q03).map(function(a){return {code:a.code,name:a.name,bal:a.bal,bank:a.bank||sapBankOf(a.name)};});
   var sapList=bank==='ALL'?sapLive.filter(function(a){return a.bank!=='CASH';}):sapLive.filter(function(a){return a.bank===bank;});
   var sapTotal=sapList.reduce(function(s,a){return s+a.bal;},0);
-  var bd=RBANK_DATA[bank];
+  // "ทุกธนาคาร" ไม่มี key 'ALL' อยู่จริงใน RBANK_DATA (เก็บแยกเป็น BBL/KBANK/... เท่านั้น)
+  // ต้องรวมบัญชีของทุกธนาคารที่มีข้อมูลจริงเข้าด้วยกัน (ยกเว้นเงินสด) ไม่งั้นยอด Bank จะว่างทุกแถว
+  var bd;
+  if(bank==='ALL'){
+    var allAccts=[],allPeriod='';
+    Object.keys(RBANK_DATA).forEach(function(k){
+      if(k==='CASH')return;
+      var rb=RBANK_DATA[k];
+      if(rb&&rb.accounts&&rb.accounts.length){
+        allAccts=allAccts.concat(rb.accounts);
+        if(rb.period)allPeriod=rb.period;
+      }
+    });
+    bd=allAccts.length?{uploaded:true,period:allPeriod,accounts:allAccts}:null;
+  } else {
+    bd=RBANK_DATA[bank];
+  }
   var bankTotal=bd?bd.accounts.reduce(function(s,a){return s+a.bal;},0):null;
   var diff=bankTotal!==null?bankTotal-sapTotal:null;
   var hasData=!!bd;
@@ -2450,16 +2466,26 @@ function renderRecon(){
   // Detail table
   var tbody=document.getElementById('reconDetailBody');tbody.innerHTML='';
   sapList.forEach(function(acct,i){
-    var bankBal=hasData?bd.accounts.reduce(function(s,a){
-          return acctMatches(a.acctNo, acct.name)?s+a.bal:s;
-        },null):null;
+    var matchedAccts=hasData?bd.accounts.filter(function(a){return acctMatches(a.acctNo, acct.name);}):[];
+    var bankBal=matchedAccts.length?matchedAccts.reduce(function(s,a){return s+a.bal;},0):null;
     var realBankBal=bankBal===0?null:bankBal;
+    // \u0e2b\u0e32\u0e22\u0e2d\u0e14 "\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25 Bank \u0e13 \u0e27\u0e31\u0e19\u0e17\u0e35\u0e48" \u0e08\u0e32\u0e01\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48\u0e02\u0e2d\u0e07\u0e18\u0e38\u0e23\u0e01\u0e23\u0e23\u0e21\u0e25\u0e48\u0e32\u0e2a\u0e38\u0e14\u0e43\u0e19\u0e2a\u0e40\u0e15\u0e17\u0e40\u0e21\u0e19\u0e17\u0e4c\u0e17\u0e35\u0e48\u0e2d\u0e48\u0e32\u0e19\u0e44\u0e14\u0e49\u0e02\u0e2d\u0e07\u0e1a\u0e31\u0e0d\u0e0a\u0e35\u0e19\u0e35\u0e49
+    // (SAP \u0e40\u0e1b\u0e47\u0e19\u0e22\u0e2d\u0e14\u0e2a\u0e14 \u0e13 \u0e27\u0e31\u0e19\u0e19\u0e35\u0e49\u0e40\u0e2a\u0e21\u0e2d \u0e41\u0e15\u0e48 Bank \u0e40\u0e1b\u0e47\u0e19\u0e22\u0e2d\u0e14 \u0e13 \u0e27\u0e31\u0e19\u0e15\u0e31\u0e14\u0e2a\u0e40\u0e15\u0e17\u0e40\u0e21\u0e19\u0e17\u0e4c\u0e25\u0e48\u0e32\u0e2a\u0e38\u0e14\u0e17\u0e35\u0e48\u0e2d\u0e31\u0e1b\u0e42\u0e2b\u0e25\u0e14 \u2014 \u0e2d\u0e32\u0e08\u0e44\u0e21\u0e48\u0e15\u0e23\u0e07\u0e01\u0e31\u0e19
+    // \u0e0b\u0e36\u0e48\u0e07\u0e40\u0e1b\u0e47\u0e19\u0e2a\u0e32\u0e40\u0e2b\u0e15\u0e38\u0e2b\u0e25\u0e31\u0e01\u0e17\u0e35\u0e48\u0e17\u0e33\u0e43\u0e2b\u0e49 "\u0e2a\u0e48\u0e27\u0e19\u0e15\u0e48\u0e32\u0e07" \u0e14\u0e39\u0e2a\u0e39\u0e07\u0e17\u0e31\u0e49\u0e07\u0e17\u0e35\u0e48\u0e44\u0e21\u0e48\u0e43\u0e0a\u0e48\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e15\u0e01\u0e2b\u0e25\u0e48\u0e19\u0e08\u0e23\u0e34\u0e07)
+    var asOfKey='',asOfDate='';
+    matchedAccts.forEach(function(a){
+      (a.txns||[]).forEach(function(t){
+        var dk=dateKey(t.date||'');
+        if(dk&&dk>asOfKey){asOfKey=dk;asOfDate=t.date;}
+      });
+    });
     var d2=realBankBal!==null?realBankBal-acct.bal:null;
     var ok=d2!==null&&Math.abs(d2)<1;
     var bg=i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)';
     var statusHtml=realBankBal===null?'<span class="recon-status-na">\u2014 \u0e44\u0e21\u0e48\u0e21\u0e35\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25</span>':ok?'<span class="recon-status-ok">\u2705 \u0e01\u0e23\u0e30\u0e17\u0e1a\u0e41\u0e25\u0e49\u0e27</span>':'<span class="recon-status-err">\u274c \u0e15\u0e49\u0e2d\u0e07\u0e15\u0e23\u0e27\u0e08\u0e2a\u0e2d\u0e1a</span>';
     var diffColor=d2===null?'var(--muted)':Math.abs(d2)<1?'var(--green)':'var(--red)';
-    tbody.insertAdjacentHTML('beforeend','<tr style="background:'+bg+'"><td class="rank">'+(i+1)+'</td><td style="color:var(--teal);font-size:12px">'+acct.code+'</td><td>'+acct.name+'</td><td class="right '+(acct.bal>=0?'green':'red')+'">'+fmtFull(acct.bal)+'</td><td class="right" style="color:var(--teal);font-weight:600">'+(realBankBal!==null?fmtFull(realBankBal):'<span style="color:var(--muted)">\u2014</span>')+'</td><td class="right" style="color:'+diffColor+';font-weight:700">'+(d2!==null?fmtFull(d2):'<span style="color:var(--muted)">\u2014</span>')+'</td><td>'+statusHtml+'</td></tr>');
+    var asOfHtml=asOfDate?'<span style="font-size:11px;color:var(--gold2)">'+asOfDate+'</span>':'<span style="color:var(--muted);font-size:11px">\u2014</span>';
+    tbody.insertAdjacentHTML('beforeend','<tr style="background:'+bg+'"><td class="rank">'+(i+1)+'</td><td style="color:var(--teal);font-size:12px">'+acct.code+'</td><td>'+acct.name+'</td><td class="right '+(acct.bal>=0?'green':'red')+'">'+fmtFull(acct.bal)+'</td><td class="right" style="color:var(--teal);font-weight:600">'+(realBankBal!==null?fmtFull(realBankBal):'<span style="color:var(--muted)">\u2014</span>')+'</td><td>'+asOfHtml+'</td><td class="right" style="color:'+diffColor+';font-weight:700">'+(d2!==null?fmtFull(d2):'<span style="color:var(--muted)">\u2014</span>')+'</td><td>'+statusHtml+'</td></tr>');
   });
 
   // Charts
