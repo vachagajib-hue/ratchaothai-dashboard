@@ -2567,7 +2567,7 @@ function renderRecon(){
   }
 }
 
-// PDF Reader - max_tokens 8000 + JSON recovery
+// PDF Reader - max_tokens 48000 (extended output beta) + robust JSON recovery
 var pdfFiles=[],pdfReading=false;
 var BK_COLORS={BBL:'#0A4FA0',KBANK:'#1E8449',TTB:'#1A5C8A',KTB:'#0066A1',SCB:'#4A1A8C',KKP:'#D97706',BANK:'#5B8FF9'};
 var BK_TH={BBL:'\u0e01\u0e23\u0e38\u0e07\u0e40\u0e17\u0e1e',KBANK:'\u0e01\u0e2a\u0e34\u0e01\u0e23\u0e44\u0e17\u0e22',TTB:'\u0e17\u0e2b\u0e32\u0e23\u0e44\u0e17\u0e22',KTB:'\u0e01\u0e23\u0e38\u0e07\u0e44\u0e17\u0e22',SCB:'\u0e44\u0e17\u0e22\u0e1e\u0e32\u0e13\u0e34\u0e0a\u0e22\u0e4c',KKP:'\u0e40\u0e01\u0e35\u0e22\u0e23\u0e15\u0e34\u0e19\u0e32\u0e04\u0e34\u0e19',BANK:'\u0e18\u0e19\u0e32\u0e04\u0e32\u0e23'};
@@ -2594,14 +2594,16 @@ function pdfRemoveFile(id){
 }
 function pdfRenderQueue(){
   document.getElementById('pdfQueue').innerHTML=pdfFiles.map(function(pf){
-    var stT={pending:'\u23f3 \u0e23\u0e2d\u0e2d\u0e48\u0e32\u0e19',reading:'\ud83e\udd16 \u0e01\u0e33\u0e25\u0e31\u0e07\u0e2d\u0e48\u0e32\u0e19\u2026',done:'\u2705 \u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08',error:'\u274c \u0e40\u0e01\u0e34\u0e14\u0e02\u0e49\u0e2d\u0e1c\u0e34\u0e14\u0e1e\u0e25\u0e32\u0e14'}[pf.status]||'\u2014';
+    var isTrunc=pf.status==='done'&&pf.result&&pf.result.truncated;
+    var stT={pending:'\u23f3 \u0e23\u0e2d\u0e2d\u0e48\u0e32\u0e19',reading:'\ud83e\udd16 \u0e01\u0e33\u0e25\u0e31\u0e07\u0e2d\u0e48\u0e32\u0e19\u2026',done:(isTrunc?'\u26a0\ufe0f \u0e2d\u0e32\u0e08\u0e44\u0e21\u0e48\u0e04\u0e23\u0e1a':'\u2705 \u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08'),error:'\u274c \u0e40\u0e01\u0e34\u0e14\u0e02\u0e49\u0e2d\u0e1c\u0e34\u0e14\u0e1e\u0e25\u0e32\u0e14'}[pf.status]||'\u2014';
     var bkColor=BK_COLORS[pf.bank]||'#5B8FF9';
+    var truncWarn=isTrunc?'<div style="font-size:11px;color:#d97706;margin-top:3px;font-weight:600">\u26a0\ufe0f AI \u0e2d\u0e48\u0e32\u0e19\u0e44\u0e1f\u0e25\u0e4c\u0e19\u0e35\u0e49\u0e22\u0e32\u0e27\u0e40\u0e01\u0e34\u0e19\u0e02\u0e35\u0e14\u0e08\u0e33\u0e01\u0e31\u0e14 \u2014 \u0e15\u0e23\u0e27\u0e08\u0e2a\u0e2d\u0e1a\u0e08\u0e33\u0e19\u0e27\u0e19\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e40\u0e17\u0e35\u0e22\u0e1a\u0e01\u0e31\u0e1a\u0e2a\u0e40\u0e15\u0e15\u0e40\u0e21\u0e19\u0e17\u0e4c\u0e08\u0e23\u0e34\u0e07 \u0e2b\u0e32\u0e01\u0e44\u0e21\u0e48\u0e04\u0e23\u0e1a\u0e43\u0e2b\u0e49\u0e01\u0e14 "\u0e25\u0e2d\u0e07\u0e43\u0e2b\u0e21\u0e48"</div>':'';
     var delBtn=pf.status!=='reading'?'<button onclick="pdfRemoveFile(\''+pf.id+'\')" style="background:rgba(224,92,92,0.15);border:1px solid rgba(224,92,92,0.3);color:var(--red);padding:4px 10px;border-radius:6px;font-family:\'Sarabun\',sans-serif;font-size:11px;cursor:pointer;margin-left:8px">\u2715 \u0e25\u0e1a</button>':'';
-    var retryBtn=pf.status==='error'?'<button onclick="pdfRetryOne(\''+pf.id+'\')" style="background:rgba(212,168,67,0.15);border:1px solid rgba(212,168,67,0.3);color:var(--gold2);padding:4px 10px;border-radius:6px;font-family:\'Sarabun\',sans-serif;font-size:11px;cursor:pointer;margin-left:8px">\ud83d\udd04 \u0e25\u0e2d\u0e07\u0e43\u0e2b\u0e21\u0e48</button>':'';
+    var retryBtn=(pf.status==='error'||isTrunc)?'<button onclick="pdfRetryOne(\''+pf.id+'\')" style="background:rgba(212,168,67,0.15);border:1px solid rgba(212,168,67,0.3);color:var(--gold2);padding:4px 10px;border-radius:6px;font-family:\'Sarabun\',sans-serif;font-size:11px;cursor:pointer;margin-left:8px">\ud83d\udd04 \u0e25\u0e2d\u0e07\u0e43\u0e2b\u0e21\u0e48</button>':'';
     return '<div class="pdf-item" id="'+pf.id+'">'+
       '<div style="font-size:22px">&#128196;</div>'+
       '<div style="flex:1"><div class="pdf-item-name">'+pf.file.name+'</div>'+
-      '<div style="font-size:11px;color:var(--muted);margin-top:2px">'+((pf.file.size/1024).toFixed(0))+' KB'+(pf.result?' | '+pf.result.txns.length+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23':'')+(pf.errorMsg?' | \u26a0\ufe0f '+pf.errorMsg.substring(0,50):'')+'</div>'+
+      '<div style="font-size:11px;color:var(--muted);margin-top:2px">'+((pf.file.size/1024).toFixed(0))+' KB'+(pf.result?' | '+pf.result.txns.length+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23':'')+(pf.errorMsg?' | \u26a0\ufe0f '+pf.errorMsg.substring(0,50):'')+'</div>'+truncWarn+
       '<div class="pdf-progress-bar" style="margin-top:5px"><div class="pdf-progress-fill" style="width:'+(pf.status==='done'?'100':pf.status==='reading'?'60':'0')+'%"></div></div></div>'+
       '<div style="background:rgba('+hexRgb(bkColor)+',0.15);color:'+bkColor+';padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700">'+(BK_TH[pf.bank]||pf.bank)+'</div>'+
       '<div class="pdf-item-status '+pf.status+'">'+stT+'</div>'+retryBtn+delBtn+'</div>';
@@ -2629,39 +2631,50 @@ async function pdfReadOne(pf){
   try{
     var response=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:8000,messages:[{role:'user',content:[{type:'document',source:{type:'base64',media_type:'application/pdf',data:base64}},{type:'text',text:prompt}]}]})
+      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':'output-128k-2025-02-19'},
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:48000,messages:[{role:'user',content:[{type:'document',source:{type:'base64',media_type:'application/pdf',data:base64}},{type:'text',text:prompt}]}]})
     });
     var data=await response.json();
     if(data.error)throw new Error(data.error.message||'API error');
     var raw=data.content.map(function(c){return c.text||'';}).join('').trim();
     raw=raw.replace(/^```json\s*/,'').replace(/^```\s*/,'').replace(/\s*```$/,'').trim();
 
-    // JSON recovery for truncated responses
-    var parsed;
+    // JSON recovery for truncated responses \u2014 tracks brace/string depth from
+    // "transactions":[ onward so a cut mid-string/mid-number/mid-key never
+    // loses transactions that were already fully written before the cutoff.
+    var parsed, wasTruncated=false;
     try{
       parsed=JSON.parse(raw);
     }catch(e1){
+      wasTruncated=true;
       console.warn('JSON truncated, attempting recovery...');
       try{
-        // Find last complete transaction
-        var lastClose=raw.lastIndexOf('}');
-        var lastComma=raw.lastIndexOf('},');
-        if(lastComma>0&&lastComma>lastClose-5){
-          var fixed=raw.substring(0,lastComma+1)+']}';
-          // Fix unclosed outer object
-          var opens=(fixed.match(/\{/g)||[]).length;
-          var closes=(fixed.match(/\}/g)||[]).length;
-          for(var i=0;i<opens-closes;i++)fixed+='}';
-          parsed=JSON.parse(fixed);
-          console.warn('Recovered '+( parsed.transactions||[]).length+' transactions (truncated)');
-        } else {
-          throw new Error('\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e21\u0e32\u0e01\u0e40\u0e01\u0e34\u0e19\u0e44\u0e1b \u0e25\u0e2d\u0e07\u0e41\u0e22\u0e01 PDF \u0e40\u0e1b\u0e47\u0e19\u0e17\u0e35\u0e25\u0e30\u0e40\u0e14\u0e37\u0e2d\u0e19\u0e41\u0e25\u0e49\u0e27\u0e25\u0e2d\u0e07\u0e43\u0e2b\u0e21\u0e48');
+        var txKey='"transactions":[';
+        var txStart=raw.indexOf(txKey);
+        if(txStart<0){
+          throw new Error('\u0e44\u0e21\u0e48\u0e1e\u0e1a\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e43\u0e19\u0e1c\u0e25\u0e25\u0e31\u0e1e\u0e18\u0e4c (\u0e42\u0e04\u0e23\u0e07\u0e2a\u0e23\u0e49\u0e32\u0e07 JSON \u0e1c\u0e34\u0e14\u0e1b\u0e01\u0e15\u0e34)');
         }
+        var arrStart=txStart+txKey.length;
+        var depth=0,inStr=false,esc=false,lastObjEnd=-1;
+        for(var i=arrStart;i<raw.length;i++){
+          var ch=raw[i];
+          if(inStr){
+            if(esc){esc=false;}
+            else if(ch==='\\'){esc=true;}
+            else if(ch==='"'){inStr=false;}
+            continue;
+          }
+          if(ch==='"'){inStr=true;continue;}
+          if(ch==='{'){depth++;}
+          else if(ch==='}'){depth--;if(depth===0){lastObjEnd=i;}}
+        }
+        var fixed=lastObjEnd<0?(raw.substring(0,txStart)+'"transactions":[]}'):(raw.substring(0,lastObjEnd+1)+']}');
+        parsed=JSON.parse(fixed);
+        console.warn('Recovered '+((parsed.transactions||[]).length)+' transactions (truncated response)');
       }catch(e2){throw new Error('JSON error: '+e2.message);}
     }
 
-    pf.result={bank:parsed.bank||pf.bank,accountNumber:parsed.account_number||'',accountName:parsed.account_name||'',period:parsed.period||'',closingBalance:parsed.closing_balance||0,currency:parsed.currency||'THB',txns:parsed.transactions||[]};
+    pf.result={bank:parsed.bank||pf.bank,accountNumber:parsed.account_number||'',accountName:parsed.account_name||'',period:parsed.period||'',closingBalance:parsed.closing_balance||0,currency:parsed.currency||'THB',txns:parsed.transactions||[],truncated:wasTruncated};
     pf.status='done';
 
     // Auto-feed into RBANK_DATA
