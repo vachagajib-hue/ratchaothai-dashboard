@@ -2007,11 +2007,19 @@ function renderArApMonthlyBar(){
 function normDate(d){
   if(!d)return d;
   var s=String(d).trim();
-  // ISO with timezone: 2026-01-15T17:00:00.000Z -> use UTC date directly -> 15/01/2026
-  var isoT=s.match(/^(\d{4})-(\d{2})-(\d{2})T/);
+  // ISO with timezone: Google Sheets/Apps Script ส่งเซลล์ประเภทวันที่ (ไม่มีเวลา) มาเป็น
+  // "เที่ยงคืนตามเวลาไทย (UTC+7) แปลงเป็น UTC" เช่น 06/08/2026 เวลาไทย จะกลายเป็น
+  // "2026-08-05T17:00:00.000Z" (ยืนยันจากข้อมูลจริง — ดูรายละเอียดใน commit message) โค้ดเดิม
+  // หยิบเอาวันที่จากข้อความ UTC มาใช้ตรงๆ (15/01/2026 จาก "2026-01-15T...") ทำให้วันที่ทุกรายการที่
+  // ผ่านฟังก์ชันนี้เพี้ยนถอยหลังไป 1 วันเสมอ (bug จริง พบจาก Q15_BANK_JOURNAL — JE วันที่ 06/08/2026
+  // ถูกเก็บเป็น 05/08/2026 ทำให้จับคู่ยืนยันโอนภายในกับสเตทเมนท์ธนาคารไม่ติด) ต้องบวกกลับ 7 ชม.
+  // (เวลาไทยไม่มี DST จึงเป็นค่าคงที่เสมอ) ก่อนอ่านวันที่ออกมา ถึงจะได้วันที่ตามปฏิทินไทยที่ถูกต้อง
+  var isoT=s.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
   if(isoT){
-    var yr=parseInt(isoT[1]);if(yr>2400)yr=yr-543;
-    return isoT[3]+'/'+isoT[2]+'/'+yr;
+    var dtUtc=new Date(Date.UTC(+isoT[1],+isoT[2]-1,+isoT[3],+isoT[4],+isoT[5],+isoT[6]));
+    dtUtc.setUTCHours(dtUtc.getUTCHours()+7);
+    var yr=dtUtc.getUTCFullYear();if(yr>2400)yr=yr-543;
+    return String(dtUtc.getUTCDate()).padStart(2,'0')+'/'+String(dtUtc.getUTCMonth()+1).padStart(2,'0')+'/'+yr;
   }
   // YYYY-MM-DD -> DD/MM/YYYY
   var ymd=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -2052,10 +2060,9 @@ function normDate(d){
 function getMonth(dateStr){
   if(!dateStr)return'';
   var raw=String(dateStr).trim();
-  // ISO with T: extract month directly
-  var isoT=raw.match(/^(\d{4})-(\d{2})-(\d{2})T/);
-  if(isoT)return isoT[2];
-  // Convert to DD/MM/YYYY then extract
+  // เดิมฟังก์ชันนี้หยิบเดือนจากข้อความ ISO UTC ตรงๆ (bug เดียวกับ normDate ก่อนแก้ — เที่ยงคืนไทยที่
+  // ถูกแปลงเป็น UTC ทำให้ตกไปอยู่เดือนก่อนหน้าได้เมื่อเป็นวันที่ 1 ของเดือน) ตอนนี้ให้ผ่าน normDate()
+  // ก่อนเสมอ เพื่อให้ได้เดือนตามปฏิทินไทยที่ถูกต้อง (normDate จัดการ ISO/ymd/dmy/dmyDot/serial ให้แล้ว)
   var d=normDate(raw)||'';
   if(d.match(/^\d{2}\/\d{2}\/\d{4}$/))return d.slice(3,5);
   if(d.match(/^\d{4}-\d{2}-\d{2}$/))return d.slice(5,7);
@@ -2490,7 +2497,7 @@ function rpManualBadge(mmSide,docNo){
 // แต่หาใน bank statement ไม่เจอ) ต้องอ้างอิงเลขที่เอกสาร SAP จริงเสมอ ไม่ใช่แค่วันที่/ยอดเงิน — ส่วน
 // icHeuristic (แค่เดาว่าน่าจะจับคู่กับบัญชีอื่น) และ check (ไม่มีหลักฐานอะไรใน SAP เลย) ไม่มีเลขที่เอกสารให้อ้างอิง
 function rpDetailRefText(x,kind){
-  if(kind==='icSap')return 'เลขที่เอกสาร SAP (JE) #'+(x.tid||'—');
+  if(kind==='icSap')return 'เลขที่เอกสาร SAP (JE) #'+(x.tid||'—')+(x.combo?' — โอนแยกหลายรายการรวมยอด':'');
   if(kind==='icHeuristic')return 'จับคู่กับบัญชี '+(x.matchedAcct||'—')+' วันที่ '+(x.matchedDate||'—');
   if(kind==='sapUnmatched')return 'เลขที่เอกสาร SAP: '+(x.docNo||'—')+' — มีใน SAP แต่ไม่มีใน Bank';
   return 'มีใน Bank แต่ไม่มีใน SAP — ยังหาคู่ไม่เจอเลย';
@@ -2686,26 +2693,72 @@ function renderRecon(){
   // สเตทเมนท์ธนาคารบัญชีนี้ไม่เจอ — อาจบันทึกผิดรหัสบัญชี/รายการถูกยกเลิกภายหลัง) จากการจับคู่ครั้งเดียวกัน
   // ให้ตัวเลขทั้งสองฝั่งบวกลบกันแล้วเท่ากับ (ยอด Bank รวม − ยอด SAP รวม) เสมอ ไม่มีเงินหายจากสมการ
   function rpMatchSap(bankItems, sapItems, tolAmt){
-    var pool=sapItems.slice(),unmatched=[];
+    var pool=sapItems.slice(),candidates=[],unmatched=[];
     bankItems.forEach(function(b){
       var bdk=dateKey(b.date||''),idx=-1;
       for(var i=0;i<pool.length;i++){
         if(dateKey(pool[i].date||'')===bdk && Math.abs(pool[i].amt-b.amt)<=tolAmt){idx=i;break;}
       }
-      if(idx>=0)pool.splice(idx,1); else unmatched.push(b);
+      if(idx>=0)pool.splice(idx,1); else candidates.push(b);
     });
+    // รอบที่ 2: SAP บันทึกเอกสาร AR/AP เป็นใบเดียว แต่ธนาคารอาจรับ/จ่ายเงินจริงเป็นหลายรายการย่อย
+    // (ยืนยันจากเคสจริง — เอกสาร SAP 260410091 ยอด 110,000 บาท ผู้ใช้ยืนยันว่าธนาคารรับเป็น 2 ยอดแยก)
+    // ลองรวมยอดรายการแบงก์ที่ยังไม่จับคู่ (candidates) ซึ่ง "วันที่ตรงกับเอกสาร SAP เป๊ะ" (คงเงื่อนไข
+    // exact-date เดิมของฟังก์ชันนี้ไว้ ไม่เพิ่ม date tolerance ใหม่ที่ยังไม่มีหลักฐานรองรับ) ว่ารวมกันแล้ว
+    // ตรงยอดเอกสารหรือไม่ — ใช้ findSubsetSum ตัวเดียวกับที่ใช้ใน sapConfirmedSum()
+    var MAX_COMBO=5, MAX_WINDOW=12;
+    for(var si=0; si<pool.length; si++){
+      var sdk=dateKey(pool[si].date||'');
+      var winIdx=[];
+      for(var ci=0; ci<candidates.length; ci++){
+        if(candidates[ci]._used)continue;
+        if(dateKey(candidates[ci].date||'')===sdk) winIdx.push(ci);
+      }
+      if(winIdx.length<2 || winIdx.length>MAX_WINDOW)continue;
+      var found=findSubsetSum(winIdx.map(function(ci){return candidates[ci].amt;}), pool[si].amt, tolAmt, MAX_COMBO);
+      if(found){
+        found.forEach(function(w){candidates[winIdx[w]]._used=true;});
+        pool.splice(si,1); si--;
+      }
+    }
+    candidates.forEach(function(c){ if(!c._used) unmatched.push(c); });
     return {bankUnmatched:unmatched, sapUnmatched:pool};
   }
   // โอนเงินระหว่างบัญชีของบริษัทเองจะเป็นยอดกลมๆ ไม่มีเศษสตางค์เสมอ (ต่างจากดอกเบี้ย/ค่าธรรมเนียม
   // ที่มักมีเศษ) ใช้เป็นเงื่อนไขบังคับ ป้องกันจับคู่มั่ว (false positive) กับรายการที่บังเอิญยอดใกล้เคียงกัน
   // ในช่วงเวลาใกล้กันแต่ไม่ใช่โอนภายในจริง — ถ้ามีเศษสตางค์ ไม่ต้องลองจับคู่เลย ส่งเข้า "ต้องตรวจสอบ" ทันที
   function isRoundBaht(a){return Math.abs(a-Math.round(a))<0.005;}
+  // หาชุดย่อย (subset) ของ amounts ที่รวมกันแล้วใกล้เคียง target ภายใน tol — ใช้แก้กรณีธนาคารโอนเงิน
+  // ก้อนใหญ่ก้อนเดียวเป็นหลายรายการย่อย (เช่น ระบบโอนมี limit ต่อรายการ) แต่ SAP บันทึกรวมเป็น JE
+  // เดียว (ยืนยันจากข้อมูลจริง — TransId 31720/31723/31724 ยอด 4,685,000 บาท ถูกโอนจริงเป็น 3 รายการ
+  // 2,000,000+685,000+2,000,000 วันเดียวกัน) เรียงจากมากไปน้อยแล้ว DFS พร้อมตัดกิ่งเมื่อยอดเกิน
+  // target+tol (amounts เป็นบวกเสมอ ยอดจะโตขึ้นเรื่อยๆ เท่านั้น) จำกัดขนาด subset ไม่เกิน maxSize
+  // และจำนวนตัวเลือกไม่เกิน ~12 ตัว (บังคับจากผู้เรียก) กันคำนวณหนักเกินไป
+  function findSubsetSum(amounts, target, tol, maxSize){
+    var n=amounts.length;
+    var idxs=amounts.map(function(_,i){return i;});
+    idxs.sort(function(a,b){return amounts[b]-amounts[a];});
+    var result=null;
+    function dfs(start, chosen, sum){
+      if(result)return;
+      if(chosen.length>=2 && Math.abs(sum-target)<=tol){result=chosen.slice();return;}
+      if(chosen.length>=maxSize || sum>target+tol)return;
+      for(var i=start;i<n;i++){
+        chosen.push(idxs[i]);
+        dfs(i+1, chosen, sum+amounts[idxs[i]]);
+        chosen.pop();
+        if(result)return;
+      }
+    }
+    dfs(0, [], 0);
+    return result;
+  }
   // เช็คหลักฐานจริงจาก SAP (Q15_BANK_JOURNAL, G.sapTransferLegs) ก่อนเดา — ถ้า SAP มี Journal Entry
   // ที่ยืนยันแล้วว่าเป็นการโอนภายใน (ดูเงื่อนไขตอนประมวลผลใน loadAllData) และมีบรรทัดที่ตรงกับรายการ
   // Bank นี้ (บัญชี+วันที่+ยอด) ให้ตัดออกจากที่ต้องเดาทันที — แม่นยำกว่า heuristic วันที่+ยอดกลม
   function sapConfirmedSum(acctCode, items, side, tolAmt, tolDays){
     var pool=(G.sapTransferLegs&&G.sapTransferLegs[acctCode]?G.sapTransferLegs[acctCode]:[]).slice();
-    var confirmed=0, remaining=[], list=[];
+    var confirmed=0, remaining=[], list=[], candidates=[];
     items.forEach(function(it){
       // โอนเงินระหว่างบัญชีของบริษัทเองจะเป็นยอดกลมๆ ไม่มีเศษสตางค์เสมอ (ยืนยันจากผู้ใช้) — แม้จะมี
       // JE ใน SAP ที่บังเอิญโยงบัญชีธนาคาร 2 บัญชีและยอดตรงกัน แต่ถ้ามีเศษสตางค์ ก็ไม่ใช่การโอนภายในจริง
@@ -2719,8 +2772,36 @@ function renderRecon(){
         if(idays!=null&&ldays!=null&&Math.abs(ldays-idays)<=tolDays&&Math.abs(legAmt-it.amt)<=tolAmt){idx=i;break;}
       }
       if(idx>=0){confirmed+=it.amt;list.push({date:it.date,amt:it.amt,tid:pool[idx].tid||''});pool.splice(idx,1);}
-      else remaining.push(it);
+      else candidates.push(it);
     });
+    // รอบที่ 2: ธนาคารบางครั้งโอนยอดก้อนใหญ่เป็นหลายรายการย่อย แต่ SAP บันทึกรวมเป็น JE เดียว — ลอง
+    // รวมยอด candidates ที่เหลือ (ยังไม่จับคู่ 1:1 ได้) ภายในช่วงวันที่ tolDays ของแต่ละ JE leg ที่ยัง
+    // ไม่ถูกใช้ ว่ารวมกันแล้วตรงกับ leg นั้นหรือไม่ — ต้องมีตั้งแต่ 2 รายการขึ้นไปถึงจะนับว่า "แยกยอด"
+    var MAX_COMBO=5, MAX_WINDOW=12;
+    for(var li=0; li<pool.length; li++){
+      var legAmt2=side==='debit'?pool[li].debit:pool[li].credit;
+      if(!legAmt2)continue;
+      var ldays2=dk2days(dateKey(pool[li].date||''));
+      if(ldays2==null)continue;
+      var winIdx=[];
+      for(var ci=0; ci<candidates.length; ci++){
+        if(candidates[ci]._used)continue;
+        var cdays=dk2days(dateKey(candidates[ci].date||''));
+        if(cdays!=null && Math.abs(cdays-ldays2)<=tolDays) winIdx.push(ci);
+      }
+      if(winIdx.length<2 || winIdx.length>MAX_WINDOW)continue;
+      var found=findSubsetSum(winIdx.map(function(ci){return candidates[ci].amt;}), legAmt2, tolAmt, MAX_COMBO);
+      if(found){
+        var usedItems=found.map(function(w){return candidates[winIdx[w]];});
+        usedItems.forEach(function(u){
+          u._used=true;
+          list.push({date:u.date,amt:u.amt,tid:pool[li].tid||'',combo:true});
+          confirmed+=u.amt;
+        });
+        pool.splice(li,1); li--;
+      }
+    }
+    candidates.forEach(function(c){ if(!c._used) remaining.push(c); });
     return {confirmed:confirmed, remaining:remaining, list:list};
   }
   function rpMatchInterAccount(unmatched, otherItems, tolAmt, tolDays){
