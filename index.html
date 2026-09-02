@@ -178,11 +178,24 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 #printArea .pr-signname{font-size:12.5px;color:#333;margin-top:6px;}
 #printArea .pr-signdate{font-size:11.5px;color:#555;margin-top:10px;}
 @media print{
-  body *{visibility:hidden;}
-  #printArea,#printArea *{visibility:visible;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;}
-  #printArea{display:block;position:absolute;top:0;left:0;width:100%;padding:16px;background:#fff;color:#222;}
-  #printArea table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:14px;}
-  #printArea th,#printArea td{border:1px solid #d5dbe3;padding:7px 9px;text-align:left;}
+  /* เดิมซ่อนด้วย visibility:hidden แล้วดัน #printArea ขึ้นด้วย position:absolute — ตัว position:absolute
+     นี้เองที่ทำให้ Chrome ไม่ยอมพิมพ์หัวตาราง (thead) ซ้ำข้ามหน้า (ข้อจำกัดที่รู้กันของ Chrome: กล่องที่
+     position:absolute จะไม่ไหลตามการแบ่งหน้าปกติ ทำให้ thead/table-header-group ใช้ไม่ได้ผล) แก้โดยเปลี่ยน
+     มาซ่อน element อื่นทั้งหมดด้วย display:none (เอาออกจากโฟลว์จริงๆ) แล้วปล่อยให้ #printArea อยู่ใน
+     normal flow ธรรมดา (ไม่ position:absolute) จะได้แบ่งหน้า+ซ้ำหัวตารางตามปกติของเบราว์เซอร์ */
+  body>*:not(#printArea){display:none!important;}
+  #printArea,#printArea *{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;}
+  #printArea{display:block;width:100%;padding:16px;background:#fff;color:#222;}
+  /* border-collapse:collapse ทำให้ Chrome ไม่พิมพ์หัวตาราง (thead) ซ้ำในหน้าถัดไปเวลาตารางยาวเกิน 1
+     หน้า (ข้อจำกัดที่รู้กันของ Chrome) — ใช้ border-collapse:separate + border-spacing:0 แทน พร้อม
+     ประกาศ thead/tfoot แบบ table-header-group/table-footer-group ชัดเจน เพื่อให้หัวตารางขึ้นซ้ำทุกหน้า */
+  /* วาดเส้นขอบเฉพาะขวา+ล่างต่อเซลล์ แล้วให้ตัวตารางวาดขอบบน+ซ้ายเอง (border-top/border-left) แทน —
+     ป้องกันเส้นตารางหนาสองเท่า/เบิ้ล ที่จะเกิดถ้าให้ทุกเซลล์วาดขอบครบ 4 ด้านตอนใช้ border-collapse:separate */
+  #printArea table{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px;margin-top:14px;border-top:1px solid #d5dbe3;border-left:1px solid #d5dbe3;}
+  #printArea th,#printArea td{border-right:1px solid #d5dbe3;border-bottom:1px solid #d5dbe3;padding:7px 9px;text-align:left;}
+  #printArea thead{display:table-header-group;}
+  #printArea tfoot{display:table-footer-group;}
+  #printArea tr{page-break-inside:avoid;}
   #printArea th{background:#2461B3;color:#fff;font-weight:700;text-align:center;font-size:12.5px;}
   #printArea tbody tr:nth-child(even){background:#F5F8FC;}
   #printArea th.pr-right{text-align:center;}
@@ -422,6 +435,14 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <tbody id="reconDetailBody"></tbody>
 </table></div>
 </div>
+<div class="recon-section" id="reconRecPaySection" style="display:none">
+<div class="recon-section-title">&#128260; แยกส่วนต่าง: ขารับ vs ขาจ่าย</div>
+<div style="font-size:11px;color:var(--muted);margin-bottom:8px">เทียบเฉพาะช่วงวันที่ที่มีสเตทเมนท์ธนาคารจริงของบัญชีนั้นๆ (ไม่ใช่ทั้งปี) &nbsp;·&nbsp; รายการที่ Bank มีแต่ SAP ไม่มี จะเช็คหลักฐานจริงจาก Journal Entry ใน SAP ก่อน (Q15_BANK_JOURNAL) — ถ้ามี JE ที่ไม่มีคู่ค้าผูกอยู่และแตะบัญชีธนาคาร ≥2 บัญชี ตรงกับรายการนี้ = <span style="color:var(--teal)">"โอนภายใน"</span> ยืนยันจาก SAP ทันที (ตัวเลขในวงเล็บใต้ยอด) &nbsp;·&nbsp; รายการที่ยังไม่มีหลักฐานใน SAP จะใช้วิธีเดา (heuristic) ต่อ: ต้องเป็นยอดกลม ไม่มีเศษสตางค์ (โอนภายในจริงจะไม่มีเศษ) แล้วลองจับคู่กับบัญชีธนาคารอื่นของบริษัทอัตโนมัติ (±3 วัน จำนวนเงินตรงกัน) — เจอคู่ = "โอนภายใน" เช่นกัน ไม่เจอ = <span style="color:var(--red)">"ต้องตรวจสอบ"</span> จริง (เช่น เงินกู้ยืมนอกระบบที่ยังไม่บันทึก) &nbsp;·&nbsp; <span style="color:var(--gold2)">"SAP มีแต่ไม่พบ Bank"</span> = SAP บันทึกรับ/จ่ายไว้แต่หารายการจริงในสเตทเมนท์บัญชีนี้ไม่เจอ (อาจบันทึกผิดรหัสบัญชี) &nbsp;·&nbsp; ตัวเลข 3 บรรทัดในแต่ละช่อง (โอนภายใน + ต้องตรวจสอบ − SAP มีแต่ไม่พบ) รวมกันจะเท่ากับ Bank ลบ SAP เสมอ</div>
+<div style="overflow-x:auto"><table id="reconRecPayTbl">
+<thead><tr><th>บัญชี</th><th>ช่วงที่เทียบ</th><th style="text-align:right">SAP รับ</th><th style="text-align:right">Bank รับ</th><th style="text-align:right">ส่วนต่างรับ</th><th style="text-align:right">SAP จ่าย</th><th style="text-align:right">Bank จ่าย</th><th style="text-align:right">ส่วนต่างจ่าย</th></tr></thead>
+<tbody id="reconRecPayBody"></tbody>
+</table></div>
+</div>
 <div class="recon-section" id="reconTxnSection" style="display:none">
 <div class="recon-section-title">&#128221; รายการเดินบัญชีจาก CSV <span class="chart-sub" id="reconTxnCount"></span></div>
 <div style="overflow:auto;max-height:480px;border:1px solid var(--border);border-radius:8px"><table id="reconTxnTbl">
@@ -484,6 +505,12 @@ const APPS_URL='https://script.google.com/macros/s/AKfycbxZQG4tERyTX0xqj_xIOAn3f
 const chartInstances={};
 let G={};
 let ACTIVE_MONTHS=[];
+// เก็บรายการละเอียดของตาราง "แยกส่วนต่าง: ขารับ vs ขาจ่าย" (คำนวณใน renderRecon) ไว้ให้ปุ่ม
+// "ดูรายละเอียด" (showRpDetail) เปิดโมดัลแสดงทีละบรรทัดได้ — คีย์ด้วยรหัสบัญชี SAP (acct.code)
+var RECON_RP_DETAIL={};
+// จำว่าโมดัลรายละเอียดล่าสุดเปิดบัญชี/ฝั่งไหนอยู่ ใช้รีเฟรชหน้าต่างเดิมทันทีหลังบันทึกผลตรวจสอบ
+// (mmSave) โดยไม่ต้องปิดแล้วเปิดใหม่เอง
+var RP_DETAIL_REOPEN=null;
 // Utilities
 function fmt(n){if(Math.abs(n)>=1e6)return (n/1e6).toFixed(2)+' ล้าน';return (+n).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function fmtKPI(n){
@@ -655,10 +682,11 @@ async function loadAllData(){
       function(){return fetchSheet('Q11_SAP_MONTHLY_BALANCE').catch(optionalFallback);},
       function(){return fetchSheet('Q12_PL_BY_ACCOUNT_MONTHLY').catch(optionalFallback);},
       function(){return fetchSheet('Q13_AP_OUTSTANDING_BY_CATEGORY').catch(optionalFallback);},
-      function(){return fetchSheet('MANUAL_MATCH').catch(optionalFallback);}
+      function(){return fetchSheet('MANUAL_MATCH').catch(optionalFallback);},
+      function(){return fetchSheet('Q15_BANK_JOURNAL').catch(optionalFallback);}
     ], 4);
     var q01=results[0],q02=results[1],q03=results[2],q04=results[3],q05=results[4],q08=results[5],
-        q14=results[6],q09=results[7],q10=results[8],q11=results[9],q12=results[10],q13=results[11],qmm=results[12];
+        q14=results[6],q09=results[7],q10=results[8],q11=results[9],q12=results[10],q13=results[11],qmm=results[12],q15=results[13];
 
     st.textContent='กำลังประมวลผล…';
     var recByM={},recRows=[];
@@ -802,11 +830,63 @@ async function loadAllData(){
     }catch(e){}
 
     
+    // Q15_BANK_JOURNAL: รายการ Journal Entry จริงจาก SAP (ตาราง JDT1) ที่โพสต์เข้าบัญชี
+    // เงินสด/เงินฝากธนาคาร (111x) — ใช้ยืนยัน "โอนเงินระหว่างบัญชีของบริษัทเอง" ด้วยหลักฐานจริง
+    // แทนการเดา (heuristic เดิม: วันที่ใกล้กัน+ยอดกลม) — ออปชันเสริม ถ้ายังไม่มีชีตนี้ dashboard
+    // ยังทำงานได้ปกติ (fallback ไป heuristic เดิมทั้งหมดเหมือนก่อนมี Q15)
+    // เงื่อนไขที่ถือว่าเป็น "โอนภายในยืนยันจาก SAP": ทั้งเอกสาร JE (TransId เดียวกัน) ต้องไม่มี
+    // บรรทัดไหนผูกกับคู่ค้าจริงเลย (BPName ว่างทุกบรรทัด) และแตะบัญชีเงินสด/ธนาคาร (ขึ้นต้น '111')
+    // ตั้งแต่ 2 บัญชีขึ้นไป (รองรับการโอนกระจายหลายบัญชีในเอกสารเดียว ไม่ใช่แค่ 2 บัญชีเป๊ะ)
+    var sapTransferLegs={};
+    try{
+      if(q15 && q15.rows && q15.rows.length){
+        var cols15=q15.cols||[];
+        var findCol15=function(names){
+          for(var i=0;i<names.length;i++){
+            for(var j=0;j<cols15.length;j++){
+              if(String(cols15[j]||'').trim().toLowerCase()===names[i])return j;
+            }
+          }
+          return -1;
+        };
+        var ix15Trans=findCol15(['transaction key','transid']);
+        var ix15Date=findCol15(['postingdate']);
+        var ix15Acct=findCol15(['acctcode']);
+        var ix15Debit=findCol15(['debit amount','debit']);
+        var ix15Credit=findCol15(['credit amount','credit']);
+        var ix15BpName=findCol15(['bpname']);
+        if(ix15Trans>=0 && ix15Acct>=0 && ix15Debit>=0 && ix15Credit>=0){
+          var jGroups={};
+          q15.rows.forEach(function(r){
+            var tid=String(r[ix15Trans]||'');if(!tid)return;
+            var acct=repairAcctCode(r[ix15Acct]);
+            var debit=parseFloat(r[ix15Debit])||0, credit=parseFloat(r[ix15Credit])||0;
+            var date=ix15Date>=0?normDate(r[ix15Date]):'';
+            var bpName=ix15BpName>=0?String(r[ix15BpName]||'').trim():'';
+            if(!jGroups[tid])jGroups[tid]={legs:[],hasBP:false,accts:{}};
+            jGroups[tid].legs.push({acct:acct,date:date,debit:debit,credit:credit});
+            if(bpName)jGroups[tid].hasBP=true;
+            if(acct.indexOf('111')===0)jGroups[tid].accts[acct]=true;
+          });
+          Object.keys(jGroups).forEach(function(tid){
+            var jg=jGroups[tid];
+            if(jg.hasBP)return; // มีคู่ค้าจริงผูกอยู่ในเอกสารนี้ — ไม่ใช่โอนภายในล้วนๆ (เช่น เบิกเงินสดย่อยพนักงาน)
+            if(Object.keys(jg.accts).length<2)return; // แตะบัญชีเงินสด/ธนาคารไม่ถึง 2 บัญชี — ไม่ใช่การโอนภายใน (เช่น ดอกเบี้ย/ค่าธรรมเนียม)
+            jg.legs.forEach(function(leg){
+              if(!leg.acct)return;
+              if(!sapTransferLegs[leg.acct])sapTransferLegs[leg.acct]=[];
+              sapTransferLegs[leg.acct].push({date:leg.date,debit:leg.debit,credit:leg.credit,tid:tid});
+            });
+          });
+        }
+      }
+    }catch(e){console.error('Q15_BANK_JOURNAL processing error:',e);}
+
     var allMonths=Object.keys(Object.assign({},recByM,payByM)).sort();
     G={recByM:recByM,payByM:payByM,bankNet:bankNet,bankRows:bankRows,recRows:recRows,payRows:payRows,
        at:at,a30:a30,a60:a60,a90:a90,a90p:a90p,topAR:topAR,arAgeMap:arAgeMap,arRows2:arRows2,arCusts:Object.keys(arByCust).length,
        pt:pt,p30:p30,p60:p60,p60p:p60p,topAP:topAP,apRows2:apRows2,arItemsByDoc:arItemsByDoc,apItemsByDoc:apItemsByDoc,sapMonthlyByAcct:sapMonthlyByAcct,
-       et:et,topExp:exps.slice(0,10),expAll:expAll,expDetailByAcct:expDetailByAcct,arRowCount:q04.rows.length,apRowCount:q05.rows.length,allMonths:allMonths,plRows:plRows,apCatRows:apCatRows,manualMatch:manualMatch};
+       et:et,topExp:exps.slice(0,10),expAll:expAll,expDetailByAcct:expDetailByAcct,arRowCount:q04.rows.length,apRowCount:q05.rows.length,allMonths:allMonths,plRows:plRows,apCatRows:apCatRows,manualMatch:manualMatch,sapTransferLegs:sapTransferLegs};
     ACTIVE_MONTHS=[...allMonths];
     buildFilters(allMonths);
     st.textContent='\u0e2a\u0e23\u0e49\u0e32\u0e07\u0e01\u0e23\u0e32\u0e1f\u2026';st.className='loading-status ok';
@@ -1143,13 +1223,18 @@ var MANUAL_MATCH_PENDING=null;
 function openManualMatchDialog(side,docNo){
   var ov=manualMatchFor(side,docNo)||{status:'',note:''};
   MANUAL_MATCH_PENDING={side:side,docNo:docNo,status:ov.status||''};
+  var isRecon=(side==='reconRec'||side==='reconPay');
+  var lbl1=isRecon?'✅ ตรวจสอบแล้ว (ระบุสาเหตุในหมายเหตุ)':'✅ ยืนยันว่าตรงกับแบงค์แล้ว';
+  var lbl2=isRecon?'🔁 ยังต้องตรวจสอบเพิ่ม':'❌ ยืนยันว่าไม่ตรง/ต้องตรวจใหม่';
+  var introLbl=isRecon?'รายการ':'เอกสาร';
+  var notePlaceholder=isRecon?'หมายเหตุ (เช่น เป็นเงินรับจากลูกหนี้อื่น ไม่เกี่ยวกับการโอนภายใน — บันทึกผิดรหัสบัญชี)':'หมายเหตุ (เช่น จ่ายจากบัญชี KKP ไม่ใช่ KBANK ตามที่ระบบจับคู่)';
   var html=
-    '<div style="font-size:13px;margin-bottom:14px">เอกสาร <strong style="color:var(--gold2)">'+docNo+'</strong> — เลือกสถานะที่ตรวจสอบเองแล้ว</div>'+
+    '<div style="font-size:13px;margin-bottom:14px">'+introLbl+' <strong style="color:var(--gold2)">'+docNo+'</strong> — เลือกสถานะที่ตรวจสอบเองแล้ว</div>'+
     '<div style="display:flex;gap:10px;margin-bottom:14px">'+
-    '<button id="mmBtnMatched" class="mm-status-btn'+(ov.status==='matched'?' active-green':'')+'" onclick="mmSetStatus(\'matched\')">✅ ยืนยันว่าตรงกับแบงค์แล้ว</button>'+
-    '<button id="mmBtnUnmatched" class="mm-status-btn'+(ov.status==='unmatched'?' active-red':'')+'" onclick="mmSetStatus(\'unmatched\')">❌ ยืนยันว่าไม่ตรง/ต้องตรวจใหม่</button>'+
+    '<button id="mmBtnMatched" class="mm-status-btn'+(ov.status==='matched'?' active-green':'')+'" onclick="mmSetStatus(\'matched\')">'+lbl1+'</button>'+
+    '<button id="mmBtnUnmatched" class="mm-status-btn'+(ov.status==='unmatched'?' active-red':'')+'" onclick="mmSetStatus(\'unmatched\')">'+lbl2+'</button>'+
     '</div>'+
-    '<textarea id="mmNote" placeholder="หมายเหตุ (เช่น จ่ายจากบัญชี KKP ไม่ใช่ KBANK ตามที่ระบบจับคู่)" style="width:100%;min-height:70px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-family:\'Sarabun\',sans-serif;font-size:12px;margin-bottom:14px">'+(ov.note||'')+'</textarea>'+
+    '<textarea id="mmNote" placeholder="'+notePlaceholder+'" style="width:100%;min-height:70px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-family:\'Sarabun\',sans-serif;font-size:12px;margin-bottom:14px">'+(ov.note||'')+'</textarea>'+
     '<div style="display:flex;gap:8px;justify-content:flex-end">'+
     (ov.status?'<button onclick="mmClear()" style="background:transparent;border:1px solid var(--border);color:var(--muted);padding:9px 16px;border-radius:8px;cursor:pointer;font-family:\'Sarabun\',sans-serif">ล้างการยืนยัน (กลับไปใช้ระบบอัตโนมัติ)</button>':'')+
     '<button onclick="mmSave()" style="background:linear-gradient(135deg,var(--gold),var(--gold2));color:var(--navy);border:none;padding:9px 20px;border-radius:8px;font-weight:700;cursor:pointer;font-family:\'Sarabun\',sans-serif">บันทึก</button>'+
@@ -1197,7 +1282,14 @@ async function mmSave(){
     if(!p.status)delete G.manualMatch[p.side+'|'+p.docNo];
     else G.manualMatch[p.side+'|'+p.docNo]={status:p.status,note:note};
     if(msgEl){msgEl.style.color='var(--green)';msgEl.textContent='✅ บันทึกแล้ว';}
-    setTimeout(function(){mmCloseDialog();try{dmRender();}catch(e){}},500);
+    setTimeout(function(){
+      mmCloseDialog();
+      if((p.side==='reconRec'||p.side==='reconPay')&&RP_DETAIL_REOPEN){
+        try{showRpDetail(RP_DETAIL_REOPEN.code,RP_DETAIL_REOPEN.side);}catch(e){}
+      } else {
+        try{dmRender();}catch(e){}
+      }
+    },500);
   } else {
     if(msgEl){msgEl.style.color='var(--red)';msgEl.textContent='❌ บันทึกไม่สำเร็จ: '+(res.error||'ไม่ทราบสาเหตุ')+' — ต้องเพิ่มฟังก์ชัน saveManualMatch ใน Apps Script ก่อน';}
   }
@@ -1640,12 +1732,16 @@ function dmPrint(){
   // รายงาน PDF แสดงรายการทั้งหมดแบบละเอียดเสมอ (ไม่ต้องกด + ขยาย) เรียงคอลัมน์: วันที่ / เลขที่เอกสาร / ชื่อ / รายละเอียด / จำนวนเงิน
   var flat=filtered.slice();
   flat.sort(function(a,b){return s.sort==='name'?(dateKey(a.dateStr)||'99999999').localeCompare(dateKey(b.dateStr)||'99999999'):(b.amount||0)-(a.amount||0);});
-  var rowsHtml='<tr><th>วันที่</th><th>เลขที่เอกสาร</th><th>ชื่อ</th><th>รายละเอียด</th><th>ผู้บันทึกเอกสาร</th><th class="pr-right">'+cfg.amountLabel+'</th></tr>'+
+  // ต้องห่อแถวหัวตารางด้วย <thead> จริงๆ (ไม่ใช่แค่ <tr> ตัวแรกลอยๆ ใน <table>) เบราว์เซอร์ถึงจะรู้ว่า
+  // ต้องพิมพ์หัวตารางซ้ำทุกหน้าเวลาตารางยาวเกิน 1 หน้า — ถ้าไม่ห่อ thead หัวตารางจะโผล่แค่หน้าแรกหน้าเดียว
+  var theadHtml='<thead><tr><th>วันที่</th><th>เลขที่เอกสาร</th><th>ชื่อ</th><th>รายละเอียด</th><th>ผู้บันทึกเอกสาร</th><th class="pr-right">'+cfg.amountLabel+'</th></tr></thead>';
+  var tbodyHtml='<tbody>'+
     flat.map(function(r){return '<tr><td>'+(r.dateStr||r.dateDisplay||'—')+'</td><td>'+(r.docNo||'—')+'</td><td>'+r.name+'</td><td><span class="pr-itemdetail">'+(r.itemDetail||'')+'</span>'+(r.itemDetails2?'<span class="pr-itemdetails2">↳ '+r.itemDetails2+'</span>':'')+'</td><td class="pr-creator">'+(r.docCreator||'')+'</td><td class="pr-right">'+fmtFull(r.amount)+'</td></tr>';}).join('')+
-    '<tr class="pr-sub"><td colspan="5">รวมทั้งหมด</td><td class="pr-right">'+fmtFull(totalAll)+'</td></tr>';
+    '<tr class="pr-sub"><td colspan="5">รวมทั้งหมด</td><td class="pr-right">'+fmtFull(totalAll)+'</td></tr>'+
+    '</tbody>';
   document.getElementById('printArea').innerHTML=
     prHeaderHtml(dmTitleWithBank()+' <span>— '+dmRangeLabel()+'</span>','จำนวน '+filtered.length+' รายการ &nbsp;·&nbsp; ยอดรวม '+fmtFull(totalAll)+' บาท &nbsp;·&nbsp; พิมพ์เมื่อ '+printTimestamp())+
-    '<table>'+rowsHtml+'</table>'+
+    '<table>'+theadHtml+tbodyHtml+'</table>'+
     prSignatureHtml();
   setTimeout(function(){window.print();},80);
 }
@@ -1665,11 +1761,13 @@ function dmSimpleExcel(title,columns,rows){
   XLSX.writeFile(wb,title.replace(/[\\/:*?"<>|]/g,'_')+'.xlsx');
 }
 function dmSimplePrintDoc(title,columns,rows){
-  var rowsHtml='<tr>'+columns.map(function(c){return '<th'+(c.right?' class="pr-right"':'')+'>'+c.label+'</th>';}).join('')+'</tr>'+
-    rows.map(function(r){return '<tr>'+columns.map(function(c){return '<td'+(c.right?' class="pr-right"':'')+'>'+c.get(r)+'</td>';}).join('')+'</tr>';}).join('');
+  // ต้องห่อแถวหัวตารางด้วย <thead> จริงๆ (ไม่ใช่แค่ <tr> ตัวแรกลอยๆ ใน <table>) เบราว์เซอร์ถึงจะรู้ว่า
+  // ต้องพิมพ์หัวตารางซ้ำทุกหน้าเวลาตารางยาวเกิน 1 หน้า — ถ้าไม่ห่อ thead หัวตารางจะโผล่แค่หน้าแรกหน้าเดียว
+  var theadHtml='<thead><tr>'+columns.map(function(c){return '<th'+(c.right?' class="pr-right"':'')+'>'+c.label+'</th>';}).join('')+'</tr></thead>';
+  var tbodyHtml='<tbody>'+rows.map(function(r){return '<tr>'+columns.map(function(c){return '<td'+(c.right?' class="pr-right"':'')+'>'+c.get(r)+'</td>';}).join('')+'</tr>';}).join('')+'</tbody>';
   document.getElementById('printArea').innerHTML=
     prHeaderHtml(title,'จำนวน '+rows.length+' รายการ &nbsp;·&nbsp; พิมพ์เมื่อ '+printTimestamp())+
-    '<table>'+rowsHtml+'</table>'+
+    '<table>'+theadHtml+tbodyHtml+'</table>'+
     prSignatureHtml();
   setTimeout(function(){window.print();},80);
 }
@@ -2376,6 +2474,91 @@ function sapBankOf(name){
   if(m)return m[1].toUpperCase();
   return 'OTHER';   // เช่น บัญชีธนาคารพัฒนา(LDB), กรุงศรี ฯลฯ ที่ยังไม่มีแท็บเฉพาะ — ยังโชว์ในแท็บ "ทุกธนาคาร" ได้ปกติ
 }
+// เปิดโมดัลแสดงรายการละเอียดทีละบรรทัดของ "ส่วนต่างรับ/จ่าย" หนึ่งบัญชี (ปุ่ม "ดูรายละเอียด" ใน
+// ตาราง "แยกส่วนต่าง: ขารับ vs ขาจ่าย") — แยก 4 กลุ่มด้วยสี ให้ทีมบัญชีไล่เช็คทีละรายการได้ว่า
+// เป็นรายการโอนระหว่างบัญชีจริงทั้งหมดหรือไม่
+function rpManualBadge(mmSide,docNo){
+  var ov=manualMatchFor(mmSide,docNo);
+  var esc=String(docNo).replace(/'/g,"\\'");
+  if(ov){
+    if(ov.status==='matched')return '<span class="badge badge-green" style="cursor:pointer" onclick="event.stopPropagation();openManualMatchDialog(\''+mmSide+'\',\''+esc+'\')" title="กดเพื่อแก้ไข">✅ ตรวจสอบแล้ว'+(ov.note?' — '+ov.note:'')+'</span>';
+    return '<span class="badge badge-gold" style="cursor:pointer" onclick="event.stopPropagation();openManualMatchDialog(\''+mmSide+'\',\''+esc+'\')" title="กดเพื่อแก้ไข">🔁 ยังต้องตรวจสอบ'+(ov.note?' — '+ov.note:'')+'</span>';
+  }
+  return '<span class="badge badge-red" style="cursor:pointer" onclick="event.stopPropagation();openManualMatchDialog(\''+mmSide+'\',\''+esc+'\')" title="กดเพื่อบันทึกผลตรวจสอบ">✎ บันทึกผล</span>';
+}
+// รายการที่ "มีหลักฐานจริงใน SAP" (icSap = ยืนยันจาก Journal Entry, sapUnmatched = มีเอกสาร Q01/Q02
+// แต่หาใน bank statement ไม่เจอ) ต้องอ้างอิงเลขที่เอกสาร SAP จริงเสมอ ไม่ใช่แค่วันที่/ยอดเงิน — ส่วน
+// icHeuristic (แค่เดาว่าน่าจะจับคู่กับบัญชีอื่น) และ check (ไม่มีหลักฐานอะไรใน SAP เลย) ไม่มีเลขที่เอกสารให้อ้างอิง
+function rpDetailRefText(x,kind){
+  if(kind==='icSap')return 'เลขที่เอกสาร SAP (JE) #'+(x.tid||'—');
+  if(kind==='icHeuristic')return 'จับคู่กับบัญชี '+(x.matchedAcct||'—')+' วันที่ '+(x.matchedDate||'—');
+  if(kind==='sapUnmatched')return 'เลขที่เอกสาร SAP: '+(x.docNo||'—')+' — มีใน SAP แต่ไม่มีใน Bank';
+  return 'มีใน Bank แต่ไม่มีใน SAP — ยังหาคู่ไม่เจอเลย';
+}
+function rpDetailCatLabel(kind){
+  if(kind==='icSap')return '🟢 ยืนยันจาก SAP';
+  if(kind==='icHeuristic')return '🔵 จับคู่แบบเดา';
+  if(kind==='sapUnmatched')return '🟡 SAP มีแต่ไม่พบ Bank';
+  return '🔴 ต้องตรวจสอบจริง';
+}
+function rpDetailDocNo(code,kind,x){
+  return code+'|'+kind+'|'+(x.date||'')+'|'+(x.amt||0).toFixed(2);
+}
+function rpDetailMmStatusText(mmSide,docNo){
+  var ov=manualMatchFor(mmSide,docNo);
+  if(!ov)return 'ยังไม่ตรวจสอบ';
+  return (ov.status==='matched'?'✅ ตรวจสอบแล้ว':'🔁 ยังต้องตรวจสอบ')+(ov.note?' — '+ov.note:'');
+}
+function showRpDetail(code, side){
+  var d=RECON_RP_DETAIL[code];
+  if(!d){openModal('รายละเอียด','<div style="padding:20px;color:var(--muted)">ไม่พบข้อมูล — กรุณาลองกดใหม่หลังหน้าโหลดเสร็จ</div>');return;}
+  RP_DETAIL_REOPEN={code:code,side:side};
+  var s=d[side];
+  var sideLbl=side==='rec'?'ขารับ (เงินเข้า)':'ขาจ่าย (เงินออก)';
+  var mmSide=side==='rec'?'reconRec':'reconPay';
+  function fmtDate(v){return v||'—';}
+  function rowsHtml(list, kind){
+    if(!list||!list.length)return '';
+    return list.map(function(x){
+      var extra='<span style="color:var(--muted);font-size:10.5px">'+rpDetailRefText(x,kind)+'</span>';
+      var docNo=rpDetailDocNo(code,kind,x);
+      return '<tr><td style="font-size:12px">'+fmtDate(x.date)+'</td><td class="right" style="font-size:12px;font-weight:600">'+fmtFull(x.amt)+'</td><td>'+extra+'</td><td>'+rpManualBadge(mmSide,docNo)+'</td></tr>';
+    }).join('');
+  }
+  function section(title,color,list,kind){
+    if(!list||!list.length)return '';
+    var total=list.reduce(function(a,x){return a+x.amt;},0);
+    return '<div style="margin-top:14px"><div style="font-size:12.5px;font-weight:700;color:'+color+';margin-bottom:4px">'+title+' — '+list.length+' รายการ ('+fmtFull(total)+' บาท)</div>'+
+      '<table style="width:100%;border-collapse:collapse"><thead><tr style="color:var(--muted);font-size:10.5px"><th style="text-align:left;padding:3px 6px">วันที่</th><th style="text-align:right;padding:3px 6px">จำนวนเงิน</th><th style="text-align:left;padding:3px 6px">หมายเหตุ</th><th style="text-align:left;padding:3px 6px">การตรวจสอบ</th></tr></thead>'+
+      '<tbody>'+rowsHtml(list,kind)+'</tbody></table></div>';
+  }
+  // รวมทุกกลุ่มเป็นชุดเดียวไว้สำหรับปุ่ม "บันทึกเป็น PDF / Excel" (dmRegisterSimple + dmExportBtns
+  // เป็นระบบ export เดียวกับที่ใช้ในโมดัลอื่นๆ ทั่วทั้งแดชบอร์ด — มีหัวกระดาษบริษัท+วันที่ให้อัตโนมัติ)
+  var flatForExport=[].concat(
+    (s.icSap||[]).map(function(x){return{date:x.date,amt:x.amt,kind:'icSap',ref:x};}),
+    (s.icHeuristic||[]).map(function(x){return{date:x.date,amt:x.amt,kind:'icHeuristic',ref:x};}),
+    (s.check||[]).map(function(x){return{date:x.date,amt:x.amt,kind:'check',ref:x};}),
+    (s.sapUnmatched||[]).map(function(x){return{date:x.date,amt:x.amt,kind:'sapUnmatched',ref:x};})
+  );
+  var exportId='rpDetail';
+  dmRegisterSimple(exportId, d.name+' ('+code+') — '+sideLbl, [
+    {label:'วันที่', get:function(x){return x.date||'—';}},
+    {label:'จำนวนเงิน', right:true, get:function(x){return fmtFull(x.amt);}},
+    {label:'หมวด', get:function(x){return rpDetailCatLabel(x.kind);}},
+    {label:'อ้างอิง/หมายเหตุ', get:function(x){return rpDetailRefText(x.ref,x.kind);}},
+    {label:'ผลตรวจสอบ', get:function(x){return rpDetailMmStatusText(mmSide,rpDetailDocNo(code,x.kind,x.ref));}}
+  ], flatForExport);
+  var html='<div style="font-size:11px;color:var(--muted);margin-bottom:8px">'+d.name+' ('+code+') — '+sideLbl+'</div>'+
+    dmExportBtns(exportId)+
+    section('🟢 โอนภายใน — ยืนยันจาก SAP','var(--teal)',s.icSap,'icSap')+
+    section('🔵 โอนภายใน — จับคู่แบบเดา (ยังไม่มีหลักฐาน SAP)','var(--blue)',s.icHeuristic,'icHeuristic')+
+    section('🔴 ต้องตรวจสอบจริง (มีใน Bank แต่ไม่มีใน SAP)','var(--red)',s.check,'check')+
+    section('🟡 SAP มีแต่ไม่พบ Bank (มีใน SAP แต่ไม่มีใน Bank)','var(--gold2)',s.sapUnmatched,'sapUnmatched');
+  if(!s.icSap.length && !s.icHeuristic.length && !s.check.length && !s.sapUnmatched.length){
+    html+='<div style="padding:16px;color:var(--muted);text-align:center">ไม่มีรายการส่วนต่างในช่วงนี้</div>';
+  }
+  openModal('🔍 รายละเอียดส่วนต่าง: '+sideLbl, html);
+}
 function renderRecon(){
   var bank=RACTIVE;
   // Expose modal functions globally for KPI onclick handlers
@@ -2487,6 +2670,155 @@ function renderRecon(){
     var asOfHtml=asOfDate?'<span style="font-size:11px;color:var(--gold2)">'+asOfDate+'</span>':'<span style="color:var(--muted);font-size:11px">\u2014</span>';
     tbody.insertAdjacentHTML('beforeend','<tr style="background:'+bg+'"><td class="rank">'+(i+1)+'</td><td style="color:var(--teal);font-size:12px">'+acct.code+'</td><td>'+acct.name+'</td><td class="right '+(acct.bal>=0?'green':'red')+'">'+fmtFull(acct.bal)+'</td><td class="right" style="color:var(--teal);font-weight:600">'+(realBankBal!==null?fmtFull(realBankBal):'<span style="color:var(--muted)">\u2014</span>')+'</td><td>'+asOfHtml+'</td><td class="right" style="color:'+diffColor+';font-weight:700">'+(d2!==null?fmtFull(d2):'<span style="color:var(--muted)">\u2014</span>')+'</td><td>'+statusHtml+'</td></tr>');
   });
+
+  // ===== \u0e41\u0e22\u0e01\u0e2a\u0e48\u0e27\u0e19\u0e15\u0e48\u0e32\u0e07: \u0e02\u0e32\u0e23\u0e31\u0e1a vs \u0e02\u0e32\u0e08\u0e48\u0e32\u0e22 =====
+  // \u0e40\u0e17\u0e35\u0e22\u0e1a\u0e40\u0e09\u0e1e\u0e32\u0e30\u0e0a\u0e48\u0e27\u0e07\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48\u0e17\u0e35\u0e48\u0e21\u0e35\u0e18\u0e38\u0e23\u0e01\u0e23\u0e23\u0e21\u0e08\u0e23\u0e34\u0e07\u0e43\u0e19\u0e2a\u0e40\u0e15\u0e17\u0e40\u0e21\u0e19\u0e17\u0e4c\u0e02\u0e2d\u0e07\u0e1a\u0e31\u0e0d\u0e0a\u0e35\u0e19\u0e31\u0e49\u0e19 (min-max \u0e02\u0e2d\u0e07 txns \u0e17\u0e35\u0e48\u0e2d\u0e48\u0e32\u0e19\u0e44\u0e14\u0e49)
+  // \u0e44\u0e21\u0e48\u0e40\u0e17\u0e35\u0e22\u0e1a\u0e17\u0e31\u0e49\u0e07\u0e1b\u0e35 \u0e40\u0e1e\u0e23\u0e32\u0e30 SAP \u0e2d\u0e32\u0e08\u0e21\u0e35\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e19\u0e2d\u0e01\u0e0a\u0e48\u0e27\u0e07\u0e17\u0e35\u0e48\u0e2a\u0e40\u0e15\u0e17\u0e40\u0e21\u0e19\u0e17\u0e4c\u0e44\u0e21\u0e48\u0e04\u0e23\u0e2d\u0e1a\u0e04\u0e25\u0e38\u0e21 \u0e17\u0e33\u0e43\u0e2b\u0e49\u0e40\u0e02\u0e49\u0e32\u0e43\u0e08\u0e1c\u0e34\u0e14\u0e27\u0e48\u0e32\u0e15\u0e48\u0e32\u0e07\u0e01\u0e31\u0e19\u0e40\u0e22\u0e2d\u0e30\u0e01\u0e27\u0e48\u0e32\u0e08\u0e23\u0e34\u0e07
+  //
+  // \u0e23\u0e30\u0e14\u0e31\u0e1a "\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23" \u0e44\u0e21\u0e48\u0e43\u0e0a\u0e48\u0e41\u0e04\u0e48\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21: \u0e08\u0e31\u0e1a\u0e04\u0e39\u0e48\u0e18\u0e38\u0e23\u0e01\u0e23\u0e23\u0e21 Bank \u0e41\u0e15\u0e48\u0e25\u0e30\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e01\u0e31\u0e1a SAP (\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48+\u0e08\u0e33\u0e19\u0e27\u0e19\u0e40\u0e07\u0e34\u0e19\u0e15\u0e23\u0e07\u0e01\u0e31\u0e19) \u0e01\u0e48\u0e2d\u0e19
+  // \u0e2a\u0e48\u0e27\u0e19\u0e17\u0e35\u0e48\u0e08\u0e31\u0e1a\u0e04\u0e39\u0e48\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49 ("\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e1e\u0e1a\u0e43\u0e19 SAP") \u0e43\u0e2b\u0e49\u0e25\u0e2d\u0e07\u0e2b\u0e32\u0e04\u0e39\u0e48\u0e15\u0e23\u0e07\u0e02\u0e49\u0e32\u0e21\u0e43\u0e19\u0e1a\u0e31\u0e0d\u0e0a\u0e35\u0e18\u0e19\u0e32\u0e04\u0e32\u0e23\u0e2d\u0e37\u0e48\u0e19\u0e02\u0e2d\u0e07\u0e1a\u0e23\u0e34\u0e29\u0e31\u0e17\u0e40\u0e2d\u0e07 (\u00b13 \u0e27\u0e31\u0e19) \u0e15\u0e48\u0e2d
+  // \u0e16\u0e49\u0e32\u0e40\u0e08\u0e2d = "\u0e42\u0e2d\u0e19\u0e20\u0e32\u0e22\u0e43\u0e19\u0e1a\u0e23\u0e34\u0e29\u0e31\u0e17" (\u0e44\u0e21\u0e48\u0e15\u0e49\u0e2d\u0e07\u0e15\u0e23\u0e27\u0e08\u0e2a\u0e2d\u0e1a) \u0e16\u0e49\u0e32\u0e44\u0e21\u0e48\u0e40\u0e08\u0e2d = "\u0e15\u0e49\u0e2d\u0e07\u0e15\u0e23\u0e27\u0e08\u0e2a\u0e2d\u0e1a\u0e08\u0e23\u0e34\u0e07" (\u0e40\u0e0a\u0e48\u0e19 \u0e40\u0e07\u0e34\u0e19\u0e01\u0e39\u0e49\u0e22\u0e37\u0e21\u0e19\u0e2d\u0e01\u0e23\u0e30\u0e1a\u0e1a\u0e17\u0e35\u0e48\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01)
+  function dk2days(dk){
+    if(!dk||dk.length!==8)return null;
+    return Math.floor(Date.UTC(+dk.slice(0,4),+dk.slice(4,6)-1,+dk.slice(6,8))/86400000);
+  }
+  // คืนทั้ง 2 ทิศ: bankUnmatched (Bank มีแต่ SAP ไม่มี) และ sapUnmatched (SAP บันทึกไว้แต่หาใน
+  // สเตทเมนท์ธนาคารบัญชีนี้ไม่เจอ — อาจบันทึกผิดรหัสบัญชี/รายการถูกยกเลิกภายหลัง) จากการจับคู่ครั้งเดียวกัน
+  // ให้ตัวเลขทั้งสองฝั่งบวกลบกันแล้วเท่ากับ (ยอด Bank รวม − ยอด SAP รวม) เสมอ ไม่มีเงินหายจากสมการ
+  function rpMatchSap(bankItems, sapItems, tolAmt){
+    var pool=sapItems.slice(),unmatched=[];
+    bankItems.forEach(function(b){
+      var bdk=dateKey(b.date||''),idx=-1;
+      for(var i=0;i<pool.length;i++){
+        if(dateKey(pool[i].date||'')===bdk && Math.abs(pool[i].amt-b.amt)<=tolAmt){idx=i;break;}
+      }
+      if(idx>=0)pool.splice(idx,1); else unmatched.push(b);
+    });
+    return {bankUnmatched:unmatched, sapUnmatched:pool};
+  }
+  // โอนเงินระหว่างบัญชีของบริษัทเองจะเป็นยอดกลมๆ ไม่มีเศษสตางค์เสมอ (ต่างจากดอกเบี้ย/ค่าธรรมเนียม
+  // ที่มักมีเศษ) ใช้เป็นเงื่อนไขบังคับ ป้องกันจับคู่มั่ว (false positive) กับรายการที่บังเอิญยอดใกล้เคียงกัน
+  // ในช่วงเวลาใกล้กันแต่ไม่ใช่โอนภายในจริง — ถ้ามีเศษสตางค์ ไม่ต้องลองจับคู่เลย ส่งเข้า "ต้องตรวจสอบ" ทันที
+  function isRoundBaht(a){return Math.abs(a-Math.round(a))<0.005;}
+  // เช็คหลักฐานจริงจาก SAP (Q15_BANK_JOURNAL, G.sapTransferLegs) ก่อนเดา — ถ้า SAP มี Journal Entry
+  // ที่ยืนยันแล้วว่าเป็นการโอนภายใน (ดูเงื่อนไขตอนประมวลผลใน loadAllData) และมีบรรทัดที่ตรงกับรายการ
+  // Bank นี้ (บัญชี+วันที่+ยอด) ให้ตัดออกจากที่ต้องเดาทันที — แม่นยำกว่า heuristic วันที่+ยอดกลม
+  function sapConfirmedSum(acctCode, items, side, tolAmt, tolDays){
+    var pool=(G.sapTransferLegs&&G.sapTransferLegs[acctCode]?G.sapTransferLegs[acctCode]:[]).slice();
+    var confirmed=0, remaining=[], list=[];
+    items.forEach(function(it){
+      // โอนเงินระหว่างบัญชีของบริษัทเองจะเป็นยอดกลมๆ ไม่มีเศษสตางค์เสมอ (ยืนยันจากผู้ใช้) — แม้จะมี
+      // JE ใน SAP ที่บังเอิญโยงบัญชีธนาคาร 2 บัญชีและยอดตรงกัน แต่ถ้ามีเศษสตางค์ ก็ไม่ใช่การโอนภายในจริง
+      // (น่าจะเป็นรายการปรับปรุง/ดอกเบี้ยที่บังเอิญแตะ 2 บัญชี) ต้องกันไว้ไม่ให้ถูกยืนยันว่าเป็นโอนภายในเช่นกัน
+      if(!isRoundBaht(it.amt)){remaining.push(it);return;}
+      var idk=dateKey(it.date||''),idays=dk2days(idk),idx=-1;
+      for(var i=0;i<pool.length;i++){
+        var legAmt=side==='debit'?pool[i].debit:pool[i].credit;
+        if(!legAmt)continue;
+        var ldays=dk2days(dateKey(pool[i].date||''));
+        if(idays!=null&&ldays!=null&&Math.abs(ldays-idays)<=tolDays&&Math.abs(legAmt-it.amt)<=tolAmt){idx=i;break;}
+      }
+      if(idx>=0){confirmed+=it.amt;list.push({date:it.date,amt:it.amt,tid:pool[idx].tid||''});pool.splice(idx,1);}
+      else remaining.push(it);
+    });
+    return {confirmed:confirmed, remaining:remaining, list:list};
+  }
+  function rpMatchInterAccount(unmatched, otherItems, tolAmt, tolDays){
+    var pool=otherItems.slice(),icSum=0,checkSum=0,checkList=[],icList=[];
+    unmatched.forEach(function(u){
+      if(!isRoundBaht(u.amt)){checkSum+=u.amt;checkList.push(u);return;}
+      var udays=dk2days(dateKey(u.date||'')),idx=-1;
+      for(var i=0;i<pool.length;i++){
+        if(!isRoundBaht(pool[i].amt))continue;
+        var odays=dk2days(dateKey(pool[i].date||''));
+        if(udays!=null&&odays!=null&&Math.abs(odays-udays)<=tolDays&&Math.abs(pool[i].amt-u.amt)<=tolAmt){idx=i;break;}
+      }
+      if(idx>=0){icSum+=u.amt;icList.push({date:u.date,amt:u.amt,matchedAcct:pool[idx].acctNo||'',matchedDate:pool[idx].date||''});pool.splice(idx,1);}
+      else{checkSum+=u.amt;checkList.push(u);}
+    });
+    return {icSum:icSum,checkSum:checkSum,checkList:checkList,icList:icList};
+  }
+  // \u0e23\u0e27\u0e21\u0e18\u0e38\u0e23\u0e01\u0e23\u0e23\u0e21\u0e02\u0e2d\u0e07\u0e17\u0e38\u0e01\u0e1a\u0e31\u0e0d\u0e0a\u0e35\u0e18\u0e19\u0e32\u0e04\u0e32\u0e23\u0e02\u0e2d\u0e07\u0e1a\u0e23\u0e34\u0e29\u0e31\u0e17 (\u0e17\u0e38\u0e01\u0e18\u0e19\u0e32\u0e04\u0e32\u0e23 \u0e22\u0e01\u0e40\u0e27\u0e49\u0e19\u0e40\u0e07\u0e34\u0e19\u0e2a\u0e14) \u0e44\u0e27\u0e49\u0e43\u0e0a\u0e49\u0e2b\u0e32 "\u0e42\u0e2d\u0e19\u0e20\u0e32\u0e22\u0e43\u0e19" \u0e02\u0e49\u0e32\u0e21\u0e1a\u0e31\u0e0d\u0e0a\u0e35
+  var allBankTxnsFlat=[];
+  Object.keys(RBANK_DATA).forEach(function(k){
+    if(k==='CASH')return;
+    (RBANK_DATA[k].accounts||[]).forEach(function(a){
+      (a.txns||[]).forEach(function(t){
+        allBankTxnsFlat.push({acctNo:a.acctNo,date:t.date,debit:t.debit||0,credit:t.credit||0});
+      });
+    });
+  });
+  var rpRows=sapList.map(function(acct){
+    var matchedAccts=hasData?bd.accounts.filter(function(a){return acctMatches(a.acctNo, acct.name);}):[];
+    if(!matchedAccts.length)return null;
+    var ownAcctNos={};matchedAccts.forEach(function(a){ownAcctNos[a.acctNo]=true;});
+    var minK='',maxK='',bankRec=0,bankPay=0,bankCrItems=[],bankDrItems=[];
+    matchedAccts.forEach(function(a){
+      (a.txns||[]).forEach(function(t){
+        var dk=dateKey(t.date||'');
+        if(dk){ if(!minK||dk<minK)minK=dk; if(!maxK||dk>maxK)maxK=dk; }
+        if(t.credit){bankRec+=t.credit;bankCrItems.push({date:t.date,amt:t.credit});}
+        if(t.debit){bankPay+=t.debit;bankDrItems.push({date:t.date,amt:t.debit});}
+      });
+    });
+    if(!minK)return null; // \u0e21\u0e35\u0e41\u0e15\u0e48\u0e22\u0e2d\u0e14\u0e04\u0e07\u0e40\u0e2b\u0e25\u0e37\u0e2d \u0e44\u0e21\u0e48\u0e21\u0e35\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e18\u0e38\u0e23\u0e01\u0e23\u0e23\u0e21\u0e22\u0e48\u0e2d\u0e22\u0e43\u0e2b\u0e49\u0e40\u0e17\u0e35\u0e22\u0e1a
+    var byCode=function(r){return String(r.bankCode||'').trim()===acct.code;};
+    var sapRecItems=(G.recRows||[]).filter(byCode).map(function(r){return{date:normDate(r.date),amt:r.amt||0,docNo:String(r.docNo||'')};});
+    var sapPayItems=(G.payRows||[]).filter(byCode).map(function(r){return{date:normDate(r.date),amt:r.amt||0,docNo:String(r.docNo||'')};});
+    var sapRec=sapRecItems.reduce(function(s,r){return s+r.amt;},0);
+    var sapPay=sapPayItems.reduce(function(s,r){return s+r.amt;},0);
+
+    var recMatch=rpMatchSap(bankCrItems, sapRecItems, 1);
+    var payMatch=rpMatchSap(bankDrItems, sapPayItems, 1);
+    var unmatchedCr=recMatch.bankUnmatched, unmatchedDr=payMatch.bankUnmatched;
+    var sapUnmatchedRec=recMatch.sapUnmatched.reduce(function(s,x){return s+x.amt;},0);
+    var sapUnmatchedPay=payMatch.sapUnmatched.reduce(function(s,x){return s+x.amt;},0);
+    var otherDebits=allBankTxnsFlat.filter(function(x){return !ownAcctNos[x.acctNo]&&x.debit;}).map(function(x){return{date:x.date,amt:x.debit,acctNo:x.acctNo};});
+    var otherCredits=allBankTxnsFlat.filter(function(x){return !ownAcctNos[x.acctNo]&&x.credit;}).map(function(x){return{date:x.date,amt:x.credit,acctNo:x.acctNo};});
+    // \u0e02\u0e31\u0e49\u0e19\u0e17\u0e35\u0e48 1: \u0e40\u0e0a\u0e47\u0e04\u0e2b\u0e25\u0e31\u0e01\u0e10\u0e32\u0e19\u0e08\u0e23\u0e34\u0e07\u0e08\u0e32\u0e01 SAP Journal Entry (Q15) \u0e01\u0e48\u0e2d\u0e19 \u2014 \u0e16\u0e49\u0e32\u0e22\u0e37\u0e19\u0e22\u0e31\u0e19\u0e44\u0e14\u0e49 \u0e15\u0e31\u0e14\u0e2d\u0e2d\u0e01\u0e17\u0e31\u0e19\u0e17\u0e35
+    // \u0e02\u0e31\u0e49\u0e19\u0e17\u0e35\u0e48 2: \u0e17\u0e35\u0e48\u0e40\u0e2b\u0e25\u0e37\u0e2d (\u0e44\u0e21\u0e48\u0e21\u0e35\u0e2b\u0e25\u0e31\u0e01\u0e10\u0e32\u0e19\u0e43\u0e19 SAP \u0e40\u0e0a\u0e48\u0e19 \u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49\u0e14\u0e36\u0e07 Q15 \u0e2b\u0e23\u0e37\u0e2d\u0e0a\u0e48\u0e27\u0e07\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48 query \u0e44\u0e21\u0e48\u0e04\u0e23\u0e2d\u0e1a\u0e04\u0e25\u0e38\u0e21)
+    // \u0e43\u0e2b\u0e49 heuristic \u0e40\u0e14\u0e34\u0e21 (\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48\u0e43\u0e01\u0e25\u0e49\u0e01\u0e31\u0e19+\u0e22\u0e2d\u0e14\u0e01\u0e25\u0e21) \u0e17\u0e33\u0e07\u0e32\u0e19\u0e40\u0e1b\u0e47\u0e19 fallback \u0e15\u0e48\u0e2d\u0e44\u0e1b\u0e40\u0e2b\u0e21\u0e37\u0e2d\u0e19\u0e40\u0e14\u0e34\u0e21
+    var recSapConf=sapConfirmedSum(acct.code, unmatchedCr, 'debit', 1, 1);
+    var recSplit=rpMatchInterAccount(recSapConf.remaining, otherDebits, 1, 3);
+    var paySapConf=sapConfirmedSum(acct.code, unmatchedDr, 'credit', 1, 1);
+    var paySplit=rpMatchInterAccount(paySapConf.remaining, otherCredits, 1, 3);
+
+    // \u0e40\u0e01\u0e47\u0e1a\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14\u0e17\u0e38\u0e01\u0e01\u0e25\u0e38\u0e48\u0e21\u0e44\u0e27\u0e49\u0e43\u0e2b\u0e49\u0e1b\u0e38\u0e48\u0e21 "\u0e14\u0e39\u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14" \u0e40\u0e1b\u0e34\u0e14\u0e14\u0e39\u0e17\u0e35\u0e25\u0e30\u0e1a\u0e23\u0e23\u0e17\u0e31\u0e14\u0e44\u0e14\u0e49 (showRpDetail)
+    RECON_RP_DETAIL[acct.code]={
+      name:acct.name,
+      rec:{icSap:recSapConf.list, icHeuristic:recSplit.icList, check:recSplit.checkList, sapUnmatched:recMatch.sapUnmatched},
+      pay:{icSap:paySapConf.list, icHeuristic:paySplit.icList, check:paySplit.checkList, sapUnmatched:payMatch.sapUnmatched}
+    };
+
+    var lbl=function(k){return k.slice(6,8)+'/'+k.slice(4,6)+'/'+k.slice(0,4);};
+    return {code:acct.code,name:acct.name,periodLbl:lbl(minK)+' \u2013 '+lbl(maxK),
+      sapRec:sapRec,bankRec:bankRec,recIc:recSapConf.confirmed+recSplit.icSum,recIcSap:recSapConf.confirmed,recCheck:recSplit.checkSum,sapUnmatchedRec:sapUnmatchedRec,
+      sapPay:sapPay,bankPay:bankPay,payIc:paySapConf.confirmed+paySplit.icSum,payIcSap:paySapConf.confirmed,payCheck:paySplit.checkSum,sapUnmatchedPay:sapUnmatchedPay};
+  }).filter(Boolean);
+  var rpSection=document.getElementById('reconRecPaySection');
+  if(rpRows.length){
+    rpSection.style.display='block';
+    function rpCell(v){return '<td class="right">'+fmtFull(v)+'</td>';}
+    function rpDiffCell(code,side,icSum,icSap,checkSum,sapUnmatched){
+      var sapLine=sapUnmatched>=1?'<div style="font-size:10.5px;color:var(--gold2)">SAP \u0e21\u0e35\u0e41\u0e15\u0e48\u0e44\u0e21\u0e48\u0e1e\u0e1a Bank: \u2212'+fmtFull(sapUnmatched)+'</div>':'';
+      var icSapLine=icSap>=1?'<div style="font-size:9.5px;color:var(--muted)">(\u0e22\u0e37\u0e19\u0e22\u0e31\u0e19\u0e08\u0e32\u0e01 SAP: '+fmtFull(icSap)+')</div>':'';
+      var btn='<button onclick="showRpDetail(\''+code+'\',\''+side+'\')" title="\u0e14\u0e39\u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14\u0e17\u0e35\u0e25\u0e30\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23" style="background:none;border:1px solid var(--border);border-radius:4px;color:var(--muted);font-size:10px;padding:1px 5px;margin-top:3px;cursor:pointer">&#128269; \u0e14\u0e39\u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14</button>';
+      return '<td class="right"><div style="font-size:10.5px;color:var(--teal)">\u0e42\u0e2d\u0e19\u0e20\u0e32\u0e22\u0e43\u0e19: '+fmtFull(icSum)+'</div>'+
+        icSapLine+
+        sapLine+
+        '<div style="font-weight:700;color:var(--red)">\u0e15\u0e49\u0e2d\u0e07\u0e15\u0e23\u0e27\u0e08\u0e2a\u0e2d\u0e1a: '+fmtFull(checkSum)+'</div>'+
+        btn+'</td>';
+    }
+    document.getElementById('reconRecPayBody').innerHTML=rpRows.map(function(r,i){
+      var bg=i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)';
+      return '<tr style="background:'+bg+'"><td><div style="font-size:12px">'+r.name+'</div><div style="font-size:10px;color:var(--teal)">'+r.code+'</div></td>'+
+        '<td style="font-size:11px;color:var(--muted)">'+r.periodLbl+'</td>'+
+        rpCell(r.sapRec)+rpCell(r.bankRec)+rpDiffCell(r.code,'rec',r.recIc,r.recIcSap,r.recCheck,r.sapUnmatchedRec)+
+        rpCell(r.sapPay)+rpCell(r.bankPay)+rpDiffCell(r.code,'pay',r.payIc,r.payIcSap,r.payCheck,r.sapUnmatchedPay)+'</tr>';
+    }).join('');
+  } else {
+    rpSection.style.display='none';
+  }
 
   // Charts
   if(chartInstances['reconCompareBar'])chartInstances['reconCompareBar'].destroy();
