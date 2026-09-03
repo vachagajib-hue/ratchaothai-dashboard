@@ -881,16 +881,9 @@ async function loadAllData(){
             var date=ix15Date>=0?normDate(r[ix15Date]):'';
             var bpName=ix15BpName>=0?String(r[ix15BpName]||'').trim():'';
             var memo=ix15Memo>=0?String(r[ix15Memo]||'').trim():'';
-            if(!jGroups[tid])jGroups[tid]={legs:[],hasBP:false,hasPaymentMemo:false,accts:{}};
+            if(!jGroups[tid])jGroups[tid]={legs:[],hasBP:false,accts:{}};
             jGroups[tid].legs.push({acct:acct,date:date,debit:debit,credit:credit,bpName:bpName,memo:memo});
             if(bpName)jGroups[tid].hasBP=true;
-            // ⚠️ ข้อมูลต้นทางมีบั๊กที่ทีม SAP/IT กำลังแก้ (แจ้งไปแล้ว): แถวประเภท "Incoming/Outgoing
-            // Payments" บางแถวถูกใส่ BPCode เป็นรหัสบัญชีธนาคารเอง แทนที่จะเป็นรหัสลูกค้า/คู่ค้าจริง
-            // ทำให้ BPName ว่างเปล่า (hasBP เป็น false ทั้งที่จริงเป็นรายการ AR/AP) และเมื่อบัญชีธนาคารที่
-            // แตะมีแค่บัญชีเดียว (ไม่ใช่โอนภายใน) รายการจะถูกทิ้งไปเงียบๆ ไม่ถูกใช้เป็นหลักฐานเลย — ระหว่างรอ
-            // แก้ที่ต้นทาง ใช้คำในหมายเหตุ (Memo) แทนเป็นสัญญาณสำรอง เพราะ SAP ใส่คำนี้ไว้ตรงแน่นอนสำหรับ
-            // เอกสารประเภทรับ/จ่ายชำระ ต่างจากโอนภายในที่ขึ้นต้นด้วย "โอนเงิน...เข้าบัญชี..." เสมอ
-            if(/^(incoming|outgoing)\s+payments/i.test(memo))jGroups[tid].hasPaymentMemo=true;
             if(acct.indexOf('111')===0)jGroups[tid].accts[acct]=true;
             if(acct && acct.indexOf('111')===0){
               if(!sapAllBankLegs[acct])sapAllBankLegs[acct]=[];
@@ -899,24 +892,32 @@ async function loadAllData(){
           });
           Object.keys(jGroups).forEach(function(tid){
             var jg=jGroups[tid];
-            if(jg.hasBP || jg.hasPaymentMemo){
-              // มีคู่ค้าจริงผูกอยู่ในเอกสารนี้ (BPName ไม่ว่างอย่างน้อย 1 บรรทัด) หรือหมายเหตุระบุชัดว่าเป็น
-              // เอกสารรับ/จ่ายชำระ (แม้ BPName จะว่างเพราะบั๊กข้อมูลต้นทางก็ตาม) — ไม่ใช่โอนภายในล้วนๆ
-              // แต่ "เป็นหลักฐานจริงจาก GL" ว่ามีการรับ/จ่ายเงินลูกหนี้-เจ้าหนี้เข้าบัญชีนี้จริง เก็บไว้ใช้
-              // เป็นชั้นตรวจสอบเพิ่มเติม (นอกเหนือจาก Q01/Q02 ซึ่งเป็นรายงานระดับเอกสาร ไม่ใช่ GL โดยตรง)
-              // ในหน้ากระทบยอด ขารับ/ขาจ่าย — ก่อนหน้านี้ข้อมูลกลุ่มนี้ถูกอ่านแล้วทิ้งไปเฉยๆ
+            var acctCount=Object.keys(jg.accts).length;
+            if(!jg.hasBP && acctCount>=2){
+              // ไม่มี BP ผูกเลยสักบรรทัด และแตะบัญชีเงินสด/ธนาคาร >=2 บัญชี = การโอนเงินระหว่างบัญชีภายใน
+              // บริษัทเองล้วนๆ (เงินออกจากบัญชีหนึ่งเข้าอีกบัญชีหนึ่ง ไม่มีคู่ค้าภายนอกเกี่ยวข้อง)
               jg.legs.forEach(function(leg){
-                if(!leg.acct || leg.acct.indexOf('111')!==0)return;
-                if(!sapBankGLItems[leg.acct])sapBankGLItems[leg.acct]=[];
-                sapBankGLItems[leg.acct].push({date:leg.date,debit:leg.debit,credit:leg.credit,tid:tid,bpName:leg.bpName,memo:leg.memo});
+                if(!leg.acct)return;
+                if(!sapTransferLegs[leg.acct])sapTransferLegs[leg.acct]=[];
+                sapTransferLegs[leg.acct].push({date:leg.date,debit:leg.debit,credit:leg.credit,tid:tid});
               });
               return;
             }
-            if(Object.keys(jg.accts).length<2)return; // แตะบัญชีเงินสด/ธนาคารไม่ถึง 2 บัญชี — ไม่ใช่การโอนภายใน (เช่น ดอกเบี้ย/ค่าธรรมเนียม)
+            // ทุกกรณีอื่น = "เป็นหลักฐานจริงจาก GL" เก็บไว้ใช้เป็นชั้นตรวจสอบเพิ่มเติม (นอกเหนือจาก Q01/Q02
+            // ซึ่งเป็นรายงานระดับเอกสาร ไม่ใช่ GL โดยตรง) — ครอบคลุม 2 กรณี:
+            // (1) มี BPName ผูกอยู่จริง (ไม่ว่าจะแตะกี่บัญชี) = ผูกกับ AR/AP จริงชัดเจน
+            // (2) แตะบัญชีธนาคารเพียงบัญชีเดียว (ไม่ใช่โอนภายใน) — เช่น ตัดชำระดอกเบี้ย OD/เงินกู้ LOAN/
+            //     ตั๋ว P/N, รับ/จ่ายชำระ (Incoming/Outgoing Payments) ฯลฯ — ⚠️ ข้อมูลต้นทางมีบั๊กที่ทีม
+            //     SAP/IT กำลังแก้ (แจ้งไปแล้ว): BPCode ของธุรกรรมกลุ่มนี้บางส่วนถูกใส่เป็นรหัสบัญชีธนาคาร
+            //     เอง แทนที่จะเป็นรหัสคู่ค้าจริง ทำให้ BPName ว่างเปล่าไปด้วย (hasBP เป็น false ทั้งที่จริง
+            //     เป็นรายการจริง) — แต่ไม่ว่า BPName จะว่างหรือไม่ ทุกบรรทัดใน Q15 คือ JE ที่โพสต์จริงใน SAP
+            //     แล้ว (มีเลขที่เอกสาร/วันที่/ยอดของจริง) จึงถือเป็นหลักฐานที่เชื่อถือได้เท่ากันเสมอ ไม่ทิ้งอีก
+            //     ต่อไป (เดิมกรณี (2) ถูกอ่านแล้วทิ้งไปเงียบๆ ถ้า BPName ว่าง — เป็นต้นเหตุที่รายการโอน/ชำระ
+            //     จริงจำนวนมากค้างอยู่ใน "ต้องตรวจสอบจริง" ทั้งที่มีหลักฐาน SAP อยู่แล้ว)
             jg.legs.forEach(function(leg){
-              if(!leg.acct)return;
-              if(!sapTransferLegs[leg.acct])sapTransferLegs[leg.acct]=[];
-              sapTransferLegs[leg.acct].push({date:leg.date,debit:leg.debit,credit:leg.credit,tid:tid});
+              if(!leg.acct || leg.acct.indexOf('111')!==0)return;
+              if(!sapBankGLItems[leg.acct])sapBankGLItems[leg.acct]=[];
+              sapBankGLItems[leg.acct].push({date:leg.date,debit:leg.debit,credit:leg.credit,tid:tid,bpName:leg.bpName,memo:leg.memo});
             });
           });
         }
