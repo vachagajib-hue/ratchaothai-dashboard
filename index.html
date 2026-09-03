@@ -371,7 +371,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <canvas id="plCashActualChart"></canvas>
 </div>
 <div style="font-size:11px;color:var(--muted);margin-bottom:8px" id="plRangeLabel"></div>
-<div style="overflow-x:auto"><div id="plTableWrap"></div></div>
+<div style="overflow-x:auto;overflow-y:auto;max-height:65vh;border:1px solid rgba(255,255,255,0.08);border-radius:8px"><div id="plTableWrap"></div></div>
 </div>
 </div>
 
@@ -3846,7 +3846,7 @@ function renderPL(){
   }
 
   var theadMonths=months.map(function(m){return '<th style="padding:8px 10px;text-align:right">'+plMoLbl(m)+'</th>';}).join('');
-  var tableHtml='<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#0b1626;text-align:left">'+
+  var tableHtml='<table style="width:100%;border-collapse:collapse;font-size:12px"><thead style="position:sticky;top:0;z-index:5;background:#0b1626"><tr style="background:#0b1626;text-align:left">'+
     '<th style="padding:8px 10px">รหัสบัญชี</th><th style="padding:8px 10px">ชื่อบัญชี</th>'+theadMonths+
     '<th style="padding:8px 10px;text-align:right">รวม</th><th style="padding:8px 10px;text-align:right">แนวโน้ม</th></tr></thead><tbody>';
 
