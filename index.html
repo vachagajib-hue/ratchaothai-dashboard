@@ -8,7 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
-:root{--navy:#070f1c;--navy2:#0b1626;--navy3:#243B55;--gold:#D4A843;--gold2:#F0C96B;--teal:#2BBFB3;--red:#E05C5C;--green:#4CAF7D;--blue:#5B8FF9;--muted:#8FA3B8;--border:rgba(255,255,255,0.08);--card:#0f1e32;--text:#E8EFF7;--text2:#B0C4D8;}
+:root{--navy:#070f1c;--navy2:#0b1626;--navy3:#243B55;--gold:#D4A843;--gold2:#F0C96B;--teal:#2BBFB3;--red:#E05C5C;--green:#4CAF7D;--blue:#5B8FF9;--purple:#A385E0;--muted:#8FA3B8;--border:rgba(255,255,255,0.08);--card:#0f1e32;--text:#E8EFF7;--text2:#B0C4D8;}
 *{margin:0;padding:0;box-sizing:border-box;}body{font-family:'Sarabun',sans-serif;background:var(--navy);color:var(--text);font-size:14px;min-height:100vh;}
 #loadingOverlay{position:fixed;inset:0;background:rgba(7,15,28,0.97);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity 0.4s;}
 .loading-logo{width:auto;min-width:76px;height:56px;padding:0 22px;background:linear-gradient(135deg,var(--gold),var(--gold2));border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;letter-spacing:0.3px;color:var(--navy);margin-bottom:22px;animation:logoPulse 1.5s ease-in-out infinite;}
@@ -838,6 +838,7 @@ async function loadAllData(){
     // บรรทัดไหนผูกกับคู่ค้าจริงเลย (BPName ว่างทุกบรรทัด) และแตะบัญชีเงินสด/ธนาคาร (ขึ้นต้น '111')
     // ตั้งแต่ 2 บัญชีขึ้นไป (รองรับการโอนกระจายหลายบัญชีในเอกสารเดียว ไม่ใช่แค่ 2 บัญชีเป๊ะ)
     var sapTransferLegs={};
+    var sapBankGLItems={};
     try{
       if(q15 && q15.rows && q15.rows.length){
         var cols15=q15.cols||[];
@@ -855,6 +856,7 @@ async function loadAllData(){
         var ix15Debit=findCol15(['debit amount','debit']);
         var ix15Credit=findCol15(['credit amount','credit']);
         var ix15BpName=findCol15(['bpname']);
+        var ix15Memo=findCol15(['memo']);
         if(ix15Trans>=0 && ix15Acct>=0 && ix15Debit>=0 && ix15Credit>=0){
           var jGroups={};
           q15.rows.forEach(function(r){
@@ -863,14 +865,26 @@ async function loadAllData(){
             var debit=parseFloat(r[ix15Debit])||0, credit=parseFloat(r[ix15Credit])||0;
             var date=ix15Date>=0?normDate(r[ix15Date]):'';
             var bpName=ix15BpName>=0?String(r[ix15BpName]||'').trim():'';
+            var memo=ix15Memo>=0?String(r[ix15Memo]||'').trim():'';
             if(!jGroups[tid])jGroups[tid]={legs:[],hasBP:false,accts:{}};
-            jGroups[tid].legs.push({acct:acct,date:date,debit:debit,credit:credit});
+            jGroups[tid].legs.push({acct:acct,date:date,debit:debit,credit:credit,bpName:bpName,memo:memo});
             if(bpName)jGroups[tid].hasBP=true;
             if(acct.indexOf('111')===0)jGroups[tid].accts[acct]=true;
           });
           Object.keys(jGroups).forEach(function(tid){
             var jg=jGroups[tid];
-            if(jg.hasBP)return; // มีคู่ค้าจริงผูกอยู่ในเอกสารนี้ — ไม่ใช่โอนภายในล้วนๆ (เช่น เบิกเงินสดย่อยพนักงาน)
+            if(jg.hasBP){
+              // มีคู่ค้าจริงผูกอยู่ในเอกสารนี้ (BPName ไม่ว่างอย่างน้อย 1 บรรทัด) — ไม่ใช่โอนภายในล้วนๆ
+              // แต่ "เป็นหลักฐานจริงจาก GL" ว่ามีการรับ/จ่ายเงินลูกหนี้-เจ้าหนี้เข้าบัญชีนี้จริง เก็บไว้ใช้
+              // เป็นชั้นตรวจสอบเพิ่มเติม (นอกเหนือจาก Q01/Q02 ซึ่งเป็นรายงานระดับเอกสาร ไม่ใช่ GL โดยตรง)
+              // ในหน้ากระทบยอด ขารับ/ขาจ่าย — ก่อนหน้านี้ข้อมูลกลุ่มนี้ถูกอ่านแล้วทิ้งไปเฉยๆ
+              jg.legs.forEach(function(leg){
+                if(!leg.acct || leg.acct.indexOf('111')!==0)return;
+                if(!sapBankGLItems[leg.acct])sapBankGLItems[leg.acct]=[];
+                sapBankGLItems[leg.acct].push({date:leg.date,debit:leg.debit,credit:leg.credit,tid:tid,bpName:leg.bpName,memo:leg.memo});
+              });
+              return;
+            }
             if(Object.keys(jg.accts).length<2)return; // แตะบัญชีเงินสด/ธนาคารไม่ถึง 2 บัญชี — ไม่ใช่การโอนภายใน (เช่น ดอกเบี้ย/ค่าธรรมเนียม)
             jg.legs.forEach(function(leg){
               if(!leg.acct)return;
@@ -886,7 +900,7 @@ async function loadAllData(){
     G={recByM:recByM,payByM:payByM,bankNet:bankNet,bankRows:bankRows,recRows:recRows,payRows:payRows,
        at:at,a30:a30,a60:a60,a90:a90,a90p:a90p,topAR:topAR,arAgeMap:arAgeMap,arRows2:arRows2,arCusts:Object.keys(arByCust).length,
        pt:pt,p30:p30,p60:p60,p60p:p60p,topAP:topAP,apRows2:apRows2,arItemsByDoc:arItemsByDoc,apItemsByDoc:apItemsByDoc,sapMonthlyByAcct:sapMonthlyByAcct,
-       et:et,topExp:exps.slice(0,10),expAll:expAll,expDetailByAcct:expDetailByAcct,arRowCount:q04.rows.length,apRowCount:q05.rows.length,allMonths:allMonths,plRows:plRows,apCatRows:apCatRows,manualMatch:manualMatch,sapTransferLegs:sapTransferLegs};
+       et:et,topExp:exps.slice(0,10),expAll:expAll,expDetailByAcct:expDetailByAcct,arRowCount:q04.rows.length,apRowCount:q05.rows.length,allMonths:allMonths,plRows:plRows,apCatRows:apCatRows,manualMatch:manualMatch,sapTransferLegs:sapTransferLegs,sapBankGLItems:sapBankGLItems};
     ACTIVE_MONTHS=[...allMonths];
     buildFilters(allMonths);
     st.textContent='\u0e2a\u0e23\u0e49\u0e32\u0e07\u0e01\u0e23\u0e32\u0e1f\u2026';st.className='loading-status ok';
@@ -2482,7 +2496,7 @@ function sapBankOf(name){
   return 'OTHER';   // เช่น บัญชีธนาคารพัฒนา(LDB), กรุงศรี ฯลฯ ที่ยังไม่มีแท็บเฉพาะ — ยังโชว์ในแท็บ "ทุกธนาคาร" ได้ปกติ
 }
 // เปิดโมดัลแสดงรายการละเอียดทีละบรรทัดของ "ส่วนต่างรับ/จ่าย" หนึ่งบัญชี (ปุ่ม "ดูรายละเอียด" ใน
-// ตาราง "แยกส่วนต่าง: ขารับ vs ขาจ่าย") — แยก 4 กลุ่มด้วยสี ให้ทีมบัญชีไล่เช็คทีละรายการได้ว่า
+// ตาราง "แยกส่วนต่าง: ขารับ vs ขาจ่าย") — แยก 5 กลุ่มด้วยสี ให้ทีมบัญชีไล่เช็คทีละรายการได้ว่า
 // เป็นรายการโอนระหว่างบัญชีจริงทั้งหมดหรือไม่
 function rpManualBadge(mmSide,docNo){
   var ov=manualMatchFor(mmSide,docNo);
@@ -2498,12 +2512,14 @@ function rpManualBadge(mmSide,docNo){
 // icHeuristic (แค่เดาว่าน่าจะจับคู่กับบัญชีอื่น) และ check (ไม่มีหลักฐานอะไรใน SAP เลย) ไม่มีเลขที่เอกสารให้อ้างอิง
 function rpDetailRefText(x,kind){
   if(kind==='icSap')return 'เลขที่เอกสาร SAP (JE) #'+(x.tid||'—')+(x.combo?' — โอนแยกหลายรายการรวมยอด':'');
+  if(kind==='glConfirmed')return 'ยืนยันจาก GL — JE #'+(x.tid||'—')+(x.bpName?' คู่ค้า: '+x.bpName:'')+(x.combo?' — แยกหลายรายการรวมยอด':'');
   if(kind==='icHeuristic')return 'จับคู่กับบัญชี '+(x.matchedAcct||'—')+' วันที่ '+(x.matchedDate||'—');
   if(kind==='sapUnmatched')return 'เลขที่เอกสาร SAP: '+(x.docNo||'—')+' — มีใน SAP แต่ไม่มีใน Bank';
   return 'มีใน Bank แต่ไม่มีใน SAP — ยังหาคู่ไม่เจอเลย';
 }
 function rpDetailCatLabel(kind){
   if(kind==='icSap')return '🟢 ยืนยันจาก SAP';
+  if(kind==='glConfirmed')return '🟣 ยืนยันจาก GL';
   if(kind==='icHeuristic')return '🔵 จับคู่แบบเดา';
   if(kind==='sapUnmatched')return '🟡 SAP มีแต่ไม่พบ Bank';
   return '🔴 ต้องตรวจสอบจริง';
@@ -2543,6 +2559,7 @@ function showRpDetail(code, side){
   // เป็นระบบ export เดียวกับที่ใช้ในโมดัลอื่นๆ ทั่วทั้งแดชบอร์ด — มีหัวกระดาษบริษัท+วันที่ให้อัตโนมัติ)
   var flatForExport=[].concat(
     (s.icSap||[]).map(function(x){return{date:x.date,amt:x.amt,kind:'icSap',ref:x};}),
+    (s.glConfirmed||[]).map(function(x){return{date:x.date,amt:x.amt,kind:'glConfirmed',ref:x};}),
     (s.icHeuristic||[]).map(function(x){return{date:x.date,amt:x.amt,kind:'icHeuristic',ref:x};}),
     (s.check||[]).map(function(x){return{date:x.date,amt:x.amt,kind:'check',ref:x};}),
     (s.sapUnmatched||[]).map(function(x){return{date:x.date,amt:x.amt,kind:'sapUnmatched',ref:x};})
@@ -2558,10 +2575,11 @@ function showRpDetail(code, side){
   var html='<div style="font-size:11px;color:var(--muted);margin-bottom:8px">'+d.name+' ('+code+') — '+sideLbl+'</div>'+
     dmExportBtns(exportId)+
     section('🟢 โอนภายใน — ยืนยันจาก SAP','var(--teal)',s.icSap,'icSap')+
+    section('🟣 ยืนยันจาก GL (Q01/Q02 หาไม่เจอ แต่มีบันทึกใน GL จริง)','var(--purple)',s.glConfirmed,'glConfirmed')+
     section('🔵 โอนภายใน — จับคู่แบบเดา (ยังไม่มีหลักฐาน SAP)','var(--blue)',s.icHeuristic,'icHeuristic')+
     section('🔴 ต้องตรวจสอบจริง (มีใน Bank แต่ไม่มีใน SAP)','var(--red)',s.check,'check')+
     section('🟡 SAP มีแต่ไม่พบ Bank (มีใน SAP แต่ไม่มีใน Bank)','var(--gold2)',s.sapUnmatched,'sapUnmatched');
-  if(!s.icSap.length && !s.icHeuristic.length && !s.check.length && !s.sapUnmatched.length){
+  if(!s.icSap.length && !(s.glConfirmed&&s.glConfirmed.length) && !s.icHeuristic.length && !s.check.length && !s.sapUnmatched.length){
     html+='<div style="padding:16px;color:var(--muted);text-align:center">ไม่มีรายการส่วนต่างในช่วงนี้</div>';
   }
   openModal('🔍 รายละเอียดส่วนต่าง: '+sideLbl, html);
@@ -2753,11 +2771,13 @@ function renderRecon(){
     dfs(0, [], 0);
     return result;
   }
-  // เช็คหลักฐานจริงจาก SAP (Q15_BANK_JOURNAL, G.sapTransferLegs) ก่อนเดา — ถ้า SAP มี Journal Entry
-  // ที่ยืนยันแล้วว่าเป็นการโอนภายใน (ดูเงื่อนไขตอนประมวลผลใน loadAllData) และมีบรรทัดที่ตรงกับรายการ
-  // Bank นี้ (บัญชี+วันที่+ยอด) ให้ตัดออกจากที่ต้องเดาทันที — แม่นยำกว่า heuristic วันที่+ยอดกลม
-  function sapConfirmedSum(acctCode, items, side, tolAmt, tolDays){
-    var pool=(G.sapTransferLegs&&G.sapTransferLegs[acctCode]?G.sapTransferLegs[acctCode]:[]).slice();
+  // ตัวจับคู่ทั่วไป: เทียบ items (รายการฝั่ง Bank ที่ยังไม่จับคู่) กับ legPool (รายการหลักฐานจาก SAP —
+  // อาจเป็น JE โอนภายใน (G.sapTransferLegs) หรือ JE ที่ผูกกับ AR/AP จริงจาก GL (G.sapBankGLItems) ก็ได้
+  // ใช้โครงเดียวกันทั้งคู่: จับคู่ 1:1 (วันที่+ยอด) ก่อน แล้วลองรวมยอดรายการ Bank ที่เหลือ (subset-sum)
+  // เทียบกับ leg ที่ยังไม่ถูกใช้แต่ละอัน กรณีธนาคารแยกรับ/จ่าย/โอนเป็นหลายรายการย่อยแต่ SAP บันทึกรวม
+  // เป็นบรรทัดเดียว — คงหมายเหตุ tid/bpName/memo จาก leg ที่จับคู่ได้ไว้ในผลลัพธ์เสมอ (ไม่มีก็เป็นค่าว่าง)
+  function matchAgainstLegPool(legPool, items, side, tolAmt, tolDays){
+    var pool=(legPool||[]).slice();
     var confirmed=0, remaining=[], list=[], candidates=[];
     items.forEach(function(it){
       // โอนเงินระหว่างบัญชีของบริษัทเองจะเป็นยอดกลมๆ ไม่มีเศษสตางค์เสมอ (ยืนยันจากผู้ใช้) — แม้จะมี
@@ -2771,12 +2791,12 @@ function renderRecon(){
         var ldays=dk2days(dateKey(pool[i].date||''));
         if(idays!=null&&ldays!=null&&Math.abs(ldays-idays)<=tolDays&&Math.abs(legAmt-it.amt)<=tolAmt){idx=i;break;}
       }
-      if(idx>=0){confirmed+=it.amt;list.push({date:it.date,amt:it.amt,tid:pool[idx].tid||''});pool.splice(idx,1);}
+      if(idx>=0){confirmed+=it.amt;list.push({date:it.date,amt:it.amt,tid:pool[idx].tid||'',bpName:pool[idx].bpName||'',memo:pool[idx].memo||''});pool.splice(idx,1);}
       else candidates.push(it);
     });
-    // รอบที่ 2: ธนาคารบางครั้งโอนยอดก้อนใหญ่เป็นหลายรายการย่อย แต่ SAP บันทึกรวมเป็น JE เดียว — ลอง
-    // รวมยอด candidates ที่เหลือ (ยังไม่จับคู่ 1:1 ได้) ภายในช่วงวันที่ tolDays ของแต่ละ JE leg ที่ยัง
-    // ไม่ถูกใช้ ว่ารวมกันแล้วตรงกับ leg นั้นหรือไม่ — ต้องมีตั้งแต่ 2 รายการขึ้นไปถึงจะนับว่า "แยกยอด"
+    // รอบที่ 2: ธนาคารบางครั้งรับ/จ่าย/โอนยอดก้อนใหญ่เป็นหลายรายการย่อย แต่ SAP บันทึกรวมเป็นบรรทัด
+    // เดียว — ลองรวมยอด candidates ที่เหลือ (ยังไม่จับคู่ 1:1 ได้) ภายในช่วงวันที่ tolDays ของแต่ละ leg
+    // ที่ยังไม่ถูกใช้ ว่ารวมกันแล้วตรงกับ leg นั้นหรือไม่ — ต้องมีตั้งแต่ 2 รายการขึ้นไปถึงจะนับว่า "แยกยอด"
     var MAX_COMBO=5, MAX_WINDOW=12;
     for(var li=0; li<pool.length; li++){
       var legAmt2=side==='debit'?pool[li].debit:pool[li].credit;
@@ -2795,7 +2815,7 @@ function renderRecon(){
         var usedItems=found.map(function(w){return candidates[winIdx[w]];});
         usedItems.forEach(function(u){
           u._used=true;
-          list.push({date:u.date,amt:u.amt,tid:pool[li].tid||'',combo:true});
+          list.push({date:u.date,amt:u.amt,tid:pool[li].tid||'',bpName:pool[li].bpName||'',memo:pool[li].memo||'',combo:true});
           confirmed+=u.amt;
         });
         pool.splice(li,1); li--;
@@ -2803,6 +2823,20 @@ function renderRecon(){
     }
     candidates.forEach(function(c){ if(!c._used) remaining.push(c); });
     return {confirmed:confirmed, remaining:remaining, list:list};
+  }
+  // เช็คหลักฐานจริงจาก SAP (Q15_BANK_JOURNAL, G.sapTransferLegs) ก่อนเดา — ถ้า SAP มี Journal Entry
+  // ที่ยืนยันแล้วว่าเป็นการโอนภายใน (ดูเงื่อนไขตอนประมวลผลใน loadAllData) และมีบรรทัดที่ตรงกับรายการ
+  // Bank นี้ (บัญชี+วันที่+ยอด) ให้ตัดออกจากที่ต้องเดาทันที — แม่นยำกว่า heuristic วันที่+ยอดกลม
+  function sapConfirmedSum(acctCode, items, side, tolAmt, tolDays){
+    var pool=G.sapTransferLegs&&G.sapTransferLegs[acctCode]?G.sapTransferLegs[acctCode]:[];
+    return matchAgainstLegPool(pool, items, side, tolAmt, tolDays);
+  }
+  // เช็คหลักฐานจริงจาก GL (Q15_BANK_JOURNAL บรรทัดที่ผูกกับ BP จริง — G.sapBankGLItems) — สำหรับ
+  // รายการ Bank ที่ Q01/Q02 (รายงานระดับเอกสารรับ-จ่าย ไม่ใช่ GL โดยตรง) หาไม่เจอ แต่จริงๆ มีหลักฐาน
+  // ผ่านรายการใน GL แล้ว (เช่น ยอดที่ปันส่วน/บันทึกต่างจากเอกสารต้นฉบับเล็กน้อย) ให้ตัดออกก่อนเดา heuristic
+  function glConfirmedSum(acctCode, items, side, tolAmt, tolDays){
+    var pool=G.sapBankGLItems&&G.sapBankGLItems[acctCode]?G.sapBankGLItems[acctCode]:[];
+    return matchAgainstLegPool(pool, items, side, tolAmt, tolDays);
   }
   function rpMatchInterAccount(unmatched, otherItems, tolAmt, tolDays){
     var pool=otherItems.slice(),icSum=0,checkSum=0,checkList=[],icList=[];
@@ -2860,32 +2894,38 @@ function renderRecon(){
     // \u0e02\u0e31\u0e49\u0e19\u0e17\u0e35\u0e48 2: \u0e17\u0e35\u0e48\u0e40\u0e2b\u0e25\u0e37\u0e2d (\u0e44\u0e21\u0e48\u0e21\u0e35\u0e2b\u0e25\u0e31\u0e01\u0e10\u0e32\u0e19\u0e43\u0e19 SAP \u0e40\u0e0a\u0e48\u0e19 \u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49\u0e14\u0e36\u0e07 Q15 \u0e2b\u0e23\u0e37\u0e2d\u0e0a\u0e48\u0e27\u0e07\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48 query \u0e44\u0e21\u0e48\u0e04\u0e23\u0e2d\u0e1a\u0e04\u0e25\u0e38\u0e21)
     // \u0e43\u0e2b\u0e49 heuristic \u0e40\u0e14\u0e34\u0e21 (\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48\u0e43\u0e01\u0e25\u0e49\u0e01\u0e31\u0e19+\u0e22\u0e2d\u0e14\u0e01\u0e25\u0e21) \u0e17\u0e33\u0e07\u0e32\u0e19\u0e40\u0e1b\u0e47\u0e19 fallback \u0e15\u0e48\u0e2d\u0e44\u0e1b\u0e40\u0e2b\u0e21\u0e37\u0e2d\u0e19\u0e40\u0e14\u0e34\u0e21
     var recSapConf=sapConfirmedSum(acct.code, unmatchedCr, 'debit', 1, 1);
-    var recSplit=rpMatchInterAccount(recSapConf.remaining, otherDebits, 1, 3);
+    // \u0e02\u0e31\u0e49\u0e19\u0e17\u0e35\u0e48 1.5: \u0e40\u0e0a\u0e47\u0e04\u0e2b\u0e25\u0e31\u0e01\u0e10\u0e32\u0e19\u0e08\u0e32\u0e01 GL \u0e42\u0e14\u0e22\u0e15\u0e23\u0e07 (Q15_BANK_JOURNAL \u0e1a\u0e23\u0e23\u0e17\u0e31\u0e14\u0e17\u0e35\u0e48\u0e1c\u0e39\u0e01\u0e01\u0e31\u0e1a AR/AP \u0e08\u0e23\u0e34\u0e07 \u0e40\u0e01\u0e47\u0e1a\u0e44\u0e27\u0e49\u0e43\u0e19 G.sapBankGLItems)
+    // \u0e01\u0e48\u0e2d\u0e19\u0e08\u0e30\u0e40\u0e14\u0e32 \u0e2a\u0e33\u0e2b\u0e23\u0e31\u0e1a\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e17\u0e35\u0e48 Q01/Q02 (\u0e23\u0e32\u0e22\u0e07\u0e32\u0e19\u0e23\u0e30\u0e14\u0e31\u0e1a\u0e40\u0e2d\u0e01\u0e2a\u0e32\u0e23 \u0e44\u0e21\u0e48\u0e43\u0e0a\u0e48 GL \u0e42\u0e14\u0e22\u0e15\u0e23\u0e07) \u0e2b\u0e32\u0e44\u0e21\u0e48\u0e40\u0e08\u0e2d \u0e41\u0e15\u0e48\u0e08\u0e23\u0e34\u0e07\u0e46 \u0e21\u0e35\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e40\u0e02\u0e49\u0e32 GL \u0e41\u0e25\u0e49\u0e27
+    var recGLConf=glConfirmedSum(acct.code, recSapConf.remaining, 'debit', 1, 1);
+    var recSplit=rpMatchInterAccount(recGLConf.remaining, otherDebits, 1, 3);
     var paySapConf=sapConfirmedSum(acct.code, unmatchedDr, 'credit', 1, 1);
-    var paySplit=rpMatchInterAccount(paySapConf.remaining, otherCredits, 1, 3);
+    var payGLConf=glConfirmedSum(acct.code, paySapConf.remaining, 'credit', 1, 1);
+    var paySplit=rpMatchInterAccount(payGLConf.remaining, otherCredits, 1, 3);
 
     // \u0e40\u0e01\u0e47\u0e1a\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14\u0e17\u0e38\u0e01\u0e01\u0e25\u0e38\u0e48\u0e21\u0e44\u0e27\u0e49\u0e43\u0e2b\u0e49\u0e1b\u0e38\u0e48\u0e21 "\u0e14\u0e39\u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14" \u0e40\u0e1b\u0e34\u0e14\u0e14\u0e39\u0e17\u0e35\u0e25\u0e30\u0e1a\u0e23\u0e23\u0e17\u0e31\u0e14\u0e44\u0e14\u0e49 (showRpDetail)
     RECON_RP_DETAIL[acct.code]={
       name:acct.name,
-      rec:{icSap:recSapConf.list, icHeuristic:recSplit.icList, check:recSplit.checkList, sapUnmatched:recMatch.sapUnmatched},
-      pay:{icSap:paySapConf.list, icHeuristic:paySplit.icList, check:paySplit.checkList, sapUnmatched:payMatch.sapUnmatched}
+      rec:{icSap:recSapConf.list, glConfirmed:recGLConf.list, icHeuristic:recSplit.icList, check:recSplit.checkList, sapUnmatched:recMatch.sapUnmatched},
+      pay:{icSap:paySapConf.list, glConfirmed:payGLConf.list, icHeuristic:paySplit.icList, check:paySplit.checkList, sapUnmatched:payMatch.sapUnmatched}
     };
 
     var lbl=function(k){return k.slice(6,8)+'/'+k.slice(4,6)+'/'+k.slice(0,4);};
     return {code:acct.code,name:acct.name,periodLbl:lbl(minK)+' \u2013 '+lbl(maxK),
-      sapRec:sapRec,bankRec:bankRec,recIc:recSapConf.confirmed+recSplit.icSum,recIcSap:recSapConf.confirmed,recCheck:recSplit.checkSum,sapUnmatchedRec:sapUnmatchedRec,
-      sapPay:sapPay,bankPay:bankPay,payIc:paySapConf.confirmed+paySplit.icSum,payIcSap:paySapConf.confirmed,payCheck:paySplit.checkSum,sapUnmatchedPay:sapUnmatchedPay};
+      sapRec:sapRec,bankRec:bankRec,recIc:recSapConf.confirmed+recSplit.icSum,recIcSap:recSapConf.confirmed,recGLConfirmed:recGLConf.confirmed,recCheck:recSplit.checkSum,sapUnmatchedRec:sapUnmatchedRec,
+      sapPay:sapPay,bankPay:bankPay,payIc:paySapConf.confirmed+paySplit.icSum,payIcSap:paySapConf.confirmed,payGLConfirmed:payGLConf.confirmed,payCheck:paySplit.checkSum,sapUnmatchedPay:sapUnmatchedPay};
   }).filter(Boolean);
   var rpSection=document.getElementById('reconRecPaySection');
   if(rpRows.length){
     rpSection.style.display='block';
     function rpCell(v){return '<td class="right">'+fmtFull(v)+'</td>';}
-    function rpDiffCell(code,side,icSum,icSap,checkSum,sapUnmatched){
+    function rpDiffCell(code,side,icSum,icSap,glConfirmed,checkSum,sapUnmatched){
       var sapLine=sapUnmatched>=1?'<div style="font-size:10.5px;color:var(--gold2)">SAP \u0e21\u0e35\u0e41\u0e15\u0e48\u0e44\u0e21\u0e48\u0e1e\u0e1a Bank: \u2212'+fmtFull(sapUnmatched)+'</div>':'';
       var icSapLine=icSap>=1?'<div style="font-size:9.5px;color:var(--muted)">(\u0e22\u0e37\u0e19\u0e22\u0e31\u0e19\u0e08\u0e32\u0e01 SAP: '+fmtFull(icSap)+')</div>':'';
+      var glLine=glConfirmed>=1?'<div style="font-size:10.5px;color:var(--purple)">\u0e22\u0e37\u0e19\u0e22\u0e31\u0e19\u0e08\u0e32\u0e01 GL: '+fmtFull(glConfirmed)+'</div>':'';
       var btn='<button onclick="showRpDetail(\''+code+'\',\''+side+'\')" title="\u0e14\u0e39\u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14\u0e17\u0e35\u0e25\u0e30\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23" style="background:none;border:1px solid var(--border);border-radius:4px;color:var(--muted);font-size:10px;padding:1px 5px;margin-top:3px;cursor:pointer">&#128269; \u0e14\u0e39\u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14</button>';
       return '<td class="right"><div style="font-size:10.5px;color:var(--teal)">\u0e42\u0e2d\u0e19\u0e20\u0e32\u0e22\u0e43\u0e19: '+fmtFull(icSum)+'</div>'+
         icSapLine+
+        glLine+
         sapLine+
         '<div style="font-weight:700;color:var(--red)">\u0e15\u0e49\u0e2d\u0e07\u0e15\u0e23\u0e27\u0e08\u0e2a\u0e2d\u0e1a: '+fmtFull(checkSum)+'</div>'+
         btn+'</td>';
@@ -2894,8 +2934,8 @@ function renderRecon(){
       var bg=i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)';
       return '<tr style="background:'+bg+'"><td><div style="font-size:12px">'+r.name+'</div><div style="font-size:10px;color:var(--teal)">'+r.code+'</div></td>'+
         '<td style="font-size:11px;color:var(--muted)">'+r.periodLbl+'</td>'+
-        rpCell(r.sapRec)+rpCell(r.bankRec)+rpDiffCell(r.code,'rec',r.recIc,r.recIcSap,r.recCheck,r.sapUnmatchedRec)+
-        rpCell(r.sapPay)+rpCell(r.bankPay)+rpDiffCell(r.code,'pay',r.payIc,r.payIcSap,r.payCheck,r.sapUnmatchedPay)+'</tr>';
+        rpCell(r.sapRec)+rpCell(r.bankRec)+rpDiffCell(r.code,'rec',r.recIc,r.recIcSap,r.recGLConfirmed,r.recCheck,r.sapUnmatchedRec)+
+        rpCell(r.sapPay)+rpCell(r.bankPay)+rpDiffCell(r.code,'pay',r.payIc,r.payIcSap,r.payGLConfirmed,r.payCheck,r.sapUnmatchedPay)+'</tr>';
     }).join('');
   } else {
     rpSection.style.display='none';
