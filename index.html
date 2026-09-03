@@ -2567,21 +2567,30 @@ function showRpDetail(code, side){
       return '<tr><td style="font-size:12px">'+fmtDate(x.date)+'</td><td class="right" style="font-size:12px;font-weight:600">'+fmtFull(x.amt)+'</td><td>'+extra+'</td><td>'+rpManualBadge(mmSide,docNo)+'</td></tr>';
     }).join('');
   }
+  // เรียงรายการตามวันที่น้อยไปหามาก (เดิมเรียงตามลำดับที่จับคู่ได้ ทำให้วันที่สลับไปมาดูยาก)
+  function rpSortByDate(list){
+    return (list||[]).slice().sort(function(a,b){
+      var ka=dateKey(a.date||''),kb=dateKey(b.date||'');
+      if(ka&&kb)return ka<kb?-1:(ka>kb?1:0);
+      if(ka)return -1; if(kb)return 1; return 0; // วันที่อ่านไม่ได้ ให้ไปอยู่ท้ายสุด ไม่ทำให้ทั้งลิสต์พัง
+    });
+  }
   function section(title,color,list,kind){
     if(!list||!list.length)return '';
-    var total=list.reduce(function(a,x){return a+x.amt;},0);
-    return '<div style="margin-top:14px"><div style="font-size:12.5px;font-weight:700;color:'+color+';margin-bottom:4px">'+title+' — '+list.length+' รายการ ('+fmtFull(total)+' บาท)</div>'+
+    var sorted=rpSortByDate(list);
+    var total=sorted.reduce(function(a,x){return a+x.amt;},0);
+    return '<div style="margin-top:14px"><div style="font-size:12.5px;font-weight:700;color:'+color+';margin-bottom:4px">'+title+' — '+sorted.length+' รายการ ('+fmtFull(total)+' บาท)</div>'+
       '<table style="width:100%;border-collapse:collapse"><thead><tr style="color:var(--muted);font-size:10.5px"><th style="text-align:left;padding:3px 6px">วันที่</th><th style="text-align:right;padding:3px 6px">จำนวนเงิน</th><th style="text-align:left;padding:3px 6px">หมายเหตุ</th><th style="text-align:left;padding:3px 6px">การตรวจสอบ</th></tr></thead>'+
-      '<tbody>'+rowsHtml(list,kind)+'</tbody></table></div>';
+      '<tbody>'+rowsHtml(sorted,kind)+'</tbody></table></div>';
   }
   // รวมทุกกลุ่มเป็นชุดเดียวไว้สำหรับปุ่ม "บันทึกเป็น PDF / Excel" (dmRegisterSimple + dmExportBtns
   // เป็นระบบ export เดียวกับที่ใช้ในโมดัลอื่นๆ ทั่วทั้งแดชบอร์ด — มีหัวกระดาษบริษัท+วันที่ให้อัตโนมัติ)
   var flatForExport=[].concat(
-    (s.icSap||[]).map(function(x){return{date:x.date,amt:x.amt,kind:'icSap',ref:x};}),
-    (s.glConfirmed||[]).map(function(x){return{date:x.date,amt:x.amt,kind:'glConfirmed',ref:x};}),
-    (s.icHeuristic||[]).map(function(x){return{date:x.date,amt:x.amt,kind:'icHeuristic',ref:x};}),
-    (s.check||[]).map(function(x){return{date:x.date,amt:x.amt,kind:'check',ref:x};}),
-    (s.sapUnmatched||[]).map(function(x){return{date:x.date,amt:x.amt,kind:'sapUnmatched',ref:x};})
+    rpSortByDate(s.icSap).map(function(x){return{date:x.date,amt:x.amt,kind:'icSap',ref:x};}),
+    rpSortByDate(s.glConfirmed).map(function(x){return{date:x.date,amt:x.amt,kind:'glConfirmed',ref:x};}),
+    rpSortByDate(s.icHeuristic).map(function(x){return{date:x.date,amt:x.amt,kind:'icHeuristic',ref:x};}),
+    rpSortByDate(s.check).map(function(x){return{date:x.date,amt:x.amt,kind:'check',ref:x};}),
+    rpSortByDate(s.sapUnmatched).map(function(x){return{date:x.date,amt:x.amt,kind:'sapUnmatched',ref:x};})
   );
   var exportId='rpDetail';
   dmRegisterSimple(exportId, d.name+' ('+code+') — '+sideLbl, [
