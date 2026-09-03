@@ -839,6 +839,7 @@ async function loadAllData(){
     // ตั้งแต่ 2 บัญชีขึ้นไป (รองรับการโอนกระจายหลายบัญชีในเอกสารเดียว ไม่ใช่แค่ 2 บัญชีเป๊ะ)
     var sapTransferLegs={};
     var sapBankGLItems={};
+    var sapAllBankLegs={}; // DEBUG: เก็บทุกบรรทัดของ Q15 ที่แตะบัญชี 111x ไว้ทั้งหมด ไม่ว่าจะมี BP หรือถูกจัดเป็นโอนภายในหรือถูกทิ้งก็ตาม — ใช้ตรวจสอบความครบถ้วนของข้อมูล Q15 เท่านั้น ไม่กระทบ logic กระทบยอด
     try{
       if(q15 && q15.rows && q15.rows.length){
         var cols15=q15.cols||[];
@@ -870,6 +871,10 @@ async function loadAllData(){
             jGroups[tid].legs.push({acct:acct,date:date,debit:debit,credit:credit,bpName:bpName,memo:memo});
             if(bpName)jGroups[tid].hasBP=true;
             if(acct.indexOf('111')===0)jGroups[tid].accts[acct]=true;
+            if(acct && acct.indexOf('111')===0){
+              if(!sapAllBankLegs[acct])sapAllBankLegs[acct]=[];
+              sapAllBankLegs[acct].push({date:date,debit:debit,credit:credit,tid:tid,bpName:bpName,memo:memo});
+            }
           });
           Object.keys(jGroups).forEach(function(tid){
             var jg=jGroups[tid];
@@ -900,7 +905,7 @@ async function loadAllData(){
     G={recByM:recByM,payByM:payByM,bankNet:bankNet,bankRows:bankRows,recRows:recRows,payRows:payRows,
        at:at,a30:a30,a60:a60,a90:a90,a90p:a90p,topAR:topAR,arAgeMap:arAgeMap,arRows2:arRows2,arCusts:Object.keys(arByCust).length,
        pt:pt,p30:p30,p60:p60,p60p:p60p,topAP:topAP,apRows2:apRows2,arItemsByDoc:arItemsByDoc,apItemsByDoc:apItemsByDoc,sapMonthlyByAcct:sapMonthlyByAcct,
-       et:et,topExp:exps.slice(0,10),expAll:expAll,expDetailByAcct:expDetailByAcct,arRowCount:q04.rows.length,apRowCount:q05.rows.length,allMonths:allMonths,plRows:plRows,apCatRows:apCatRows,manualMatch:manualMatch,sapTransferLegs:sapTransferLegs,sapBankGLItems:sapBankGLItems};
+       et:et,topExp:exps.slice(0,10),expAll:expAll,expDetailByAcct:expDetailByAcct,arRowCount:q04.rows.length,apRowCount:q05.rows.length,allMonths:allMonths,plRows:plRows,apCatRows:apCatRows,manualMatch:manualMatch,sapTransferLegs:sapTransferLegs,sapBankGLItems:sapBankGLItems,sapAllBankLegs:sapAllBankLegs};
     ACTIVE_MONTHS=[...allMonths];
     buildFilters(allMonths);
     st.textContent='\u0e2a\u0e23\u0e49\u0e32\u0e07\u0e01\u0e23\u0e32\u0e1f\u2026';st.className='loading-status ok';
