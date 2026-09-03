@@ -596,22 +596,36 @@ function repairAcctCode(raw){
   }
   return s;
 }
-async function fetchSheet(name){
+function sleepMs(ms){return new Promise(function(resolve){setTimeout(resolve,ms);});}
+// เชื่อมต่อ Google Apps Script บางครั้งล้มเหลวชั่วคราว (เช่น 404/timeout จากโควตา หรือเครือข่ายสะดุด)
+// ถ้าปล่อยให้ throw ทันทีตั้งแต่ครั้งแรก ชีตที่เป็น "ออปชันเสริม" (Q09-Q14, MANUAL_MATCH, Q15) จะถูก
+// catch(optionalFallback) กลืน error แล้วแสดงผลเป็น {rows:[]} เงียบๆ ทำให้ดูเหมือน "ไม่มีข้อมูล/ยังไม่มีชีต"
+// ทั้งที่จริงข้อมูลมีอยู่ แค่ดึงไม่สำเร็จรอบนั้น — จึงเพิ่ม retry อัตโนมัติก่อนจะยอมให้ throw จริง
+async function fetchSheet(name, _attempt){
+  var attempt=_attempt||0;
   var url=APPS_URL+'?sheet='+encodeURIComponent(name);
-  var res=await fetch(url,{
-    method:'GET',
-    redirect:'follow',
-    mode:'cors',
-    credentials:'omit',
-    headers:{'Accept':'application/json'}
-  });
-  if(!res.ok)throw new Error('HTTP '+res.status);
-  var json=await res.json();
-  if(json.error)throw new Error(json.error);
-  var rows=json.rows||[];
-  if(!rows.length)return{cols:[],rows:[]};
-  var cols=Object.keys(rows[0]);
-  return{cols,rows:rows.map(function(r){return cols.map(function(c){return r[c];});})};
+  try{
+    var res=await fetch(url,{
+      method:'GET',
+      redirect:'follow',
+      mode:'cors',
+      credentials:'omit',
+      headers:{'Accept':'application/json'}
+    });
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    var json=await res.json();
+    if(json.error)throw new Error(json.error);
+    var rows=json.rows||[];
+    if(!rows.length)return{cols:[],rows:[]};
+    var cols=Object.keys(rows[0]);
+    return{cols,rows:rows.map(function(r){return cols.map(function(c){return r[c];});})};
+  }catch(err){
+    var MAX_RETRIES=2; // ลองรวมสูงสุด 3 ครั้ง (1 ครั้งแรก + retry 2 ครั้ง)
+    if(attempt>=MAX_RETRIES)throw err;
+    console.warn('fetchSheet('+name+') ล้มเหลว (ครั้งที่ '+(attempt+1)+'): '+(err&&err.message||err)+' — กำลังลองใหม่…');
+    await sleepMs(800*(attempt+1)); // หน่วงเพิ่มขึ้นทีละรอบ (backoff): 800ms, 1600ms
+    return fetchSheet(name, attempt+1);
+  }
 }
 function getMK(v){
   var d;
