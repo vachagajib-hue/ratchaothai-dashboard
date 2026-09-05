@@ -192,7 +192,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
   /* วาดเส้นขอบเฉพาะขวา+ล่างต่อเซลล์ แล้วให้ตัวตารางวาดขอบบน+ซ้ายเอง (border-top/border-left) แทน —
      ป้องกันเส้นตารางหนาสองเท่า/เบิ้ล ที่จะเกิดถ้าให้ทุกเซลล์วาดขอบครบ 4 ด้านตอนใช้ border-collapse:separate */
   #printArea table{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px;margin-top:14px;border-top:1px solid #d5dbe3;border-left:1px solid #d5dbe3;}
-  #printArea th,#printArea td{border-right:1px solid #d5dbe3;border-bottom:1px solid #d5dbe3;padding:7px 9px;text-align:left;}
+  #printArea th,#printArea td{border-right:1px solid #d5dbe3;border-bottom:1px solid #d5dbe3;padding:7px 9px;text-align:left;word-break:break-word;overflow-wrap:break-word;}
   #printArea thead{display:table-header-group;}
   #printArea tfoot{display:table-footer-group;}
   #printArea tr{page-break-inside:avoid;}
@@ -1825,7 +1825,7 @@ function dmPrint(){
   // ข้อมูลติดแถวเลย ต้องไปดึงจาก cfg.itemsByDoc[docNo] แทน — ถ้าใช้คอลัมน์ชุดเดิม (itemDetail/docCreator)
   // กับรายงาน AR/AP จะว่างเปล่าเสมอ จึงต้องแยกโครงสร้างตารางตาม cfg ให้ถูกต้อง
   var hasItemsByDoc=!!cfg.itemsByDoc;
-  var theadHtml,tbodyRows,totalColspan;
+  var theadHtml,tbodyRows,totalColspan,colgroupHtml;
   if(hasItemsByDoc){
     // รายงาน AR/AP ค้างรับ-ค้างจ่าย: เดิมคอลัมน์วันที่มีแค่ช่องเดียวชื่อ "วันที่" ซึ่งจริงๆ เป็นวันครบกำหนด
     // ชำระ (dueDate) แต่ป้ายชื่อคลุมเครือ และไม่มีวันที่เอกสาร (posting date) ให้เห็นเลยทั้งที่มีข้อมูลอยู่
@@ -1833,17 +1833,22 @@ function dmPrint(){
     theadHtml='<thead><tr><th>วันที่เอกสาร</th><th>กำหนดชำระ</th><th>เลขที่เอกสาร</th><th>ชื่อ</th><th>รายละเอียดสินค้า/บริการ</th><th>หมายเหตุ</th><th class="pr-right">'+cfg.amountLabel+'</th></tr></thead>';
     tbodyRows=flat.map(function(r){return '<tr><td>'+(r.docDateDisplay||'—')+'</td><td>'+(r.dateStr||r.dateDisplay||'—')+'</td><td>'+(r.docNo||'—')+'</td><td>'+r.name+'</td><td>'+dmDocItemsPrintHtml(cfg.itemsByDoc,r.docNo)+'</td><td>'+(r.remarks||'—')+'</td><td class="pr-right">'+fmtFull(r.amount)+'</td></tr>';}).join('');
     totalColspan=6;
+    // กำหนดสัดส่วนความกว้างคอลัมน์เอง (ไม่ปล่อยให้เบราว์เซอร์คำนวณอัตโนมัติ) เพราะข้อความ "หมายเหตุ" ที่
+    // เพิ่งเพิ่มเข้ามามักยาวกว่าคอลัมน์อื่น ทำให้แย่งพื้นที่จากคอลัมน์ "ชื่อ" (ชื่อลูกหนี้/เจ้าหนี้) จนชื่อ
+    // บริษัทยาวๆ ถูกบีบจนขึ้นบรรทัดซ้อนกันหลายบรรทัด — บังคับให้ชื่อกว้างขึ้น และหมายเหตุแคบลง
+    colgroupHtml='<colgroup><col style="width:8%"><col style="width:8%"><col style="width:9%"><col style="width:22%"><col style="width:24%"><col style="width:15%"><col style="width:14%"></colgroup>';
   } else {
     theadHtml='<thead><tr><th>วันที่</th><th>เลขที่เอกสาร</th><th>ชื่อ</th><th>รายละเอียด</th><th>ผู้บันทึกเอกสาร</th><th>หมายเหตุ</th><th class="pr-right">'+cfg.amountLabel+'</th></tr></thead>';
     tbodyRows=flat.map(function(r){return '<tr><td>'+(r.dateStr||r.dateDisplay||'—')+'</td><td>'+(r.docNo||'—')+'</td><td>'+r.name+'</td><td><span class="pr-itemdetail">'+(r.itemDetail||'')+'</span>'+(r.itemDetails2?'<span class="pr-itemdetails2">↳ '+r.itemDetails2+'</span>':'')+'</td><td class="pr-creator">'+(r.docCreator||'')+'</td><td>'+(r.remarks||'—')+'</td><td class="pr-right">'+fmtFull(r.amount)+'</td></tr>';}).join('');
     totalColspan=6;
+    colgroupHtml='<colgroup><col style="width:9%"><col style="width:10%"><col style="width:22%"><col style="width:22%"><col style="width:13%"><col style="width:12%"><col style="width:12%"></colgroup>';
   }
   var tbodyHtml='<tbody>'+tbodyRows+
     '<tr class="pr-sub"><td colspan="'+totalColspan+'">รวมทั้งหมด</td><td class="pr-right">'+fmtFull(totalAll)+'</td></tr>'+
     '</tbody>';
   document.getElementById('printArea').innerHTML=
     prHeaderHtml(dmTitleWithBank()+' <span>— '+dmRangeLabel()+'</span>','จำนวน '+filtered.length+' รายการ &nbsp;·&nbsp; ยอดรวม '+fmtFull(totalAll)+' บาท &nbsp;·&nbsp; พิมพ์เมื่อ '+printTimestamp())+
-    '<table>'+theadHtml+tbodyHtml+'</table>'+
+    '<table style="table-layout:fixed">'+colgroupHtml+theadHtml+tbodyHtml+'</table>'+
     prSignatureHtml();
   setTimeout(function(){window.print();},80);
 }
