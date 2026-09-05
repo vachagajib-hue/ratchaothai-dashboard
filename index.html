@@ -704,10 +704,10 @@ async function loadAllData(){
 
     st.textContent='กำลังประมวลผล…';
     var recByM={},recRows=[];
-    q01.rows.forEach(function(r){var mk=getMK(r[1]),amt=parseFloat(r[5])||0;if(mk)recByM[mk]=(recByM[mk]||0)+amt;recRows.push({date:r[1],docNo:String(r[2]||''),custName:String(r[4]||''),amt:amt,bankCode:String(r[6]||'').trim(),bankName:String(r[7]||'').trim(),itemDetail:String(r[8]||'').trim(),itemDetails2:String(r[9]||'').trim(),docCreator:String(r[10]||'').trim()});});
+    q01.rows.forEach(function(r){var mk=getMK(r[1]),amt=parseFloat(r[5])||0;if(mk)recByM[mk]=(recByM[mk]||0)+amt;recRows.push({date:r[1],docNo:String(r[2]||''),custName:String(r[4]||''),amt:amt,bankCode:String(r[6]||'').trim(),bankName:String(r[7]||'').trim(),itemDetail:String(r[8]||'').trim(),itemDetails2:String(r[9]||'').trim(),docCreator:String(r[10]||'').trim(),remarks:String(r[11]||'').trim()});});
 
     var payByM={},payRows=[];
-    q02.rows.forEach(function(r){var mk=getMK(r[1]),amt=parseFloat(r[5])||0;if(mk)payByM[mk]=(payByM[mk]||0)+amt;payRows.push({date:r[1],docNo:String(r[2]||''),vendName:String(r[4]||''),amt:amt,bankCode:String(r[6]||'').trim(),bankName:String(r[7]||'').trim(),itemDetail:String(r[8]||'').trim(),itemDetails2:String(r[9]||'').trim(),docCreator:String(r[10]||'').trim()});});
+    q02.rows.forEach(function(r){var mk=getMK(r[1]),amt=parseFloat(r[5])||0;if(mk)payByM[mk]=(payByM[mk]||0)+amt;payRows.push({date:r[1],docNo:String(r[2]||''),vendName:String(r[4]||''),amt:amt,bankCode:String(r[6]||'').trim(),bankName:String(r[7]||'').trim(),itemDetail:String(r[8]||'').trim(),itemDetails2:String(r[9]||'').trim(),docCreator:String(r[10]||'').trim(),remarks:String(r[11]||'').trim()});});
 
     var bankNet=0,bankRows=[];
     q03.rows.forEach(function(r){var code=repairAcctCode(r[1]),bal=parseFloat(r[3])||0;if(code.includes('-')){bankNet+=bal;bankRows.push({code:code,name:String(r[2]||''),bal:bal});}});
@@ -718,7 +718,7 @@ async function loadAllData(){
       var bal=parseFloat(r[6])||0,days=parseFloat(r[7])||0,name=String(r[2]||'').trim();
       at+=bal;if(days<=30)a30+=bal;else if(days<=60)a60+=bal;else if(days<=90)a90+=bal;else a90p+=bal;
       arByCust[name]=(arByCust[name]||0)+bal;arAgeMap[name]=days;
-      arRows2.push({name:name,docNo:String(r[3]||''),docDate:r[4],dueDate:r[5],bal:bal,days:days});
+      arRows2.push({name:name,docNo:String(r[3]||''),docDate:r[4],dueDate:r[5],bal:bal,days:days,remarks:String(r[8]||'').trim()});
     });
     var topAR=Object.entries(arByCust).sort(function(a,b){return b[1]-a[1];}).slice(0,10);
 
@@ -728,7 +728,7 @@ async function loadAllData(){
       var bal=parseFloat(r[6])||0,days=parseFloat(r[7])||0,name=String(r[2]||'').trim();
       pt+=bal;if(days<=30)p30+=bal;else if(days<=60)p60+=bal;else p60p+=bal;
       apByVen[name]=(apByVen[name]||0)+bal;
-      apRows2.push({name:name,docNo:String(r[3]||''),docDate:r[4],dueDate:r[5],bal:bal,days:days});
+      apRows2.push({name:name,docNo:String(r[3]||''),docDate:r[4],dueDate:r[5],bal:bal,days:days,remarks:String(r[8]||'').trim()});
     });
     var topAP=Object.entries(apByVen).sort(function(a,b){return b[1]-a[1];}).slice(0,10);
 
@@ -1391,6 +1391,9 @@ function dmItemDetails2Sub(r){
 function dmDocCreatorSub(r){
   return r.docCreator?'<div style="color:var(--blue);font-size:11px;margin-top:2px;line-height:1.3;font-weight:400">👤 ผู้บันทึก: '+r.docCreator+'</div>':'';
 }
+function dmRemarksSub(r){
+  return r.remarks?'<div style="color:var(--gold2);font-size:11px;margin-top:2px;line-height:1.3;font-weight:400">📝 หมายเหตุ: '+r.remarks+'</div>':'';
+}
 function dmItemDetailSubPrint(r){
   return r.itemDetail?'<br><span class="pr-itemdetail">↳ '+r.itemDetail+'</span>':'';
 }
@@ -1530,6 +1533,15 @@ function dmRangeLabel(){
 }
 function dmRender(){
   var dmPrevScroll=(document.getElementById('dmScrollWrap')||{}).scrollTop||0;
+  // เก็บสถานะโฟกัส/ตำแหน่งเคอร์เซอร์ของช่องค้นหาไว้ก่อน เพราะ dmRender() จะสร้าง DOM ใหม่ทั้งหมดผ่าน
+  // innerHTML ด้านล่าง ซึ่งจะทำลาย <input> เดิมทิ้งไปเลย ทำให้โฟกัสหลุดทุกครั้งที่พิมพ์ (บั๊ก: พิมพ์ได้
+  // ทีละตัวอักษร ต้องเอาเมาส์ไปคลิกที่ช่องค้นหาใหม่ก่อนพิมพ์ตัวถัดไป) — ต้องคืนโฟกัสให้ input ตัวใหม่หลังเรนเดอร์
+  var dmActiveEl=document.activeElement;
+  var dmFocusInfo=null;
+  var dmDynEl=document.getElementById('dmDynamic');
+  if(dmActiveEl && dmDynEl && dmDynEl.contains(dmActiveEl) && dmActiveEl.classList && dmActiveEl.classList.contains('modal-search')){
+    dmFocusInfo={selStart:dmActiveEl.selectionStart, selEnd:dmActiveEl.selectionEnd};
+  }
   var s=DM.state, cfg=DM.cfg;
   var filtered=dmFilterRows();
   var totalAll=filtered.reduce(function(a,r){return a+(r.amount||0);},0);
@@ -1599,8 +1611,8 @@ function dmRender(){
           var hasItems=items&&items.length;
           var itemsExp=hasItems&&!!s.expandedItems[r.docNo];
           var docCell=hasItems
-            ?'<td style="padding-left:22px;color:var(--teal);font-size:12px;cursor:pointer;font-weight:600" onclick="dmToggleItems(\''+r.docNo+'\')">'+(itemsExp?'▾':'▸')+' ↳ '+r.docNo+dmItemDetailSub(r)+dmItemDetails2Sub(r)+dmDocCreatorSub(r)+'</td>'
-            :'<td style="padding-left:22px;color:var(--muted);font-size:12px">↳ '+(r.docNo||'—')+dmItemDetailSub(r)+dmItemDetails2Sub(r)+dmDocCreatorSub(r)+'</td>';
+            ?'<td style="padding-left:22px;color:var(--teal);font-size:12px;cursor:pointer;font-weight:600" onclick="dmToggleItems(\''+r.docNo+'\')">'+(itemsExp?'▾':'▸')+' ↳ '+r.docNo+dmItemDetailSub(r)+dmItemDetails2Sub(r)+dmDocCreatorSub(r)+dmRemarksSub(r)+'</td>'
+            :'<td style="padding-left:22px;color:var(--muted);font-size:12px">↳ '+(r.docNo||'—')+dmItemDetailSub(r)+dmItemDetails2Sub(r)+dmDocCreatorSub(r)+dmRemarksSub(r)+'</td>';
           var subLastCell=cfg.matchBank?renderMatchBadge(cfg.matchBank,r.docNo,rowMatchCached(r,cfg.matchBank)):((cfg.agingKind&&r.days!==null&&r.days!==undefined)?agingBadge(r.days,cfg.agingKind):'');
           var sub='<tr style="background:rgba(255,255,255,0.015)"><td></td>'+docCell+'<td class="right" style="font-size:12px;color:var(--text2)">'+fmtFull(r.amount)+'</td><td></td><td></td><td style="font-size:12px;color:var(--muted)">'+(r.dateDisplay||'—')+'</td><td>'+subLastCell+'</td></tr>';
           if(itemsExp)sub+=dmItemsRowHtml(items,7);
@@ -1639,25 +1651,26 @@ function dmRender(){
       var row='<tr style="background:'+(i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)')+';cursor:pointer" onclick="dmToggleBankIdx('+i+')"><td class="right" style="color:var(--gold2);font-weight:700">'+(exp?'−':'+')+'</td><td style="font-weight:700">🏦 '+g.bankName+'</td><td class="right gold">'+fmtFull(g.total)+'</td><td class="right" style="color:var(--muted)">'+pct+'%</td><td class="right">'+g.count+'</td></tr>';
       if(exp){
         row+=g.rows.slice().sort(function(a,b){return (dateKey(a.dateStr)||'').localeCompare(dateKey(b.dateStr)||'');}).map(function(r){
-          return '<tr style="background:rgba(255,255,255,0.015)"><td></td><td style="padding-left:22px;font-size:12px;color:var(--text2)">↳ '+r.name+(r.docNo?' <span style="color:var(--muted)">('+r.docNo+')</span>':'')+dmItemDetailSub(r)+dmItemDetails2Sub(r)+dmDocCreatorSub(r)+'</td><td class="right" style="font-size:12px;color:var(--text2)">'+fmtFull(r.amount)+'</td><td></td><td style="font-size:12px;color:var(--muted)">'+(r.dateDisplay||'—')+'</td></tr>';
+          return '<tr style="background:rgba(255,255,255,0.015)"><td></td><td style="padding-left:22px;font-size:12px;color:var(--text2)">↳ '+r.name+(r.docNo?' <span style="color:var(--muted)">('+r.docNo+')</span>':'')+dmItemDetailSub(r)+dmItemDetails2Sub(r)+dmDocCreatorSub(r)+dmRemarksSub(r)+'</td><td class="right" style="font-size:12px;color:var(--text2)">'+fmtFull(r.amount)+'</td><td></td><td style="font-size:12px;color:var(--muted)">'+(r.dateDisplay||'—')+'</td></tr>';
         }).join('');
       }
       return row;
     }).join('');
   } else {
-    html+='<th>ชื่อ</th><th>เลขที่เอกสาร</th><th style="text-align:right">'+cfg.amountLabel+'</th>'+(cfg.agingKind?'<th style="text-align:right">อายุ (วัน)</th>':'')+(cfg.matchBank?'<th>ตรงกับแบงค์</th>':'')+'<th>วันที่</th></tr></thead><tbody>';
+    html+='<th>ชื่อ</th><th>เลขที่เอกสาร</th><th style="text-align:right">'+cfg.amountLabel+'</th>'+(cfg.agingKind?'<th style="text-align:right">อายุ (วัน)</th>':'')+(cfg.matchBank?'<th>ตรงกับแบงค์</th>':'')+(cfg.agingKind?'<th>วันที่เอกสาร</th>':'')+'<th>'+(cfg.agingKind?'กำหนดชำระ':'วันที่')+'</th></tr></thead><tbody>';
     var flat=filtered.slice();
     flat.sort(function(a,b){return s.sort==='name'?(dateKey(a.dateStr)||'99999999').localeCompare(dateKey(b.dateStr)||'99999999'):(b.amount||0)-(a.amount||0);});
-    var flatCols=4+(cfg.agingKind?1:0)+(cfg.matchBank?1:0);
+    var flatCols=4+(cfg.agingKind?2:0)+(cfg.matchBank?1:0);
     html+=flat.map(function(r,i){
       var items=cfg.itemsByDoc&&cfg.itemsByDoc[r.docNo];
       var hasItems=items&&items.length;
       var itemsExp=hasItems&&!!s.expandedItems[r.docNo];
       var docCell=hasItems
-        ?'<td style="color:var(--teal);font-size:12px;cursor:pointer;font-weight:600" onclick="dmToggleItems(\''+r.docNo+'\')">'+(itemsExp?'▾':'▸')+' '+r.docNo+dmItemDetailSub(r)+dmItemDetails2Sub(r)+dmDocCreatorSub(r)+'</td>'
-        :'<td style="color:var(--muted);font-size:12px">'+(r.docNo||'—')+dmItemDetailSub(r)+dmItemDetails2Sub(r)+dmDocCreatorSub(r)+'</td>';
+        ?'<td style="color:var(--teal);font-size:12px;cursor:pointer;font-weight:600" onclick="dmToggleItems(\''+r.docNo+'\')">'+(itemsExp?'▾':'▸')+' '+r.docNo+dmItemDetailSub(r)+dmItemDetails2Sub(r)+dmDocCreatorSub(r)+dmRemarksSub(r)+'</td>'
+        :'<td style="color:var(--muted);font-size:12px">'+(r.docNo||'—')+dmItemDetailSub(r)+dmItemDetails2Sub(r)+dmDocCreatorSub(r)+dmRemarksSub(r)+'</td>';
       var matchCell=cfg.matchBank?'<td>'+renderMatchBadge(cfg.matchBank,r.docNo,rowMatchCached(r,cfg.matchBank))+'</td>':'';
-      var row='<tr style="background:'+(i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)')+'"><td>'+r.name+'</td>'+docCell+'<td class="right gold">'+fmtFull(r.amount)+'</td>'+(cfg.agingKind?'<td class="right">'+(r.days!==null&&r.days!==undefined?Math.round(r.days).toLocaleString('th-TH'):'—')+'</td>':'')+matchCell+'<td style="font-size:12px;color:var(--muted)">'+(r.dateDisplay||'—')+'</td></tr>';
+      var docDateCell=cfg.agingKind?'<td style="font-size:12px;color:var(--muted)">'+(r.docDateDisplay||'—')+'</td>':'';
+      var row='<tr style="background:'+(i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)')+'"><td>'+r.name+'</td>'+docCell+'<td class="right gold">'+fmtFull(r.amount)+'</td>'+(cfg.agingKind?'<td class="right">'+(r.days!==null&&r.days!==undefined?Math.round(r.days).toLocaleString('th-TH'):'—')+'</td>':'')+matchCell+docDateCell+'<td style="font-size:12px;color:var(--muted)">'+(r.dateDisplay||'—')+'</td></tr>';
       if(itemsExp)row+=dmItemsRowHtml(items,flatCols);
       return row;
     }).join('');
@@ -1667,6 +1680,13 @@ function dmRender(){
   document.getElementById('dmDynamic').innerHTML=html;
   var dmNewWrap=document.getElementById('dmScrollWrap');
   if(dmNewWrap)dmNewWrap.scrollTop=dmPrevScroll;
+  if(dmFocusInfo){
+    var dmNewSearchInput=document.querySelector('#dmDynamic input.modal-search');
+    if(dmNewSearchInput){
+      dmNewSearchInput.focus();
+      try{ dmNewSearchInput.setSelectionRange(dmFocusInfo.selStart, dmFocusInfo.selEnd); }catch(e){}
+    }
+  }
   DM.state.lastFiltered=filtered;
 }
 function dmToggleItems(docNo){
@@ -1737,7 +1757,7 @@ function dmExportExcel(){
   } else {
     var flat=filtered.slice();
     flat.sort(function(a,b){return s.sort==='name'?(dateKey(a.dateStr)||'99999999').localeCompare(dateKey(b.dateStr)||'99999999'):(b.amount||0)-(a.amount||0);});
-    data=flat.map(function(r){var o={'ชื่อ':r.name,'เลขที่เอกสาร':r.docNo||'',[cfg.amountLabel]:r.amount};if(cfg.agingKind)o['อายุ (วัน)']=r.days!==null&&r.days!==undefined?Math.round(r.days):'';if(cfg.bankGroupable){o['รายละเอียดงาน']=r.itemDetail||'';o['รายละเอียดเพิ่มเติม']=r.itemDetails2||'';o['ผู้บันทึกเอกสาร']=r.docCreator||'';}else if(cfg.itemsByDoc){o['รายละเอียดสินค้า/บริการ']=dmDocItemsTextForExcel(cfg.itemsByDoc,r.docNo);}o['วันที่']=r.dateDisplay||'';return o;});
+    data=flat.map(function(r){var o={'ชื่อ':r.name,'เลขที่เอกสาร':r.docNo||'',[cfg.amountLabel]:r.amount};if(cfg.agingKind)o['อายุ (วัน)']=r.days!==null&&r.days!==undefined?Math.round(r.days):'';if(cfg.bankGroupable){o['รายละเอียดงาน']=r.itemDetail||'';o['รายละเอียดเพิ่มเติม']=r.itemDetails2||'';o['ผู้บันทึกเอกสาร']=r.docCreator||'';o['วันที่']=r.dateDisplay||'';}else if(cfg.itemsByDoc){o['รายละเอียดสินค้า/บริการ']=dmDocItemsTextForExcel(cfg.itemsByDoc,r.docNo);o['วันที่เอกสาร']=r.docDateDisplay||'';o['กำหนดชำระ']=r.dateDisplay||'';}else{o['วันที่']=r.dateDisplay||'';}o['หมายเหตุ']=r.remarks||'';return o;});
   }
   var ws=XLSX.utils.json_to_sheet(data);
   var wb=XLSX.utils.book_new();
@@ -1807,13 +1827,16 @@ function dmPrint(){
   var hasItemsByDoc=!!cfg.itemsByDoc;
   var theadHtml,tbodyRows,totalColspan;
   if(hasItemsByDoc){
-    theadHtml='<thead><tr><th>วันที่</th><th>เลขที่เอกสาร</th><th>ชื่อ</th><th>รายละเอียดสินค้า/บริการ</th><th class="pr-right">'+cfg.amountLabel+'</th></tr></thead>';
-    tbodyRows=flat.map(function(r){return '<tr><td>'+(r.dateStr||r.dateDisplay||'—')+'</td><td>'+(r.docNo||'—')+'</td><td>'+r.name+'</td><td>'+dmDocItemsPrintHtml(cfg.itemsByDoc,r.docNo)+'</td><td class="pr-right">'+fmtFull(r.amount)+'</td></tr>';}).join('');
-    totalColspan=4;
+    // รายงาน AR/AP ค้างรับ-ค้างจ่าย: เดิมคอลัมน์วันที่มีแค่ช่องเดียวชื่อ "วันที่" ซึ่งจริงๆ เป็นวันครบกำหนด
+    // ชำระ (dueDate) แต่ป้ายชื่อคลุมเครือ และไม่มีวันที่เอกสาร (posting date) ให้เห็นเลยทั้งที่มีข้อมูลอยู่
+    // แล้ว (r.docDateDisplay) — แยกเป็น 2 คอลัมน์ให้ชัดเจนเหมือนในเอกสาร SAP จริง (Posting Date / Due Date)
+    theadHtml='<thead><tr><th>วันที่เอกสาร</th><th>กำหนดชำระ</th><th>เลขที่เอกสาร</th><th>ชื่อ</th><th>รายละเอียดสินค้า/บริการ</th><th>หมายเหตุ</th><th class="pr-right">'+cfg.amountLabel+'</th></tr></thead>';
+    tbodyRows=flat.map(function(r){return '<tr><td>'+(r.docDateDisplay||'—')+'</td><td>'+(r.dateStr||r.dateDisplay||'—')+'</td><td>'+(r.docNo||'—')+'</td><td>'+r.name+'</td><td>'+dmDocItemsPrintHtml(cfg.itemsByDoc,r.docNo)+'</td><td>'+(r.remarks||'—')+'</td><td class="pr-right">'+fmtFull(r.amount)+'</td></tr>';}).join('');
+    totalColspan=6;
   } else {
-    theadHtml='<thead><tr><th>วันที่</th><th>เลขที่เอกสาร</th><th>ชื่อ</th><th>รายละเอียด</th><th>ผู้บันทึกเอกสาร</th><th class="pr-right">'+cfg.amountLabel+'</th></tr></thead>';
-    tbodyRows=flat.map(function(r){return '<tr><td>'+(r.dateStr||r.dateDisplay||'—')+'</td><td>'+(r.docNo||'—')+'</td><td>'+r.name+'</td><td><span class="pr-itemdetail">'+(r.itemDetail||'')+'</span>'+(r.itemDetails2?'<span class="pr-itemdetails2">↳ '+r.itemDetails2+'</span>':'')+'</td><td class="pr-creator">'+(r.docCreator||'')+'</td><td class="pr-right">'+fmtFull(r.amount)+'</td></tr>';}).join('');
-    totalColspan=5;
+    theadHtml='<thead><tr><th>วันที่</th><th>เลขที่เอกสาร</th><th>ชื่อ</th><th>รายละเอียด</th><th>ผู้บันทึกเอกสาร</th><th>หมายเหตุ</th><th class="pr-right">'+cfg.amountLabel+'</th></tr></thead>';
+    tbodyRows=flat.map(function(r){return '<tr><td>'+(r.dateStr||r.dateDisplay||'—')+'</td><td>'+(r.docNo||'—')+'</td><td>'+r.name+'</td><td><span class="pr-itemdetail">'+(r.itemDetail||'')+'</span>'+(r.itemDetails2?'<span class="pr-itemdetails2">↳ '+r.itemDetails2+'</span>':'')+'</td><td class="pr-creator">'+(r.docCreator||'')+'</td><td>'+(r.remarks||'—')+'</td><td class="pr-right">'+fmtFull(r.amount)+'</td></tr>';}).join('');
+    totalColspan=6;
   }
   var tbodyHtml='<tbody>'+tbodyRows+
     '<tr class="pr-sub"><td colspan="'+totalColspan+'">รวมทั้งหมด</td><td class="pr-right">'+fmtFull(totalAll)+'</td></tr>'+
@@ -1871,13 +1894,13 @@ function showModalBank(){
 }
 function showModalReceipt(){
   var all=G.recRows||[];
-  var norm=all.map(function(r){return {name:r.custName,docNo:r.docNo,amount:r.amt,dateStr:toSlashDMY(r.date),dateDisplay:fmtD(r.date),days:null,bankCode:r.bankCode||'',bankName:r.bankName||'',itemDetail:r.itemDetail||'',itemDetails2:r.itemDetails2||'',docCreator:r.docCreator||''};});
+  var norm=all.map(function(r){return {name:r.custName,docNo:r.docNo,amount:r.amt,dateStr:toSlashDMY(r.date),dateDisplay:fmtD(r.date),days:null,bankCode:r.bankCode||'',bankName:r.bankName||'',itemDetail:r.itemDetail||'',itemDetails2:r.itemDetails2||'',docCreator:r.docCreator||'',remarks:r.remarks||''};});
   openDetailModal({title:'รายละเอียดเงินรับ',icon:'📥',amountLabel:'จำนวนเงิน',groupable:true,agingKind:null,matchBank:'credit',bankGroupable:true,rows:norm,
     statsDynamic:function(filtered,totalAll){return '<div class="modal-summary">'+mStat('จำนวนทั้งหมด',filtered.length+' รายการ','var(--gold2)')+mStat('ยอดรวมทั้งหมด',fmtKPI(totalAll),'var(--green)')+'</div>';}});
 }
 function showModalPayment(){
   var all=G.payRows||[];
-  var norm=all.map(function(r){return {name:r.vendName,docNo:r.docNo,amount:r.amt,dateStr:toSlashDMY(r.date),dateDisplay:fmtD(r.date),days:null,bankCode:r.bankCode||'',bankName:r.bankName||'',itemDetail:r.itemDetail||'',itemDetails2:r.itemDetails2||'',docCreator:r.docCreator||''};});
+  var norm=all.map(function(r){return {name:r.vendName,docNo:r.docNo,amount:r.amt,dateStr:toSlashDMY(r.date),dateDisplay:fmtD(r.date),days:null,bankCode:r.bankCode||'',bankName:r.bankName||'',itemDetail:r.itemDetail||'',itemDetails2:r.itemDetails2||'',docCreator:r.docCreator||'',remarks:r.remarks||''};});
   openDetailModal({title:'รายละเอียดเงินจ่าย',icon:'📤',amountLabel:'จำนวนเงิน',groupable:true,agingKind:null,matchBank:'debit',bankGroupable:true,rows:norm,
     statsDynamic:function(filtered,totalAll){return '<div class="modal-summary">'+mStat('จำนวนทั้งหมด',filtered.length+' รายการ','var(--gold2)')+mStat('ยอดรวมทั้งหมด',fmtKPI(totalAll),'var(--red)')+'</div>';}});
 }
@@ -1906,7 +1929,7 @@ function filterDueSoon(rows,daysAhead){
 function showModalARDueSoon(){
   var full=G.arRows2||[];
   var due=filterDueSoon(full,7);
-  var norm=full.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),days:r.days};});
+  var norm=full.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),docDateDisplay:fmtD(r.docDate),days:r.days,remarks:r.remarks||''};});
   var presetDays=due.map(function(r){return dateKey(toSlashDMY(r.dueDate));}).filter(Boolean);
   openDetailModal({title:'AR ครบกำหนดใน 7 วันข้างหน้า',icon:'⏳',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AR',rows:norm,itemsByDoc:G.arItemsByDoc,openCalendar:true,presetDays:presetDays,
     statsHtml:'<div class="modal-summary">'+mStat('ยอดครบกำหนด 7 วัน',fmtKPI(due.reduce(function(s,r){return s+r.bal;},0)),'var(--gold2)')+mStat('จำนวนรายการ',due.length+' รายการ','var(--gold2)')+'</div>'});
@@ -1914,7 +1937,7 @@ function showModalARDueSoon(){
 function showModalAPDueSoon(){
   var full=G.apRows2||[];
   var due=filterDueSoon(full,7);
-  var norm=full.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),days:r.days};});
+  var norm=full.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),docDateDisplay:fmtD(r.docDate),days:r.days,remarks:r.remarks||''};});
   var presetDays=due.map(function(r){return dateKey(toSlashDMY(r.dueDate));}).filter(Boolean);
   openDetailModal({title:'AP ครบกำหนดใน 7 วันข้างหน้า',icon:'⏳',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AP',rows:norm,itemsByDoc:G.apItemsByDoc,openCalendar:true,presetDays:presetDays,
     statsHtml:'<div class="modal-summary">'+mStat('ยอดครบกำหนด 7 วัน',fmtKPI(due.reduce(function(s,r){return s+r.bal;},0)),'var(--red)')+mStat('จำนวนรายการ',due.length+' รายการ','var(--red)')+'</div>'});
@@ -1922,62 +1945,62 @@ function showModalAPDueSoon(){
 function showModalAR(){
   var all=arApFiltered(G.arRows2||[],ACTIVE_MONTHS);
   var agg=arApAgg(all);
-  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),days:r.days};});
+  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),docDateDisplay:fmtD(r.docDate),days:r.days,remarks:r.remarks||''};});
   openDetailModal({title:'AR ลูกหนี้ค้างรับ',icon:'📋',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AR',rows:norm,itemsByDoc:G.arItemsByDoc,
     statsHtml:'<div class="modal-summary">'+mStat('AR รวม',fmtKPI(agg.total),'var(--gold2)')+mStat('จำนวนรายการ',all.length+' รายการ','var(--blue)')+mStat('จำนวนลูกค้า',Object.keys(agg.byName).length+' ราย','var(--teal)')+mStat('เกิน 90 วัน',fmtKPI(agg.a90p),'var(--red)')+'</div>'});
 }
 function showModalAR030(){
   var all=arApFiltered(G.arRows2||[],ACTIVE_MONTHS).filter(function(r){return r.days<=30;});
-  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),days:r.days};});
+  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),docDateDisplay:fmtD(r.docDate),days:r.days,remarks:r.remarks||''};});
   openDetailModal({title:'AR 0-30 วัน',icon:'✅',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AR',rows:norm,itemsByDoc:G.arItemsByDoc,
     statsHtml:'<div class="modal-summary">'+mStat('ยอดรวม 0-30 วัน',fmtKPI(all.reduce(function(s,r){return s+r.bal;},0)),'var(--green)')+mStat('จำนวนรายการ',all.length+' รายการ','var(--green)')+'</div>'});
 }
 function showModalAR3060(){
   var all=arApFiltered(G.arRows2||[],ACTIVE_MONTHS).filter(function(r){return r.days>30&&r.days<=60;});
-  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),days:r.days};});
+  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),docDateDisplay:fmtD(r.docDate),days:r.days,remarks:r.remarks||''};});
   openDetailModal({title:'AR 31-60 วัน',icon:'🟦',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AR',rows:norm,itemsByDoc:G.arItemsByDoc,
     statsHtml:'<div class="modal-summary">'+mStat('ยอดรวม 31-60 วัน',fmtKPI(all.reduce(function(s,r){return s+r.bal;},0)),'var(--teal)')+mStat('จำนวนรายการ',all.length+' รายการ','var(--teal)')+'</div>'});
 }
 function showModalAR6090(){
   var all=arApFiltered(G.arRows2||[],ACTIVE_MONTHS).filter(function(r){return r.days>60&&r.days<=90;});
-  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),days:r.days};});
+  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),docDateDisplay:fmtD(r.docDate),days:r.days,remarks:r.remarks||''};});
   openDetailModal({title:'AR 61-90 วัน',icon:'🟧',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AR',rows:norm,itemsByDoc:G.arItemsByDoc,
     statsHtml:'<div class="modal-summary">'+mStat('ยอดรวม 61-90 วัน',fmtKPI(all.reduce(function(s,r){return s+r.bal;},0)),'var(--gold2)')+mStat('จำนวนรายการ',all.length+' รายการ','var(--gold2)')+'</div>'});
 }
 function showModalAROver(){
   var all=arApFiltered(G.arRows2||[],ACTIVE_MONTHS).filter(function(r){return r.days>90;});
-  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),days:r.days};});
+  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),docDateDisplay:fmtD(r.docDate),days:r.days,remarks:r.remarks||''};});
   openDetailModal({title:'AR เกินกำหนด > 90 วัน',icon:'🔴',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AR',rows:norm,itemsByDoc:G.arItemsByDoc,
     statsHtml:'<div class="modal-summary">'+mStat('ยอดรวมเกิน 90 วัน',fmtKPI(all.reduce(function(s,r){return s+r.bal;},0)),'var(--red)')+mStat('จำนวนรายการ',all.length+' รายการ','var(--red)')+'</div>'});
 }
 function showModalAP(){
   var all=arApFiltered(G.apRows2||[],ACTIVE_MONTHS);
   var agg=arApAgg(all);
-  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),days:r.days};});
+  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),docDateDisplay:fmtD(r.docDate),days:r.days,remarks:r.remarks||''};});
   openDetailModal({title:'AP เจ้าหนี้ค้างจ่าย',icon:'📝',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AP',rows:norm,itemsByDoc:G.apItemsByDoc,
     statsHtml:'<div class="modal-summary">'+mStat('AP รวม',fmtKPI(agg.total),'var(--red)')+mStat('จำนวนรายการ',all.length+' รายการ','var(--blue)')+mStat('เกิน 60 วัน',fmtKPI(agg.a90+agg.a90p),'var(--red)')+mStat('ยังไม่เกินกำหนด',fmtKPI(agg.a30),'var(--green)')+'</div>'});
 }
 function showModalAPDue(){
   var all=arApFiltered(G.apRows2||[],ACTIVE_MONTHS).filter(function(r){return r.days<=60&&r.days>0;});
-  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),days:r.days};});
+  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),docDateDisplay:fmtD(r.docDate),days:r.days,remarks:r.remarks||''};});
   openDetailModal({title:'AP ใกล้ครบกำหนด (≤ 60 วัน)',icon:'📅',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AP',rows:norm,itemsByDoc:G.apItemsByDoc,
     statsHtml:'<div class="modal-summary">'+mStat('ยอดรวม ≤ 60 วัน',fmtKPI(all.reduce(function(s,r){return s+r.bal;},0)),'var(--gold2)')+mStat('จำนวนรายการ',all.length+' รายการ','var(--gold2)')+'</div>'});
 }
 function showModalAP030(){
   var all=arApFiltered(G.apRows2||[],ACTIVE_MONTHS).filter(function(r){return r.days<=30;});
-  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),days:r.days};});
+  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),docDateDisplay:fmtD(r.docDate),days:r.days,remarks:r.remarks||''};});
   openDetailModal({title:'AP 0-30 วัน',icon:'✔',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AP',rows:norm,itemsByDoc:G.apItemsByDoc,
     statsHtml:'<div class="modal-summary">'+mStat('ยอดรวม 0-30 วัน',fmtKPI(all.reduce(function(s,r){return s+r.bal;},0)),'var(--green)')+mStat('จำนวนรายการ',all.length+' รายการ','var(--green)')+'</div>'});
 }
 function showModalAP3160(){
   var all=arApFiltered(G.apRows2||[],ACTIVE_MONTHS).filter(function(r){return r.days>30&&r.days<=60;});
-  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),days:r.days};});
+  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),docDateDisplay:fmtD(r.docDate),days:r.days,remarks:r.remarks||''};});
   openDetailModal({title:'AP 31-60 วัน',icon:'📅',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AP',rows:norm,itemsByDoc:G.apItemsByDoc,
     statsHtml:'<div class="modal-summary">'+mStat('ยอดรวม 31-60 วัน',fmtKPI(all.reduce(function(s,r){return s+r.bal;},0)),'var(--gold2)')+mStat('จำนวนรายการ',all.length+' รายการ','var(--gold2)')+'</div>'});
 }
 function showModalAPOver60(){
   var all=arApFiltered(G.apRows2||[],ACTIVE_MONTHS).filter(function(r){return r.days>60;});
-  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),days:r.days};});
+  var norm=all.map(function(r){return {name:r.name,docNo:r.docNo,amount:r.bal,dateStr:toSlashDMY(r.dueDate),dateDisplay:fmtD(r.dueDate),docDateDisplay:fmtD(r.docDate),days:r.days,remarks:r.remarks||''};});
   openDetailModal({title:'AP เกินกำหนด > 60 วัน',icon:'⏰',amountLabel:'ยอดค้าง',groupable:true,agingKind:'AP',rows:norm,itemsByDoc:G.apItemsByDoc,
     statsHtml:'<div class="modal-summary">'+mStat('ยอดรวมเกิน 60 วัน',fmtKPI(all.reduce(function(s,r){return s+r.bal;},0)),'var(--red)')+mStat('จำนวนรายการ',all.length+' รายการ','var(--red)')+'</div>'});
 }
