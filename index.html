@@ -193,6 +193,12 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
      ป้องกันเส้นตารางหนาสองเท่า/เบิ้ล ที่จะเกิดถ้าให้ทุกเซลล์วาดขอบครบ 4 ด้านตอนใช้ border-collapse:separate */
   #printArea table{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px;margin-top:14px;border-top:1px solid #d5dbe3;border-left:1px solid #d5dbe3;}
   #printArea th,#printArea td{border-right:1px solid #d5dbe3;border-bottom:1px solid #d5dbe3;padding:7px 9px;text-align:left;word-break:break-word;overflow-wrap:break-word;}
+  /* หมายเหตุบั๊กที่แก้ตรงนี้: overflow-wrap/word-break:break-word (กฎด้านบน) ถูกออกแบบมาให้ "บังคับตัดคำ
+     แม้จะตั้ง white-space:nowrap ไว้ก็ตาม" ถ้าช่องแคบเกินจะใส่ข้อความพอดี (เป็นพฤติกรรมมาตรฐานของ CSS
+     ที่หลายคนไม่รู้ — นี่คือสาเหตุจริงที่ทำให้วันที่/เลขที่เอกสารยังขึ้น 2 บรรทัดอยู่ทั้งที่ตั้ง nowrap ไว้แล้ว)
+     จึงต้องรีเซ็ต overflow-wrap/word-break กลับเป็นค่าปกติเฉพาะคอลัมน์ pr-nowrap เพื่อให้ white-space:nowrap
+     มีผลจริง ไม่ถูกแย่งบังคับตัดคำอีกที — ถ้าข้อความยาวเกินคอลัมน์ จะล้นออกนอกเซลล์แทนที่จะขึ้นบรรทัดใหม่ */
+  #printArea .pr-nowrap{white-space:nowrap;word-break:keep-all;overflow-wrap:normal;}
   #printArea thead{display:table-header-group;}
   #printArea tfoot{display:table-footer-group;}
   #printArea tr{page-break-inside:avoid;}
@@ -1830,18 +1836,23 @@ function dmPrint(){
     // รายงาน AR/AP ค้างรับ-ค้างจ่าย: เดิมคอลัมน์วันที่มีแค่ช่องเดียวชื่อ "วันที่" ซึ่งจริงๆ เป็นวันครบกำหนด
     // ชำระ (dueDate) แต่ป้ายชื่อคลุมเครือ และไม่มีวันที่เอกสาร (posting date) ให้เห็นเลยทั้งที่มีข้อมูลอยู่
     // แล้ว (r.docDateDisplay) — แยกเป็น 2 คอลัมน์ให้ชัดเจนเหมือนในเอกสาร SAP จริง (Posting Date / Due Date)
-    theadHtml='<thead><tr><th>วันที่เอกสาร</th><th>กำหนดชำระ</th><th>เลขที่เอกสาร</th><th>ชื่อ</th><th>รายละเอียดสินค้า/บริการ</th><th>หมายเหตุ</th><th class="pr-right">'+cfg.amountLabel+'</th></tr></thead>';
-    tbodyRows=flat.map(function(r){return '<tr><td>'+(r.docDateDisplay||'—')+'</td><td>'+(r.dateStr||r.dateDisplay||'—')+'</td><td>'+(r.docNo||'—')+'</td><td>'+r.name+'</td><td>'+dmDocItemsPrintHtml(cfg.itemsByDoc,r.docNo)+'</td><td>'+(r.remarks||'—')+'</td><td class="pr-right">'+fmtFull(r.amount)+'</td></tr>';}).join('');
+    // วันที่เอกสาร/กำหนดชำระ/เลขที่เอกสาร ห้ามตัดขึ้นบรรทัดใหม่ (class="pr-nowrap") — ให้กว้างพอสำหรับ
+    // ข้อความสั้นแบบตายตัว (วันที่ dd.mm.yyyy, เลขที่เอกสาร) ส่วนรายละเอียดสินค้า/บริการ กับหมายเหตุ
+    // ให้กว้างเท่ากันตามที่ขอ
+    theadHtml='<thead><tr><th class="pr-nowrap">วันที่เอกสาร</th><th class="pr-nowrap">กำหนดชำระ</th><th class="pr-nowrap">เลขที่เอกสาร</th><th>ชื่อ</th><th>รายละเอียดสินค้า/บริการ</th><th>หมายเหตุ</th><th class="pr-right">'+cfg.amountLabel+'</th></tr></thead>';
+    tbodyRows=flat.map(function(r){return '<tr><td class="pr-nowrap">'+(r.docDateDisplay||'—')+'</td><td class="pr-nowrap">'+(r.dateStr||r.dateDisplay||'—')+'</td><td class="pr-nowrap">'+(r.docNo||'—')+'</td><td>'+r.name+'</td><td>'+dmDocItemsPrintHtml(cfg.itemsByDoc,r.docNo)+'</td><td>'+(r.remarks||'—')+'</td><td class="pr-right">'+fmtFull(r.amount)+'</td></tr>';}).join('');
     totalColspan=6;
-    // กำหนดสัดส่วนความกว้างคอลัมน์เอง (ไม่ปล่อยให้เบราว์เซอร์คำนวณอัตโนมัติ) เพราะข้อความ "หมายเหตุ" ที่
-    // เพิ่งเพิ่มเข้ามามักยาวกว่าคอลัมน์อื่น ทำให้แย่งพื้นที่จากคอลัมน์ "ชื่อ" (ชื่อลูกหนี้/เจ้าหนี้) จนชื่อ
-    // บริษัทยาวๆ ถูกบีบจนขึ้นบรรทัดซ้อนกันหลายบรรทัด — บังคับให้ชื่อกว้างขึ้น และหมายเหตุแคบลง
-    colgroupHtml='<colgroup><col style="width:8%"><col style="width:8%"><col style="width:9%"><col style="width:22%"><col style="width:24%"><col style="width:15%"><col style="width:14%"></colgroup>';
+    // กำหนดสัดส่วนความกว้างคอลัมน์เอง (ไม่ปล่อยให้เบราว์เซอร์คำนวณอัตโนมัติ) — วันที่ทั้ง 2 คอลัมน์และ
+    // เลขที่เอกสารต้องกว้างพอที่จะแสดงเป็นบรรทัดเดียวเสมอ (ห้ามตัดคำ) ส่วนรายละเอียดสินค้า/บริการกับ
+    // หมายเหตุให้กว้างเท่ากัน และชื่อลูกหนี้/เจ้าหนี้ยังคงกว้างพอไม่ให้ชื่อยาวๆ ขึ้นหลายบรรทัด
+    colgroupHtml='<colgroup><col style="width:10%"><col style="width:10%"><col style="width:11%"><col style="width:20%"><col style="width:17%"><col style="width:17%"><col style="width:15%"></colgroup>';
   } else {
-    theadHtml='<thead><tr><th>วันที่</th><th>เลขที่เอกสาร</th><th>ชื่อ</th><th>รายละเอียด</th><th>ผู้บันทึกเอกสาร</th><th>หมายเหตุ</th><th class="pr-right">'+cfg.amountLabel+'</th></tr></thead>';
-    tbodyRows=flat.map(function(r){return '<tr><td>'+(r.dateStr||r.dateDisplay||'—')+'</td><td>'+(r.docNo||'—')+'</td><td>'+r.name+'</td><td><span class="pr-itemdetail">'+(r.itemDetail||'')+'</span>'+(r.itemDetails2?'<span class="pr-itemdetails2">↳ '+r.itemDetails2+'</span>':'')+'</td><td class="pr-creator">'+(r.docCreator||'')+'</td><td>'+(r.remarks||'—')+'</td><td class="pr-right">'+fmtFull(r.amount)+'</td></tr>';}).join('');
+    theadHtml='<thead><tr><th class="pr-nowrap">วันที่</th><th class="pr-nowrap">เลขที่เอกสาร</th><th>ชื่อ</th><th>รายละเอียด</th><th>ผู้บันทึกเอกสาร</th><th>หมายเหตุ</th><th class="pr-right">'+cfg.amountLabel+'</th></tr></thead>';
+    tbodyRows=flat.map(function(r){return '<tr><td class="pr-nowrap">'+(r.dateStr||r.dateDisplay||'—')+'</td><td class="pr-nowrap">'+(r.docNo||'—')+'</td><td>'+r.name+'</td><td><span class="pr-itemdetail">'+(r.itemDetail||'')+'</span>'+(r.itemDetails2?'<span class="pr-itemdetails2">↳ '+r.itemDetails2+'</span>':'')+'</td><td class="pr-creator">'+(r.docCreator||'')+'</td><td>'+(r.remarks||'—')+'</td><td class="pr-right">'+fmtFull(r.amount)+'</td></tr>';}).join('');
     totalColspan=6;
-    colgroupHtml='<colgroup><col style="width:9%"><col style="width:10%"><col style="width:22%"><col style="width:22%"><col style="width:13%"><col style="width:12%"><col style="width:12%"></colgroup>';
+    // ลดขนาดคอลัมน์ ชื่อ และ ผู้บันทึกเอกสาร ลง เอาพื้นที่ที่ประหยัดได้ไปเพิ่มให้รายละเอียด/หมายเหตุ
+    // (ยังคงเท่ากันทั้งคู่ตามที่ขอไว้ก่อนหน้านี้)
+    colgroupHtml='<colgroup><col style="width:11%"><col style="width:12%"><col style="width:17%"><col style="width:19%"><col style="width:10%"><col style="width:19%"><col style="width:12%"></colgroup>';
   }
   var tbodyHtml='<tbody>'+tbodyRows+
     '<tr class="pr-sub"><td colspan="'+totalColspan+'">รวมทั้งหมด</td><td class="pr-right">'+fmtFull(totalAll)+'</td></tr>'+
