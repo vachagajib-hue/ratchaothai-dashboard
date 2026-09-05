@@ -1737,7 +1737,7 @@ function dmExportExcel(){
   } else {
     var flat=filtered.slice();
     flat.sort(function(a,b){return s.sort==='name'?(dateKey(a.dateStr)||'99999999').localeCompare(dateKey(b.dateStr)||'99999999'):(b.amount||0)-(a.amount||0);});
-    data=flat.map(function(r){var o={'ชื่อ':r.name,'เลขที่เอกสาร':r.docNo||'',[cfg.amountLabel]:r.amount};if(cfg.agingKind)o['อายุ (วัน)']=r.days!==null&&r.days!==undefined?Math.round(r.days):'';if(cfg.bankGroupable){o['รายละเอียดงาน']=r.itemDetail||'';o['รายละเอียดเพิ่มเติม']=r.itemDetails2||'';o['ผู้บันทึกเอกสาร']=r.docCreator||'';}o['วันที่']=r.dateDisplay||'';return o;});
+    data=flat.map(function(r){var o={'ชื่อ':r.name,'เลขที่เอกสาร':r.docNo||'',[cfg.amountLabel]:r.amount};if(cfg.agingKind)o['อายุ (วัน)']=r.days!==null&&r.days!==undefined?Math.round(r.days):'';if(cfg.bankGroupable){o['รายละเอียดงาน']=r.itemDetail||'';o['รายละเอียดเพิ่มเติม']=r.itemDetails2||'';o['ผู้บันทึกเอกสาร']=r.docCreator||'';}else if(cfg.itemsByDoc){o['รายละเอียดสินค้า/บริการ']=dmDocItemsTextForExcel(cfg.itemsByDoc,r.docNo);}o['วันที่']=r.dateDisplay||'';return o;});
   }
   var ws=XLSX.utils.json_to_sheet(data);
   var wb=XLSX.utils.book_new();
@@ -1768,6 +1768,29 @@ function prSignatureHtml(){
     '</div>';
   }).join('')+'</div>';
 }
+// สร้าง HTML รายละเอียดสินค้า/บริการของเอกสาร docNo หนึ่งใบ สำหรับใช้ในคอลัมน์ "รายละเอียด" ของ PDF —
+// ดึงจากแหล่งเดียวกับที่ใช้แสดงตอนกดขยาย "▸" บนหน้าจอ (cfg.itemsByDoc, มาจาก Q09/Q10) เพราะรายงาน
+// AR/AP ค้างรับ-ค้างจ่าย (ต่างจากรายงานรับ/จ่ายเงินแล้วที่มี itemDetail ติดมากับแถวโดยตรง) ไม่มีข้อมูล
+// รายละเอียดติดกับแถวเลย — เดิม PDF จึงว่างเปล่าทั้งที่ข้อมูลนี้มีอยู่แล้วในระบบ
+// เหมือน dmDocItemsPrintHtml() แต่คืนข้อความล้วน (ไม่มี HTML tag) สำหรับใส่ในเซลล์ Excel
+function dmDocItemsTextForExcel(itemsByDoc, docNo){
+  var items=itemsByDoc&&itemsByDoc[docNo];
+  if(!items||!items.length)return '';
+  return items.map(function(it){
+    var label=(it.itemName||it.itemCode||'—')+(it.itemCode?' ('+it.itemCode+')':'');
+    var qtyPrice='x'+(it.qty||0).toLocaleString('th-TH')+' @'+(it.price||0).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
+    return label+' ('+qtyPrice+')';
+  }).join('; ');
+}
+function dmDocItemsPrintHtml(itemsByDoc, docNo){
+  var items=itemsByDoc&&itemsByDoc[docNo];
+  if(!items||!items.length)return '<span style="color:#999;font-style:italic">—</span>';
+  return items.map(function(it){
+    var label=(it.itemName||it.itemCode||'—')+(it.itemCode?' ('+it.itemCode+')':'');
+    var qtyPrice='x'+(it.qty||0).toLocaleString('th-TH')+' @'+(it.price||0).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2})+' = '+fmtFull(it.lineTotal||0);
+    return '<span class="pr-itemdetail">'+label+'</span><span class="pr-itemdetails2">↳ '+qtyPrice+'</span>';
+  }).join('');
+}
 function dmPrint(){
   var cfg=DM.cfg, s=DM.state, filtered=DM.state.lastFiltered||[];
   var totalAll=filtered.reduce(function(a,r){return a+(r.amount||0);},0);
@@ -1776,10 +1799,24 @@ function dmPrint(){
   flat.sort(function(a,b){return s.sort==='name'?(dateKey(a.dateStr)||'99999999').localeCompare(dateKey(b.dateStr)||'99999999'):(b.amount||0)-(a.amount||0);});
   // ต้องห่อแถวหัวตารางด้วย <thead> จริงๆ (ไม่ใช่แค่ <tr> ตัวแรกลอยๆ ใน <table>) เบราว์เซอร์ถึงจะรู้ว่า
   // ต้องพิมพ์หัวตารางซ้ำทุกหน้าเวลาตารางยาวเกิน 1 หน้า — ถ้าไม่ห่อ thead หัวตารางจะโผล่แค่หน้าแรกหน้าเดียว
-  var theadHtml='<thead><tr><th>วันที่</th><th>เลขที่เอกสาร</th><th>ชื่อ</th><th>รายละเอียด</th><th>ผู้บันทึกเอกสาร</th><th class="pr-right">'+cfg.amountLabel+'</th></tr></thead>';
-  var tbodyHtml='<tbody>'+
-    flat.map(function(r){return '<tr><td>'+(r.dateStr||r.dateDisplay||'—')+'</td><td>'+(r.docNo||'—')+'</td><td>'+r.name+'</td><td><span class="pr-itemdetail">'+(r.itemDetail||'')+'</span>'+(r.itemDetails2?'<span class="pr-itemdetails2">↳ '+r.itemDetails2+'</span>':'')+'</td><td class="pr-creator">'+(r.docCreator||'')+'</td><td class="pr-right">'+fmtFull(r.amount)+'</td></tr>';}).join('')+
-    '<tr class="pr-sub"><td colspan="5">รวมทั้งหมด</td><td class="pr-right">'+fmtFull(totalAll)+'</td></tr>'+
+  //
+  // รายงานสองแบบเก็บ "รายละเอียด" คนละที่กัน: รายงานรับ/จ่ายเงินแล้ว (Q01/Q02) มี itemDetail/itemDetails2/
+  // docCreator ติดมากับแต่ละแถวโดยตรง ส่วนรายงาน AR/AP ค้างรับ-ค้างจ่าย (cfg.itemsByDoc, จาก Q09/Q10) ไม่มี
+  // ข้อมูลติดแถวเลย ต้องไปดึงจาก cfg.itemsByDoc[docNo] แทน — ถ้าใช้คอลัมน์ชุดเดิม (itemDetail/docCreator)
+  // กับรายงาน AR/AP จะว่างเปล่าเสมอ จึงต้องแยกโครงสร้างตารางตาม cfg ให้ถูกต้อง
+  var hasItemsByDoc=!!cfg.itemsByDoc;
+  var theadHtml,tbodyRows,totalColspan;
+  if(hasItemsByDoc){
+    theadHtml='<thead><tr><th>วันที่</th><th>เลขที่เอกสาร</th><th>ชื่อ</th><th>รายละเอียดสินค้า/บริการ</th><th class="pr-right">'+cfg.amountLabel+'</th></tr></thead>';
+    tbodyRows=flat.map(function(r){return '<tr><td>'+(r.dateStr||r.dateDisplay||'—')+'</td><td>'+(r.docNo||'—')+'</td><td>'+r.name+'</td><td>'+dmDocItemsPrintHtml(cfg.itemsByDoc,r.docNo)+'</td><td class="pr-right">'+fmtFull(r.amount)+'</td></tr>';}).join('');
+    totalColspan=4;
+  } else {
+    theadHtml='<thead><tr><th>วันที่</th><th>เลขที่เอกสาร</th><th>ชื่อ</th><th>รายละเอียด</th><th>ผู้บันทึกเอกสาร</th><th class="pr-right">'+cfg.amountLabel+'</th></tr></thead>';
+    tbodyRows=flat.map(function(r){return '<tr><td>'+(r.dateStr||r.dateDisplay||'—')+'</td><td>'+(r.docNo||'—')+'</td><td>'+r.name+'</td><td><span class="pr-itemdetail">'+(r.itemDetail||'')+'</span>'+(r.itemDetails2?'<span class="pr-itemdetails2">↳ '+r.itemDetails2+'</span>':'')+'</td><td class="pr-creator">'+(r.docCreator||'')+'</td><td class="pr-right">'+fmtFull(r.amount)+'</td></tr>';}).join('');
+    totalColspan=5;
+  }
+  var tbodyHtml='<tbody>'+tbodyRows+
+    '<tr class="pr-sub"><td colspan="'+totalColspan+'">รวมทั้งหมด</td><td class="pr-right">'+fmtFull(totalAll)+'</td></tr>'+
     '</tbody>';
   document.getElementById('printArea').innerHTML=
     prHeaderHtml(dmTitleWithBank()+' <span>— '+dmRangeLabel()+'</span>','จำนวน '+filtered.length+' รายการ &nbsp;·&nbsp; ยอดรวม '+fmtFull(totalAll)+' บาท &nbsp;·&nbsp; พิมพ์เมื่อ '+printTimestamp())+
