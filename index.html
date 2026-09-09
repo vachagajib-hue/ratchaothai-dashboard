@@ -1111,10 +1111,28 @@ function findRowMatchBasic(amount,dateStr,side){
   return findSplitMatch(amount,dateStr,side);
 }
 // ===== ก้อนรวมข้ามเจ้าหนี้ (payment run): แบงค์โอนออก/เข้าทีเดียว แต่ครอบคลุมหลายเจ้าหนี้/ลูกหนี้ต่างรายในวันเดียวกัน =====
-var CROSS_MIN_AMOUNT=500000;  // เกณฑ์ขั้นต่ำของ "เอกสารที่จะลองหาก้อนรวม" (จำกัดขอบเขตการค้นหาที่หนักสุดในนี้)
-var CROSS_WINDOW_DAYS=2;      // payment run มักจะวันเดียวกันหรือใกล้กันมาก
-var CROSS_MAX_POOL=18;        // จำกัดจำนวนรายการต่อวันที่นำมาค้นหาสับเซต (ป้องกันค้นหาหนักเกินไป)
-var CROSS_MAX_PARTS=8;        // จำกัดจำนวนรายการย่อยสูงสุดในก้อนรวมที่จะลองรวม
+// ปรับ 9 ก.ย. 2569 ตามใบปะหน้าตั้งจ่ายจริงของบัญชี KKP (20-0227674-0): 1 ก้อนรวมมีได้ถึง 29 รายการ
+// ยอดย่อยต่ำสุด 145.01 บาท และตามนโยบายบริษัท วันที่เอกสารจ่ายใน SAP ต้องตรงกับวันที่แบงค์ตัดจริง
+// เป๊ะเสมอ (ไม่มี +/- วัน — ถ้าไม่ตรงถือว่าเอกสารผิดต้องไปแก้ที่ SAP ไม่ใช่ให้ตัวจับคู่ยืดหยุ่นให้)
+//
+// สำคัญ — ทำไมไม่ใช้ subset-sum แบบ "ลองรวมกี่รายการก็ได้จนกว่าจะตรง" อีกต่อไป: ทดสอบแล้วพบว่าเมื่อ
+// จำนวนรายการต่อวันเยอะขึ้น (ตามที่ต้องรองรับก้อน 29 รายการจริง) จำนวนชุดผสมที่เป็นไปได้จะระเบิด
+// (2 ยกกำลังจำนวนรายการ) ทำให้ระบบมีโอกาสสูงที่จะ "บังเอิญ" เจอชุดผสมอื่นที่ไม่ใช่ชุดจริงแต่รวมแล้ว
+// ยอดตรงพอดี (ทดสอบกับข้อมูลจำลอง 30+15 รายการ พบรายการที่ไม่เกี่ยวถูกจับคู่ผิดทั้งหมด 15/15) — เปลี่ยน
+// เป็นหลักการใหม่ที่ตรงกับข้อเท็จจริงจากใบปะหน้าจริง: ปกติยอดรวม "ทั้งพูลของวันนั้น" ต้องเท่ากับยอด
+// แบงค์พอดีอยู่แล้ว (1 วัน = 1 ก้อน ไม่ใช่หลายก้อนปนกัน) จึงลองจับคู่ทั้งพูลก่อน แล้วค่อยยอมกันรายการที่
+// ไม่เกี่ยวออกได้ "ไม่เกิน CROSS_MAX_EXCLUDE รายการ" เท่านั้น (ไม่ใช่รวมอิสระได้ทั้งพูล) — ลดจำนวนชุดที่
+// เป็นไปได้จากระดับพันล้านชุด เหลือแค่ไม่กี่ร้อยชุด (n เลือก 1 หรือ 2) ทำให้จับคู่ผิดแทบเป็นไปไม่ได้
+var CROSS_MIN_AMOUNT=100;     // เกณฑ์ขั้นต่ำของ "เอกสารที่จะลองหาก้อนรวม" (กันเฉพาะเศษเล็กจิ๋วที่ไม่มีนัยสำคัญ)
+var CROSS_WINDOW_DAYS=0;      // ต้องตรงวันเป๊ะกับวันที่แบงค์ตัดจริงเท่านั้น ไม่มีผ่อนผัน +/- วัน
+var CROSS_MAX_POOL=50;        // จำกัดจำนวนรายการต่อวันที่นำมาพิจารณา (ป้องกันค้นหาหนักเกินไป)
+// ทดสอบแบบสุ่มซ้ำหลายร้อยรอบพบว่า ต่อให้ยอมกันออกได้แค่ 1 รายการ ก็ยังมีโอกาสบังเอิญเล็กน้อย (~0.3%)
+// ที่รายการซึ่งกันออกจะบังเอิญยอดตรงกับรายการไม่เกี่ยวจริงพอดี (ยอมกันออกได้ยิ่งมาก ยิ่งเสี่ยงจับคู่ผิด
+// มากขึ้นตามลำดับ) เท่าที่มีหลักฐานจริงจากใบปะหน้า KKP ก้อนจริงไม่มีรายการปนเลยด้วยซ้ำ (พูลทั้งหมดตรงกับ
+// ยอดแบงค์พอดี 100%) จึงตัดสินใจไม่ยอมกันรายการออกเลย (=0) ต้องการให้ "ยอดรวมทั้งพูลของวันนั้น" ตรงกับ
+// ยอดแบงค์เป๊ะเท่านั้นถึงจะจับคู่ให้ — ยอมพลาดเคส "มีรายการปนอื่นในวันเดียวกัน" (ยังไม่เจอในข้อมูลจริง)
+// เพื่อแลกกับการตัดความเสี่ยงจับคู่ผิดแบบบังเอิญให้เหลือน้อยที่สุดเท่าที่ทำได้กับการเทียบยอด+วันที่ล้วนๆ
+var CROSS_MAX_EXCLUDE=0;      // จำนวนรายการสูงสุดที่ยอมกันออกจากพูล (ถือว่า "ไม่เกี่ยวกับก้อนนี้") — ตั้งใจให้เป็น 0 (ไม่กันออกเลย) เพื่อความปลอดภัยสูงสุด
 var DM_DAYPOOL_CACHE={};
 function crossDayPool(dateStr,side){
   var dk=dateKey(dateStr);
@@ -1133,30 +1151,26 @@ function crossDayPool(dateStr,side){
   DM_DAYPOOL_CACHE[cacheKey]=pool;
   return pool;
 }
-function subsetSumIncluding(mustRow,pool,target,maxParts){
-  var others=pool.filter(function(x){return x!==mustRow;});
-  var need=target-(mustRow.amount||0);
-  if(Math.abs(need)<=0.5)return [mustRow];
-  if(need<-0.5)return null;
-  others.sort(function(a,b){return (b.amount||0)-(a.amount||0);});
-  var n=others.length;
-  var suffix=new Array(n+1); suffix[n]=0;
-  for(var i=n-1;i>=0;i--)suffix[i]=suffix[i+1]+(others[i].amount||0);
-  var found=null, steps=0, STEP_LIMIT=200000;
-  function bt(idx,remaining,picked){
-    if(found||steps>STEP_LIMIT)return;
-    steps++;
-    if(Math.abs(remaining)<=0.5){found=picked.slice();return;}
-    if(idx>=n||picked.length>=maxParts-1)return;
-    if(remaining<-0.5)return;
-    if(remaining>suffix[idx])return; // แม้เอาที่เหลือทั้งหมดก็ไม่ถึง target เลิกลองกิ่งนี้
-    bt(idx+1,remaining-(others[idx].amount||0),picked.concat(others[idx]));
-    if(found)return;
-    bt(idx+1,remaining,picked);
+// หาชุดย่อยขนาดเล็ก (ไม่เกิน maxSize รายการ) ของ candidates ที่รวมกันได้ = target ภายใน tol — ใช้แจกแจง
+// ทีละขนาด (n เลือก 1, แล้ว n เลือก 2, ...) แทน DFS แบบอิสระ เพราะ maxSize ตั้งใจให้เล็กมาก (ปกติ ≤2)
+// จึงไม่มีปัญหาชุดผสมมหาศาลแบบที่เจอตอนทดสอบ subset-sum แบบเดิม
+function findSmallSubsetSum(candidates,target,tol,maxSize){
+  if(Math.abs(target)<=tol)return [];
+  var n=candidates.length;
+  for(var size=1;size<=maxSize&&size<=n;size++){
+    var idx=[]; for(var i=0;i<size;i++)idx.push(i);
+    while(true){
+      var sum=0;
+      for(var i2=0;i2<size;i2++)sum+=candidates[idx[i2]].amount||0;
+      if(Math.abs(sum-target)<=tol)return idx.map(function(i3){return candidates[i3];});
+      var pos=size-1;
+      while(pos>=0&&idx[pos]===n-size+pos)pos--;
+      if(pos<0)break;
+      idx[pos]++;
+      for(var j=pos+1;j<size;j++)idx[j]=idx[j-1]+1;
+    }
   }
-  bt(0,need,[]);
-  if(!found)return null;
-  return [mustRow].concat(found);
+  return null;
 }
 function findCrossBatchMatch(row,side){
   if(!row||!row.amount||row.amount<CROSS_MIN_AMOUNT)return null;
@@ -1168,6 +1182,7 @@ function findCrossBatchMatch(row,side){
     if(trimmed.indexOf(row)===-1)trimmed.push(row);
     pool=trimmed;
   }
+  var poolSum=pool.reduce(function(s,r){return s+(r.amount||0);},0);
   var targetKey=dateKey(row.dateStr);
   var candidates=[];
   Object.keys(RBANK_DATA||{}).forEach(function(bk){
@@ -1185,9 +1200,20 @@ function findCrossBatchMatch(row,side){
   candidates.sort(function(a,b){return a.diff-b.diff;});
   for(var i=0;i<candidates.length;i++){
     var c=candidates[i];
-    var subset=subsetSumIncluding(row,pool,c.val,CROSS_MAX_PARTS);
-    if(subset){
-      return {crossBatch:true,bank:c.bank,acctNo:c.acctNo,date:c.date,diffDays:c.diff,parts:subset,sumAmt:c.val};
+    var excess=poolSum-c.val; // >0: พูลมีมากกว่ายอดแบงค์ ต้องกันบางรายการที่ไม่เกี่ยวออก
+    var matchedParts=null;
+    if(Math.abs(excess)<=0.5){
+      matchedParts=pool.slice(); // ยอดรวมทั้งพูลตรงกับยอดแบงค์พอดี (กรณีปกติ 1 วัน = 1 ก้อน)
+    }else if(excess>0.5){
+      var others=pool.filter(function(x){return x!==row;});
+      var excluded=findSmallSubsetSum(others,excess,0.5,CROSS_MAX_EXCLUDE);
+      if(excluded){
+        matchedParts=pool.filter(function(x){return excluded.indexOf(x)===-1;});
+      }
+    }
+    // excess<-0.5: ยอดพูลน้อยกว่ายอดแบงค์ ไม่มีทางเติมให้ครบด้วยรายการที่มีอยู่ ข้ามไปลองยอดแบงค์อื่น
+    if(matchedParts){
+      return {crossBatch:true,bank:c.bank,acctNo:c.acctNo,date:c.date,diffDays:c.diff,parts:matchedParts,sumAmt:c.val};
     }
   }
   return null;
