@@ -1134,22 +1134,69 @@ var CROSS_MAX_POOL=50;        // จำกัดจำนวนรายกา�
 // เพื่อแลกกับการตัดความเสี่ยงจับคู่ผิดแบบบังเอิญให้เหลือน้อยที่สุดเท่าที่ทำได้กับการเทียบยอด+วันที่ล้วนๆ
 var CROSS_MAX_EXCLUDE=0;      // จำนวนรายการสูงสุดที่ยอมกันออกจากพูล (ถือว่า "ไม่เกี่ยวกับก้อนนี้") — ตั้งใจให้เป็น 0 (ไม่กันออกเลย) เพื่อความปลอดภัยสูงสุด
 var DM_DAYPOOL_CACHE={};
-function crossDayPool(dateStr,side){
-  var dk=dateKey(dateStr);
-  if(!dk)return [];
-  var cacheKey=dk+'|'+side;
-  if(DM_DAYPOOL_CACHE[cacheKey])return DM_DAYPOOL_CACHE[cacheKey];
-  var all=(DM.cfg&&DM.cfg.rows)||[];
-  var pool=[];
-  all.forEach(function(r){
+// ดัชนีแยกแถวของ DM.cfg.rows ตาม dateKey (สร้างครั้งเดียวต่อการเปิด modal แล้วนำกลับมาใช้ซ้ำ)
+// ก่อนแก้: crossDayPool วน "ทุกแถว" ซ้ำใหม่ทุกครั้งที่มีคนขอพูลของ "วันที่ต่างกัน" — เมื่อยก
+// CROSS_MIN_AMOUNT ลงจาก 500,000 เหลือ 100 (9 ก.ย. 2569) แทบทุกแถวเรียก crossDayPool แล้ว ทำให้
+// กลายเป็น O(จำนวนแถว x จำนวนวันที่ต่างกัน) จากที่แต่ก่อนแทบไม่เคยถูกเรียกเลย — modal ที่มีหลักพัน
+// แถวจึงค้างหลายนาที แก้โดยทำดัชนี dateKey -> แถว ครั้งเดียว แล้ว lookup ตรงๆ แทนการวนทุกแถว
+var DM_ROWS_BY_DATEKEY_CACHE=null;
+function rowsByDateKeyIndex(){
+  if(DM_ROWS_BY_DATEKEY_CACHE)return DM_ROWS_BY_DATEKEY_CACHE;
+  var idx={};
+  ((DM.cfg&&DM.cfg.rows)||[]).forEach(function(r){
     var k=dateKey(r.dateStr);
     if(!k)return;
-    if(Math.abs(daysBetweenKeys(k,dk))>CROSS_WINDOW_DAYS)return;
-    if(findRowMatchBasic(r.amount,r.dateStr,side))return; // จับคู่แบบอื่นเจอแล้ว ไม่ต้องเอามารวมซ้ำ
-    pool.push(r);
+    (idx[k]=idx[k]||[]).push(r);
   });
+  DM_ROWS_BY_DATEKEY_CACHE=idx;
+  return idx;
+}
+// สำคัญ — ทำไมต้องกรอง bankKey ด้วย: ก้อนตั้งจ่ายรวม 1 ก้อนมาจากการโอนผ่าน "บัญชีธนาคารเดียว"
+// ของบริษัทเท่านั้น (เช่น KKP 1113-15) แต่ DM.cfg.rows ในโมดัล "รายละเอียดเงินจ่าย" รวมเอกสารตั้งจ่าย
+// ของ "ทุกบัญชีธนาคาร" ของบริษัทไว้ด้วยกัน — ถ้าไม่กรองตามบัญชีก่อน ยอดรวมทั้งพูลของวันนั้นจะปนกับ
+// เอกสารที่จ่ายผ่านบัญชีอื่น (เช่น KBANK, BBL) ทำให้ยอดรวมไม่มีทางตรงกับยอดแบงค์ของบัญชีใดบัญชีหนึ่ง
+// เป๊ะได้เลย (พบจากการทดสอบจริงกับผู้ใช้ 9 ก.ย. 2569 — ก้อน KKP 7/7/69 ที่ควรจับคู่ได้ตรงๆ กลับขึ้น
+// "ไม่พบ" ทุกรายการ เพราะพูลถูกปนด้วยเอกสารจ่ายผ่านธนาคารอื่นในวันเดียวกัน) ใช้ dmBankKey() ตัวเดียว
+// กับที่ใช้จัดกลุ่ม "แยกตามธนาคาร" ในมุมมองอื่นของโมดัลนี้อยู่แล้ว เพื่อให้นิยาม "บัญชีเดียวกัน" ตรงกัน
+function crossDayPool(dateStr,side,bankKey){
+  var dk=dateKey(dateStr);
+  if(!dk)return [];
+  var cacheKey=dk+'|'+side+'|'+(bankKey||'');
+  if(DM_DAYPOOL_CACHE[cacheKey])return DM_DAYPOOL_CACHE[cacheKey];
+  var idx=rowsByDateKeyIndex();
+  var candidateRows;
+  if(CROSS_WINDOW_DAYS===0){
+    candidateRows=idx[dk]||[]; // ตรงวันเป๊ะเท่านั้น (ค่าปัจจุบัน) — lookup ตรงจากดัชนี ไม่ต้องวนทุกวัน
+  }else{
+    candidateRows=[];
+    Object.keys(idx).forEach(function(k){
+      if(Math.abs(daysBetweenKeys(k,dk))<=CROSS_WINDOW_DAYS)candidateRows=candidateRows.concat(idx[k]);
+    });
+  }
+  if(bankKey)candidateRows=candidateRows.filter(function(r){return dmBankKey(r)===bankKey;});
+  var pool=candidateRows.filter(function(r){return !findRowMatchBasic(r.amount,r.dateStr,side);}); // จับคู่แบบอื่นเจอแล้ว ไม่ต้องเอามารวมซ้ำ
   DM_DAYPOOL_CACHE[cacheKey]=pool;
   return pool;
+}
+// ดัชนีธุรกรรมธนาคารทั้งหมด (ทุกธนาคาร/ทุกบัญชี) แยกตาม dateKey (สร้างครั้งเดียวต่อการเปิด modal)
+// ก่อนแก้: findCrossBatchMatch วน "ทุกธนาคาร x ทุกบัญชี x ทุกธุรกรรม" ใหม่ทุกครั้งที่เรียกต่อ 1 แถว —
+// เมื่อแทบทุกแถวเข้ามาเรียกฟังก์ชันนี้แล้ว (หลัง CROSS_MIN_AMOUNT ลดลง) กลายเป็น O(จำนวนแถว x จำนวน
+// ธุรกรรมธนาคารทั้งหมด) ซึ่งช้ามาก แก้โดยทำดัชนี dateKey -> ธุรกรรม ครั้งเดียว แล้ว lookup ตรงๆ
+var RBANK_BY_DATEKEY_CACHE=null;
+function rbankByDateKeyIndex(){
+  if(RBANK_BY_DATEKEY_CACHE)return RBANK_BY_DATEKEY_CACHE;
+  var idx={};
+  Object.keys(RBANK_DATA||{}).forEach(function(bk){
+    (RBANK_DATA[bk].accounts||[]).forEach(function(acc){
+      (acc.txns||[]).forEach(function(t){
+        var k=dateKey(t.date);
+        if(!k)return;
+        (idx[k]=idx[k]||[]).push({bank:bk,acctNo:acc.acctNo,date:t.date,debit:t.debit||0,credit:t.credit||0});
+      });
+    });
+  });
+  RBANK_BY_DATEKEY_CACHE=idx;
+  return idx;
 }
 // หาชุดย่อยขนาดเล็ก (ไม่เกิน maxSize รายการ) ของ candidates ที่รวมกันได้ = target ภายใน tol — ใช้แจกแจง
 // ทีละขนาด (n เลือก 1, แล้ว n เลือก 2, ...) แทน DFS แบบอิสระ เพราะ maxSize ตั้งใจให้เล็กมาก (ปกติ ≤2)
@@ -1174,7 +1221,7 @@ function findSmallSubsetSum(candidates,target,tol,maxSize){
 }
 function findCrossBatchMatch(row,side){
   if(!row||!row.amount||row.amount<CROSS_MIN_AMOUNT)return null;
-  var pool=crossDayPool(row.dateStr,side);
+  var pool=crossDayPool(row.dateStr,side,dmBankKey(row));
   if(pool.length<2)return null;
   if(pool.indexOf(row)===-1)return null;
   if(pool.length>CROSS_MAX_POOL){
@@ -1184,19 +1231,25 @@ function findCrossBatchMatch(row,side){
   }
   var poolSum=pool.reduce(function(s,r){return s+(r.amount||0);},0);
   var targetKey=dateKey(row.dateStr);
+  var bidx=rbankByDateKeyIndex();
   var candidates=[];
-  Object.keys(RBANK_DATA||{}).forEach(function(bk){
-    (RBANK_DATA[bk].accounts||[]).forEach(function(acc){
-      (acc.txns||[]).forEach(function(t){
-        var val=side==='credit'?(t.credit||0):(t.debit||0);
+  if(CROSS_WINDOW_DAYS===0){
+    (bidx[targetKey]||[]).forEach(function(t){
+      var val=side==='credit'?t.credit:t.debit;
+      if(!val||val<row.amount-0.5)return;
+      candidates.push({bank:t.bank,acctNo:t.acctNo,date:t.date,val:val,diff:0});
+    });
+  }else{
+    Object.keys(bidx).forEach(function(tk){
+      var diff=Math.abs(daysBetweenKeys(tk,targetKey));
+      if(diff>CROSS_WINDOW_DAYS)return;
+      bidx[tk].forEach(function(t){
+        var val=side==='credit'?t.credit:t.debit;
         if(!val||val<row.amount-0.5)return;
-        var tk=dateKey(t.date);
-        if(!tk)return;
-        var diff=Math.abs(daysBetweenKeys(tk,targetKey));
-        if(diff<=CROSS_WINDOW_DAYS)candidates.push({bank:bk,acctNo:acc.acctNo,date:t.date,val:val,diff:diff});
+        candidates.push({bank:t.bank,acctNo:t.acctNo,date:t.date,val:val,diff:diff});
       });
     });
-  });
+  }
   candidates.sort(function(a,b){return a.diff-b.diff;});
   for(var i=0;i<candidates.length;i++){
     var c=candidates[i];
@@ -1760,6 +1813,8 @@ function openDetailModal(cfg){
   DM.cfg=cfg;
   DM_BATCH_CACHE={};
   DM_DAYPOOL_CACHE={};
+  DM_ROWS_BY_DATEKEY_CACHE=null; // ดัชนีอิงจาก DM.cfg.rows ต้องสร้างใหม่ทุกครั้งที่เปลี่ยนชุดข้อมูลของ modal
+  RBANK_BY_DATEKEY_CACHE=null;   // rebuild เผื่อผู้ใช้เพิ่งอัปโหลด/ดึงสเตทเมนท์แบงค์ใหม่ก่อนเปิด modal นี้
   var td=new Date(),defY=td.getFullYear(),defM=td.getMonth()+1;
   var keys=(cfg.rows||[]).map(function(r){return dateKey(r.dateStr);}).filter(Boolean).sort();
   if(keys.length){var lk=keys[keys.length-1];defY=+lk.slice(0,4);defM=+lk.slice(4,6);}
