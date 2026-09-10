@@ -443,6 +443,11 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 </div>
 <div class="recon-section" id="reconRecPaySection" style="display:none">
 <div class="recon-section-title">&#128260; แยกส่วนต่าง: ขารับ vs ขาจ่าย</div>
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+<span style="font-size:12px;color:var(--muted);font-weight:600">ช่วงเวลา:</span>
+<select class="filter-select" id="reconRpPeriodSel" onchange="selRpPeriod(this.value)" style="font-size:12px"></select>
+<span style="font-size:10.5px;color:var(--muted)">(กรองเฉพาะตารางนี้และหน้าต่างดูรายละเอียด — ไม่กระทบยอดคงเหลือ SAP/Bank ด้านบน)</span>
+</div>
 <div style="font-size:11px;color:var(--muted);margin-bottom:8px">เทียบเฉพาะช่วงวันที่ที่มีสเตทเมนท์ธนาคารจริงของบัญชีนั้นๆ (ไม่ใช่ทั้งปี) &nbsp;·&nbsp; รายการที่ Bank มีแต่ SAP ไม่มี จะเช็คหลักฐานจริงจาก Journal Entry ใน SAP ก่อน (Q15_BANK_JOURNAL) — ถ้ามี JE ที่ไม่มีคู่ค้าผูกอยู่และแตะบัญชีธนาคาร ≥2 บัญชี ตรงกับรายการนี้ = <span style="color:var(--teal)">"โอนภายใน"</span> ยืนยันจาก SAP ทันที (ตัวเลขในวงเล็บใต้ยอด) &nbsp;·&nbsp; รายการที่ยังไม่มีหลักฐานใน SAP จะใช้วิธีเดา (heuristic) ต่อ: ต้องเป็นยอดกลม ไม่มีเศษสตางค์ (โอนภายในจริงจะไม่มีเศษ) แล้วลองจับคู่กับบัญชีธนาคารอื่นของบริษัทอัตโนมัติ (±3 วัน จำนวนเงินตรงกัน) — เจอคู่ = "โอนภายใน" เช่นกัน ไม่เจอ = <span style="color:var(--red)">"ต้องตรวจสอบ"</span> จริง (เช่น เงินกู้ยืมนอกระบบที่ยังไม่บันทึก) &nbsp;·&nbsp; <span style="color:var(--gold2)">"SAP มีแต่ไม่พบ Bank"</span> = SAP บันทึกรับ/จ่ายไว้แต่หารายการจริงในสเตทเมนท์บัญชีนี้ไม่เจอ (อาจบันทึกผิดรหัสบัญชี) &nbsp;·&nbsp; ตัวเลข 3 บรรทัดในแต่ละช่อง (โอนภายใน + ต้องตรวจสอบ − SAP มีแต่ไม่พบ) รวมกันจะเท่ากับ Bank ลบ SAP เสมอ</div>
 <div style="overflow-x:auto"><table id="reconRecPayTbl">
 <thead><tr><th>บัญชี</th><th>ช่วงที่เทียบ</th><th style="text-align:right">SAP รับ</th><th style="text-align:right">Bank รับ</th><th style="text-align:right">ส่วนต่างรับ</th><th style="text-align:right">SAP จ่าย</th><th style="text-align:right">Bank จ่าย</th><th style="text-align:right">ส่วนต่างจ่าย</th></tr></thead>
@@ -517,6 +522,16 @@ var RECON_RP_DETAIL={};
 // จำว่าโมดัลรายละเอียดล่าสุดเปิดบัญชี/ฝั่งไหนอยู่ ใช้รีเฟรชหน้าต่างเดิมทันทีหลังบันทึกผลตรวจสอบ
 // (mmSave) โดยไม่ต้องปิดแล้วเปิดใหม่เอง
 var RP_DETAIL_REOPEN=null;
+// ตัวกรอง "เดือน/ปี" ของตาราง "แยกส่วนต่าง: ขารับ vs ขาจ่าย" (และหน้าต่างดูรายละเอียดที่เปิดจากตาราง
+// นี้) เท่านั้น — ไม่กระทบยอดคงเหลือ SAP/Bank ที่การ์ด KPI ด้านบนหรือกราฟเปรียบเทียบ เพราะยอดคงเหลือ
+// เป็นยอดสะสม ณ จุดใดจุดหนึ่ง ไม่มีความหมายที่จะตัดตามเดือน ค่า 'ALL' = ทั้งหมด (พฤติกรรมเดิม)
+// หรือ 'YYYYMM' (เช่น '202607') = เฉพาะเดือน/ปีนั้น
+var RECON_RP_PERIOD='ALL';
+function rpInPeriod(dk){
+  if(RECON_RP_PERIOD==='ALL')return true;
+  return !!dk && dk.slice(0,6)===RECON_RP_PERIOD;
+}
+function selRpPeriod(v){RECON_RP_PERIOD=v;renderRecon();}
 // Utilities
 function fmt(n){if(Math.abs(n)>=1e6)return (n/1e6).toFixed(2)+' ล้าน';return (+n).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function fmtKPI(n){
@@ -2766,7 +2781,8 @@ function showRpDetail(code, side){
     {label:'อ้างอิง/หมายเหตุ', get:function(x){return rpDetailRefText(x.ref,x.kind);}},
     {label:'ผลตรวจสอบ', get:function(x){return rpDetailMmStatusText(mmSide,rpDetailDocNo(code,x.kind,x.ref));}}
   ], flatForExport);
-  var html='<div style="font-size:11px;color:var(--muted);margin-bottom:8px">'+d.name+' ('+code+') — '+sideLbl+'</div>'+
+  var periodTxt=RECON_RP_PERIOD==='ALL'?'ทั้งหมด':((DM_MTHAI[RECON_RP_PERIOD.slice(4,6)]||RECON_RP_PERIOD.slice(4,6))+' '+(parseInt(RECON_RP_PERIOD.slice(0,4),10)+543));
+  var html='<div style="font-size:11px;color:var(--muted);margin-bottom:8px">'+d.name+' ('+code+') — '+sideLbl+' — ช่วงเวลา: '+periodTxt+'</div>'+
     dmExportBtns(exportId)+
     section('🟢 โอนภายใน — ยืนยันจาก SAP','var(--teal)',s.icSap,'icSap')+
     section('🟣 ยืนยันจาก GL (Q01/Q02 หาไม่เจอ แต่มีบันทึกใน GL จริง)','var(--purple)',s.glConfirmed,'glConfirmed')+
@@ -3048,7 +3064,36 @@ function renderRecon(){
     });
     return {icSum:icSum,checkSum:checkSum,checkList:checkList,icList:icList};
   }
+  // \u0e2a\u0e23\u0e49\u0e32\u0e07\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e40\u0e14\u0e37\u0e2d\u0e19/\u0e1b\u0e35\u0e17\u0e35\u0e48\u0e21\u0e35\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e08\u0e23\u0e34\u0e07 \u0e43\u0e2b\u0e49 dropdown \u0e15\u0e31\u0e27\u0e01\u0e23\u0e2d\u0e07 "\u0e0a\u0e48\u0e27\u0e07\u0e40\u0e27\u0e25\u0e32" \u0e02\u0e2d\u0e07\u0e15\u0e32\u0e23\u0e32\u0e07
+  // "\u0e41\u0e22\u0e01\u0e2a\u0e48\u0e27\u0e19\u0e15\u0e48\u0e32\u0e07" \u2014 \u0e23\u0e27\u0e21\u0e17\u0e38\u0e01\u0e18\u0e19\u0e32\u0e04\u0e32\u0e23 (\u0e44\u0e21\u0e48\u0e02\u0e36\u0e49\u0e19\u0e01\u0e31\u0e1a\u0e18\u0e19\u0e32\u0e04\u0e32\u0e23\u0e17\u0e35\u0e48\u0e40\u0e25\u0e37\u0e2d\u0e2d\u0e22\u0e39\u0e48\u0e15\u0e2d\u0e19\u0e19\u0e35\u0e49) \u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e43\u0e2b\u0e49
+  // \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e40\u0e14\u0e37\u0e2d\u0e19\u0e17\u0e35\u0e48\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e44\u0e14\u0e49\u0e04\u0e07\u0e17\u0e35\u0e48\u0e40\u0e14\u0e34\u0e21\u0e40\u0e27\u0e25\u0e32\u0e2a\u0e25\u0e31\u0e1a\u0e18\u0e19\u0e32\u0e04\u0e32\u0e23
+  (function(){
+    var pset={};
+    Object.keys(RBANK_DATA).forEach(function(k){
+      if(k==='CASH')return;
+      (RBANK_DATA[k].accounts||[]).forEach(function(a){
+        (a.txns||[]).forEach(function(t){
+          var dk=dateKey(t.date||'');
+          if(dk)pset[dk.slice(0,6)]=true;
+        });
+      });
+    });
+    (G.recRows||[]).forEach(function(r){var dk=dateKey(normDate(r.date)||'');if(dk)pset[dk.slice(0,6)]=true;});
+    (G.payRows||[]).forEach(function(r){var dk=dateKey(normDate(r.date)||'');if(dk)pset[dk.slice(0,6)]=true;});
+    var periods=Object.keys(pset).sort().reverse();
+    if(RECON_RP_PERIOD!=='ALL'&&periods.indexOf(RECON_RP_PERIOD)<0)RECON_RP_PERIOD='ALL';
+    var sel=document.getElementById('reconRpPeriodSel');
+    if(sel){
+      sel.innerHTML='<option value="ALL">\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14</option>'+periods.map(function(pk){
+        var yr=parseInt(pk.slice(0,4),10),mo=pk.slice(4,6);
+        return '<option value="'+pk+'">'+(DM_MTHAI[mo]||mo)+' '+(yr+543)+'</option>';
+      }).join('');
+      sel.value=RECON_RP_PERIOD;
+    }
+  })();
   // \u0e23\u0e27\u0e21\u0e18\u0e38\u0e23\u0e01\u0e23\u0e23\u0e21\u0e02\u0e2d\u0e07\u0e17\u0e38\u0e01\u0e1a\u0e31\u0e0d\u0e0a\u0e35\u0e18\u0e19\u0e32\u0e04\u0e32\u0e23\u0e02\u0e2d\u0e07\u0e1a\u0e23\u0e34\u0e29\u0e31\u0e17 (\u0e17\u0e38\u0e01\u0e18\u0e19\u0e32\u0e04\u0e32\u0e23 \u0e22\u0e01\u0e40\u0e27\u0e49\u0e19\u0e40\u0e07\u0e34\u0e19\u0e2a\u0e14) \u0e44\u0e27\u0e49\u0e43\u0e0a\u0e49\u0e2b\u0e32 "\u0e42\u0e2d\u0e19\u0e20\u0e32\u0e22\u0e43\u0e19" \u0e02\u0e49\u0e32\u0e21\u0e1a\u0e31\u0e0d\u0e0a\u0e35
+  // \u0e2b\u0e21\u0e32\u0e22\u0e40\u0e2b\u0e15\u0e38: pool \u0e19\u0e35\u0e49\u0e08\u0e07\u0e43\u0e08\u0e44\u0e21\u0e48\u0e01\u0e23\u0e2d\u0e07\u0e15\u0e32\u0e21\u0e0a\u0e48\u0e27\u0e07\u0e40\u0e27\u0e25\u0e32\u0e17\u0e35\u0e48\u0e40\u0e25\u0e37\u0e2d\u0e01 (RECON_RP_PERIOD) \u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e44\u0e21\u0e48\u0e43\u0e2b\u0e49\u0e1e\u0e25\u0e32\u0e14\u0e04\u0e39\u0e48\u0e42\u0e2d\u0e19\u0e17\u0e35\u0e48\u0e04\u0e32\u0e1a\u0e40\u0e01\u0e35\u0e48\u0e22\u0e27\u0e23\u0e2d\u0e22\u0e15\u0e48\u0e2d\u0e40\u0e14\u0e37\u0e2d\u0e19 (\u0e40\u0e0a\u0e48\u0e19 \u0e42\u0e2d\u0e19 31 \u0e01.\u0e04. \u0e40\u0e02\u0e49\u0e32\u0e2d\u0e35\u0e01\u0e1a\u0e31\u0e0d\u0e0a\u0e35 1 \u0e2a.\u0e04.)
+  // \u0e01\u0e15\u0e34\u0e01\u0e32\u0e23\u0e08\u0e31\u0e1a\u0e04\u0e39\u0e48\u0e02\u0e49\u0e32\u0e21\u0e40\u0e14\u0e37\u0e2d\u0e19\u0e22\u0e31\u0e07\u0e04\u0e07\u0e08\u0e33\u0e01\u0e31\u0e14\u0e14\u0e49\u0e27\u0e22 tolDays \u0e40\u0e14\u0e34\u0e21\u0e2d\u0e22\u0e39\u0e48\u0e41\u0e25\u0e49\u0e27
   var allBankTxnsFlat=[];
   Object.keys(RBANK_DATA).forEach(function(k){
     if(k==='CASH')return;
@@ -3066,15 +3111,16 @@ function renderRecon(){
     matchedAccts.forEach(function(a){
       (a.txns||[]).forEach(function(t){
         var dk=dateKey(t.date||'');
+        if(!rpInPeriod(dk))return; // \u0e15\u0e31\u0e14\u0e15\u0e32\u0e21\u0e15\u0e31\u0e27\u0e01\u0e23\u0e2d\u0e07 "\u0e0a\u0e48\u0e27\u0e07\u0e40\u0e27\u0e25\u0e32" \u0e17\u0e35\u0e48\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e43\u0e19\u0e15\u0e32\u0e23\u0e32\u0e07 (RECON_RP_PERIOD)
         if(dk){ if(!minK||dk<minK)minK=dk; if(!maxK||dk>maxK)maxK=dk; }
         if(t.credit){bankRec+=t.credit;bankCrItems.push({date:t.date,amt:t.credit});}
         if(t.debit){bankPay+=t.debit;bankDrItems.push({date:t.date,amt:t.debit});}
       });
     });
-    if(!minK)return null; // \u0e21\u0e35\u0e41\u0e15\u0e48\u0e22\u0e2d\u0e14\u0e04\u0e07\u0e40\u0e2b\u0e25\u0e37\u0e2d \u0e44\u0e21\u0e48\u0e21\u0e35\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e18\u0e38\u0e23\u0e01\u0e23\u0e23\u0e21\u0e22\u0e48\u0e2d\u0e22\u0e43\u0e2b\u0e49\u0e40\u0e17\u0e35\u0e22\u0e1a
+    if(!minK)return null; // \u0e44\u0e21\u0e48\u0e21\u0e35\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e18\u0e38\u0e23\u0e01\u0e23\u0e23\u0e21\u0e22\u0e48\u0e2d\u0e22\u0e43\u0e19\u0e0a\u0e48\u0e27\u0e07\u0e40\u0e27\u0e25\u0e32\u0e17\u0e35\u0e48\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e43\u0e2b\u0e49\u0e40\u0e17\u0e35\u0e22\u0e1a (\u0e21\u0e35\u0e41\u0e15\u0e48\u0e22\u0e2d\u0e14\u0e04\u0e07\u0e40\u0e2b\u0e25\u0e37\u0e2d \u0e2b\u0e23\u0e37\u0e2d\u0e40\u0e14\u0e37\u0e2d\u0e19\u0e19\u0e31\u0e49\u0e19\u0e44\u0e21\u0e48\u0e21\u0e35\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25)
     var byCode=function(r){return String(r.bankCode||'').trim()===acct.code;};
-    var sapRecItems=(G.recRows||[]).filter(byCode).map(function(r){return{date:normDate(r.date),amt:r.amt||0,docNo:String(r.docNo||'')};});
-    var sapPayItems=(G.payRows||[]).filter(byCode).map(function(r){return{date:normDate(r.date),amt:r.amt||0,docNo:String(r.docNo||'')};});
+    var sapRecItems=(G.recRows||[]).filter(byCode).map(function(r){return{date:normDate(r.date),amt:r.amt||0,docNo:String(r.docNo||'')};}).filter(function(x){return rpInPeriod(dateKey(x.date||''));});
+    var sapPayItems=(G.payRows||[]).filter(byCode).map(function(r){return{date:normDate(r.date),amt:r.amt||0,docNo:String(r.docNo||'')};}).filter(function(x){return rpInPeriod(dateKey(x.date||''));});
     var sapRec=sapRecItems.reduce(function(s,r){return s+r.amt;},0);
     var sapPay=sapPayItems.reduce(function(s,r){return s+r.amt;},0);
 
@@ -3110,7 +3156,7 @@ function renderRecon(){
       sapPay:sapPay,bankPay:bankPay,payIc:paySapConf.confirmed+paySplit.icSum,payIcSap:paySapConf.confirmed,payGLConfirmed:payGLConf.confirmed,payCheck:paySplit.checkSum,sapUnmatchedPay:sapUnmatchedPay};
   }).filter(Boolean);
   var rpSection=document.getElementById('reconRecPaySection');
-  if(rpRows.length){
+  if(hasData){
     rpSection.style.display='block';
     function rpCell(v){return '<td class="right">'+fmtFull(v)+'</td>';}
     function rpDiffCell(code,side,icSum,icSap,glConfirmed,checkSum,sapUnmatched){
@@ -3128,13 +3174,19 @@ function renderRecon(){
         '<div style="font-weight:700;color:'+checkColor+'">\u0e15\u0e49\u0e2d\u0e07\u0e15\u0e23\u0e27\u0e08\u0e2a\u0e2d\u0e1a: '+fmtFull(checkSum)+'</div>'+
         btn+'</td>';
     }
-    document.getElementById('reconRecPayBody').innerHTML=rpRows.map(function(r,i){
-      var bg=i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)';
-      return '<tr style="background:'+bg+'"><td><div style="font-size:12px">'+r.name+'</div><div style="font-size:10px;color:var(--teal)">'+r.code+'</div></td>'+
-        '<td style="font-size:11px;color:var(--muted)">'+r.periodLbl+'</td>'+
-        rpCell(r.sapRec)+rpCell(r.bankRec)+rpDiffCell(r.code,'rec',r.recIc,r.recIcSap,r.recGLConfirmed,r.recCheck,r.sapUnmatchedRec)+
-        rpCell(r.sapPay)+rpCell(r.bankPay)+rpDiffCell(r.code,'pay',r.payIc,r.payIcSap,r.payGLConfirmed,r.payCheck,r.sapUnmatchedPay)+'</tr>';
-    }).join('');
+    if(rpRows.length){
+      document.getElementById('reconRecPayBody').innerHTML=rpRows.map(function(r,i){
+        var bg=i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)';
+        return '<tr style="background:'+bg+'"><td><div style="font-size:12px">'+r.name+'</div><div style="font-size:10px;color:var(--teal)">'+r.code+'</div></td>'+
+          '<td style="font-size:11px;color:var(--muted)">'+r.periodLbl+'</td>'+
+          rpCell(r.sapRec)+rpCell(r.bankRec)+rpDiffCell(r.code,'rec',r.recIc,r.recIcSap,r.recGLConfirmed,r.recCheck,r.sapUnmatchedRec)+
+          rpCell(r.sapPay)+rpCell(r.bankPay)+rpDiffCell(r.code,'pay',r.payIc,r.payIcSap,r.payGLConfirmed,r.payCheck,r.sapUnmatchedPay)+'</tr>';
+      }).join('');
+    } else {
+      // มีสเตทเมนท์ธนาคารอัปโหลดอยู่ แต่ไม่มีรายการในช่วงเวลาที่เลือก — ต้องคงส่วนนี้ (และ dropdown)
+      // ให้เห็นอยู่เสมอ ผู้ใช้จะได้สลับกลับไปเลือก "ทั้งหมด" หรือเดือนอื่นได้โดยไม่ต้องรีเฟรชหน้า
+      document.getElementById('reconRecPayBody').innerHTML='<tr><td colspan="8" style="text-align:center;padding:16px;color:var(--muted)">ไม่มีรายการส่วนต่างในช่วงเวลาที่เลือก — ลองเลือก "ทั้งหมด" หรือเดือน/ปีอื่น</td></tr>';
+    }
   } else {
     rpSection.style.display='none';
   }
