@@ -2949,6 +2949,31 @@ function renderRecon(){
         pool.splice(si,1); si--;
       }
     }
+    // รอบที่ 3: ตรงข้ามกับรอบที่ 2 — ธนาคารตัด/รับเป็นก้อนเดียว (เช่น "ใบปะหน้าตั้งจ่าย" ที่รวมหลาย
+    // เอกสารตั้งจ่ายเป็นการโอนครั้งเดียว) แต่ SAP บันทึกแยกเป็นหลายเอกสารย่อยในวันเดียวกัน (ยืนยันจาก
+    // เคสจริงบัญชี KKP: ใบปะหน้า 7/7/69 มี 29 เอกสาร รวม 497,879.68 บาท ตรงกับยอดแบงค์ก้อนเดียวเป๊ะ —
+    // เดิมแก้จุดนี้ไว้เฉพาะหน้า "รายละเอียดเงินจ่าย" ผ่าน crossDayPool/findCrossBatchMatch เท่านั้น
+    // ยังไม่ได้แก้ในตาราง "แยกส่วนต่าง" นี้ ดู KKP_CrossBatch_Matching_Note.md)
+    //
+    // ใช้หลักการเดียวกับ crossDayPool (CROSS_MAX_EXCLUDE=0): ต้องรวม "ทั้งพูล" ของเอกสาร SAP วันนั้น
+    // ให้ตรงยอดแบงค์เป๊ะเท่านั้น ไม่ลองหาชุดย่อย (subset) — ทั้งเพราะเอกสารในก้อนตั้งจ่ายจริงมักมีเป็น
+    // สิบๆ ใบ (เกิน MAX_COMBO/MAX_WINDOW ของ findSubsetSum ไปมาก จนค้นหาไม่ไหว) และเพราะการลองชุด
+    // ย่อยกับเอกสารจำนวนมากมีความเสี่ยง false-positive สูงกว่าการรวมทั้งพูล (ดูเหตุผลเดียวกันใน
+    // KKP_CrossBatch_Matching_Note.md) — trade-off ที่ยอมรับ: ถ้าวันเดียวกันมีมากกว่า 1 ก้อนตั้งจ่ายผ่าน
+    // บัญชีนี้ปนกันจนรวมทั้งพูลไม่ตรงยอดก้อนใดก้อนหนึ่งเป๊ะ จะไม่จับคู่เลย (false negative ต้องตรวจเอง)
+    // ปลอดภัยกว่าจับคู่ผิด
+    candidates.forEach(function(b){
+      if(b._used)return;
+      var bdk3=dateKey(b.date||'');
+      var sameDayIdx=[];
+      pool.forEach(function(s,pi){ if(dateKey(s.date||'')===bdk3) sameDayIdx.push(pi); });
+      if(sameDayIdx.length<2)return; // ต้องมีตั้งแต่ 2 เอกสารขึ้นไปถึงจะนับว่าเป็น "ก้อนตั้งจ่ายรวม"
+      var sum3=sameDayIdx.reduce(function(a,pi){return a+pool[pi].amt;},0);
+      if(Math.abs(sum3-b.amt)<=tolAmt){
+        b._used=true;
+        sameDayIdx.slice().sort(function(x,y){return y-x;}).forEach(function(pi){pool.splice(pi,1);});
+      }
+    });
     candidates.forEach(function(c){ if(!c._used) unmatched.push(c); });
     return {bankUnmatched:unmatched, sapUnmatched:pool};
   }
