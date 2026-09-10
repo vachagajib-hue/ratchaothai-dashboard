@@ -3033,18 +3033,33 @@ function renderRecon(){
     // รอบที่ 2: ธนาคารบางครั้งรับ/จ่าย/โอนยอดก้อนใหญ่เป็นหลายรายการย่อย แต่ SAP บันทึกรวมเป็นบรรทัด
     // เดียว — ลองรวมยอด candidates ที่เหลือ (ยังไม่จับคู่ 1:1 ได้) ภายในช่วงวันที่ tolDays ของแต่ละ leg
     // ที่ยังไม่ถูกใช้ ว่ารวมกันแล้วตรงกับ leg นั้นหรือไม่ — ต้องมีตั้งแต่ 2 รายการขึ้นไปถึงจะนับว่า "แยกยอด"
+    //
+    // Perf: เดิมวนหา candidates ที่วันที่ใกล้กันด้วยการสแกน candidates ทั้งหมดซ้ำสำหรับทุก leg ใน pool
+    // (O(pool×candidates)) — เมื่อ pool (G.sapBankGLItems ต่อบัญชี) หรือ candidates มีหลายร้อย/พันรายการ
+    // ทำให้หน้าโหลดช้าลงมาก (พบหลังเพิ่มรอบที่ 3 ด้านล่างซึ่งมีความซับซ้อนแบบเดียวกัน ทำให้ต้นทุนรวมเพิ่มเป็น
+    // 2 เท่า) แก้โดยทำดัชนี candByDay ครั้งเดียวก่อน แล้ว lookup เฉพาะวันที่ใกล้เคียง (±tolDays) แทนการสแกน
+    // ทั้งหมด — ผลลัพธ์เหมือนเดิมทุกประการ เปลี่ยนแค่วิธีค้นหา (ดู perf_bench_glconfirmed.js)
     var MAX_COMBO=5, MAX_WINDOW=12;
+    var candByDay={};
+    candidates.forEach(function(c,ci){
+      var cd=dk2days(dateKey(c.date||''));
+      if(cd==null)return;
+      if(!candByDay[cd])candByDay[cd]=[];
+      candByDay[cd].push(ci);
+    });
+    function candIdxNearDay(day){
+      var out=[];
+      for(var dd=day-tolDays; dd<=day+tolDays; dd++){
+        (candByDay[dd]||[]).forEach(function(ci){ if(!candidates[ci]._used) out.push(ci); });
+      }
+      return out;
+    }
     for(var li=0; li<pool.length; li++){
       var legAmt2=side==='debit'?pool[li].debit:pool[li].credit;
       if(!legAmt2)continue;
       var ldays2=dk2days(dateKey(pool[li].date||''));
       if(ldays2==null)continue;
-      var winIdx=[];
-      for(var ci=0; ci<candidates.length; ci++){
-        if(candidates[ci]._used)continue;
-        var cdays=dk2days(dateKey(candidates[ci].date||''));
-        if(cdays!=null && Math.abs(cdays-ldays2)<=tolDays) winIdx.push(ci);
-      }
+      var winIdx=candIdxNearDay(ldays2);
       if(winIdx.length<2 || winIdx.length>MAX_WINDOW)continue;
       var found=findSubsetSum(winIdx.map(function(ci){return candidates[ci].amt;}), legAmt2, tolAmt, MAX_COMBO);
       if(found){
@@ -3064,27 +3079,42 @@ function renderRecon(){
     // (CROSS_MAX_EXCLUDE=0 spirit): ต้องรวม "ทั้งพูล" ของบรรทัด GL ที่เหลือในช่วงวันที่ tolDays ของรายการ
     // Bank นั้นให้ตรงยอดเป๊ะเท่านั้น ไม่ลองหาชุดย่อย เพราะก้อนจริงมักมีหลายสิบบรรทัด เกิน MAX_COMBO/
     // MAX_WINDOW ของรอบที่ 2 ไปมาก และลองชุดย่อยกับเอกสารจำนวนมากมีความเสี่ยง false-positive สูงกว่า
+    //
+    // Perf: เช่นเดียวกับรอบที่ 2 ข้างบน เดิมสแกน pool ทั้งหมดซ้ำสำหรับทุก candidate (O(candidates×pool))
+    // แก้โดยทำดัชนี poolByDay ครั้งเดียวก่อน (จาก pool ที่เหลือหลังรอบที่ 2) แล้ว lookup เฉพาะวันที่ใกล้เคียง
+    // — ใช้ธง _used3 แทนการ splice(pool) ระหว่างวน (splice จะทำให้ตำแหน่งใน index เพี้ยนทันทีที่มีการลบ
+    // รายการก่อนหน้า) แล้วค่อย filter ออกจริงครั้งเดียวหลังวนครบทุก candidate — ผลลัพธ์เหมือนเดิมทุกประการ
+    var poolByDay={};
+    pool.forEach(function(p,pi){
+      var pAmt=side==='debit'?p.debit:p.credit;
+      if(!pAmt)return;
+      var pd=dk2days(dateKey(p.date||''));
+      if(pd==null)return;
+      if(!poolByDay[pd])poolByDay[pd]=[];
+      poolByDay[pd].push(pi);
+    });
+    function poolIdxNearDay3(day){
+      var out=[];
+      for(var dd=day-tolDays; dd<=day+tolDays; dd++){
+        (poolByDay[dd]||[]).forEach(function(pi){ if(!pool[pi]._used3) out.push(pi); });
+      }
+      return out;
+    }
     candidates.forEach(function(cd){
       if(cd._used)return;
       var cdays3=dk2days(dateKey(cd.date||''));
       if(cdays3==null)return;
-      var sameWinIdx=[];
-      pool.forEach(function(p,pi){
-        var pAmt=side==='debit'?p.debit:p.credit;
-        if(!pAmt)return;
-        var pdays=dk2days(dateKey(p.date||''));
-        if(pdays!=null && Math.abs(pdays-cdays3)<=tolDays) sameWinIdx.push(pi);
-      });
+      var sameWinIdx=poolIdxNearDay3(cdays3);
       if(sameWinIdx.length<2)return; // ต้องมีตั้งแต่ 2 บรรทัดขึ้นไปถึงจะนับว่าเป็น "ก้อน"
       var sum3=sameWinIdx.reduce(function(a,pi){return a+(side==='debit'?pool[pi].debit:pool[pi].credit);},0);
       if(Math.abs(sum3-cd.amt)<=tolAmt){
         cd._used=true;
         var usedLegs=sameWinIdx.map(function(pi){return pool[pi];});
+        usedLegs.forEach(function(u){u._used3=true;});
         var tids=usedLegs.map(function(u){return u.tid;}).filter(Boolean);
         var bpNames=usedLegs.map(function(u){return u.bpName;}).filter(Boolean);
         list.push({date:cd.date,amt:cd.amt,tid:tids.join(', '),bpName:bpNames.join(', '),memo:'',comboRev:true});
         confirmed+=cd.amt;
-        sameWinIdx.slice().sort(function(x,y){return y-x;}).forEach(function(pi){pool.splice(pi,1);});
       }
     });
     candidates.forEach(function(c){ if(!c._used) remaining.push(c); });
