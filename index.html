@@ -2711,8 +2711,8 @@ function rpManualBadge(mmSide,docNo){
 // แต่หาใน bank statement ไม่เจอ) ต้องอ้างอิงเลขที่เอกสาร SAP จริงเสมอ ไม่ใช่แค่วันที่/ยอดเงิน — ส่วน
 // icHeuristic (แค่เดาว่าน่าจะจับคู่กับบัญชีอื่น) และ check (ไม่มีหลักฐานอะไรใน SAP เลย) ไม่มีเลขที่เอกสารให้อ้างอิง
 function rpDetailRefText(x,kind){
-  if(kind==='icSap')return 'เลขที่เอกสาร SAP (JE) #'+(x.tid||'—')+(x.combo?' — โอนแยกหลายรายการรวมยอด':'');
-  if(kind==='glConfirmed')return 'ยืนยันจาก GL — JE #'+(x.tid||'—')+(x.bpName?' คู่ค้า: '+x.bpName:'')+(x.combo?' — แยกหลายรายการรวมยอด':'');
+  if(kind==='icSap')return 'เลขที่เอกสาร SAP (JE) #'+(x.tid||'—')+(x.combo?' — โอนแยกหลายรายการรวมยอด':'')+(x.comboRev?' — หลายเอกสาร SAP รวมยอดเป็นก้อนเดียว':'');
+  if(kind==='glConfirmed')return 'ยืนยันจาก GL — JE #'+(x.tid||'—')+(x.bpName?' คู่ค้า: '+x.bpName:'')+(x.combo?' — แยกหลายรายการรวมยอด':'')+(x.comboRev?' — หลายบรรทัด GL รวมยอดเป็นก้อนเดียว (เช่น มีเอกสาร PV/JT ปนอยู่)':'');
   if(kind==='icHeuristic')return 'จับคู่กับบัญชี '+(x.matchedAcct||'—')+' วันที่ '+(x.matchedDate||'—');
   if(kind==='sapUnmatched')return 'เลขที่เอกสาร SAP: '+(x.docNo||'—')+' — มีใน SAP แต่ไม่มีใน Bank';
   return 'มีใน Bank แต่ไม่มีใน SAP — ยังหาคู่ไม่เจอเลย';
@@ -3057,6 +3057,36 @@ function renderRecon(){
         pool.splice(li,1); li--;
       }
     }
+    // รอบที่ 3: SAP/GL บันทึกแยกเป็นหลายบรรทัด (เช่น payment-run ที่มีเอกสารหลายใบ รวมถึงเอกสารที่ไม่อยู่ใน
+    // รายงาน Q01/Q02 อย่าง PV/JT แต่มีอยู่จริงใน Q15/JDT1 เพราะเป็น GL ระดับบรรทัดของบัญชี 111x ทั้งหมด)
+    // แต่ธนาคารตัด/รับเป็นก้อนเดียว — ตรงข้ามกับรอบที่ 2 ข้างบน (ดู KKP_CrossBatch_Matching_Note.md
+    // สำหรับที่มา: บั๊กเดียวกันที่เคยแก้ใน rpMatchSap() รอบที่ 3 สำหรับ Q01/Q02) ใช้หลักการเดียวกัน
+    // (CROSS_MAX_EXCLUDE=0 spirit): ต้องรวม "ทั้งพูล" ของบรรทัด GL ที่เหลือในช่วงวันที่ tolDays ของรายการ
+    // Bank นั้นให้ตรงยอดเป๊ะเท่านั้น ไม่ลองหาชุดย่อย เพราะก้อนจริงมักมีหลายสิบบรรทัด เกิน MAX_COMBO/
+    // MAX_WINDOW ของรอบที่ 2 ไปมาก และลองชุดย่อยกับเอกสารจำนวนมากมีความเสี่ยง false-positive สูงกว่า
+    candidates.forEach(function(cd){
+      if(cd._used)return;
+      var cdays3=dk2days(dateKey(cd.date||''));
+      if(cdays3==null)return;
+      var sameWinIdx=[];
+      pool.forEach(function(p,pi){
+        var pAmt=side==='debit'?p.debit:p.credit;
+        if(!pAmt)return;
+        var pdays=dk2days(dateKey(p.date||''));
+        if(pdays!=null && Math.abs(pdays-cdays3)<=tolDays) sameWinIdx.push(pi);
+      });
+      if(sameWinIdx.length<2)return; // ต้องมีตั้งแต่ 2 บรรทัดขึ้นไปถึงจะนับว่าเป็น "ก้อน"
+      var sum3=sameWinIdx.reduce(function(a,pi){return a+(side==='debit'?pool[pi].debit:pool[pi].credit);},0);
+      if(Math.abs(sum3-cd.amt)<=tolAmt){
+        cd._used=true;
+        var usedLegs=sameWinIdx.map(function(pi){return pool[pi];});
+        var tids=usedLegs.map(function(u){return u.tid;}).filter(Boolean);
+        var bpNames=usedLegs.map(function(u){return u.bpName;}).filter(Boolean);
+        list.push({date:cd.date,amt:cd.amt,tid:tids.join(', '),bpName:bpNames.join(', '),memo:'',comboRev:true});
+        confirmed+=cd.amt;
+        sameWinIdx.slice().sort(function(x,y){return y-x;}).forEach(function(pi){pool.splice(pi,1);});
+      }
+    });
     candidates.forEach(function(c){ if(!c._used) remaining.push(c); });
     return {confirmed:confirmed, remaining:remaining, list:list};
   }
