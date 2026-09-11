@@ -521,7 +521,13 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 </div>
 <div class="kpi-row" id="bkKpiRow"></div>
 <div class="recon-section">
+<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
 <div class="recon-section-title">&#128203; รายการเดินบัญชี <span class="chart-sub" id="bkAcctNameLbl"></span></div>
+<label id="bkRevToggleWrap" style="display:none;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer">
+<input type="checkbox" id="bkHideReversedChk" onchange="bkRecalc()"> ซ่อนคู่ &#128257; กลับรายการ (ดูเฉพาะยอดสุทธิ)
+</label>
+</div>
+<div id="bkRevNote" style="display:none;font-size:12px;color:var(--gold2);margin:4px 0 8px">&#128257; = รายการที่ถูกกลับ/หักล้างกันเอง (บันทึกวันเดียวกัน ยอดเท่ากัน เดบิต-เครดิตตรงข้าม) — ไม่ใช่ยอดจริงที่กระทบเงินสดสุทธิ</div>
 <div id="bkExportBtnsWrap"></div>
 <div style="overflow:auto;max-height:560px;border:1px solid var(--border);border-radius:8px"><table id="bkLedgerTbl">
 <thead style="position:sticky;top:0;z-index:2;background:#0b1626"><tr><th>วันที่</th><th>เลขที่เอกสาร</th><th>รายละเอียด</th><th>คู่ค้า</th><th style="text-align:right">เดบิต</th><th style="text-align:right">เครดิต</th><th style="text-align:right">ยอดคงเหลือ</th><th>ผู้บันทึก</th></tr></thead>
@@ -2461,9 +2467,12 @@ function bkRender(){
   var acctInfo=bkAccounts().find(function(a){return a.code===acctCode;})||{};
   if(lblEl)lblEl.textContent=acctInfo.name?('— '+acctInfo.name):'';
   if(!acctCode||!ym){
-    BK_STATE={acctCode:null,ym:null,rows:[],defaultOpening:0,openingKnown:false,prevYm:'',q11Closing:undefined};
+    BK_STATE={acctCode:null,ym:null,rows:[],defaultOpening:0,openingKnown:false,prevYm:'',q11Closing:undefined,revFlags:[],revStats:null};
     if(kpiEl)kpiEl.innerHTML='';
     if(bodyEl)bodyEl.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">— เลือกบัญชีและเดือน/ปี —</td></tr>';
+    var revWrap0=document.getElementById('bkRevToggleWrap'),revNote0=document.getElementById('bkRevNote');
+    if(revWrap0)revWrap0.style.display='none';
+    if(revNote0)revNote0.style.display='none';
     dmRegisterSimple('bkLedger','สมุดบัญชีธนาคาร',[],[]);
     return;
   }
@@ -2478,9 +2487,15 @@ function bkRender(){
   var mmByAcct=(G.sapMonthlyByAcct||{})[acctCode]||{};
   var openingKnown=mmByAcct[prevYm]!==undefined;
   var defaultOpening=openingKnown?mmByAcct[prevYm]:0;
-  BK_STATE={acctCode:acctCode,ym:ym,rows:rows,defaultOpening:defaultOpening,openingKnown:openingKnown,prevYm:prevYm,q11Closing:mmByAcct[ym]};
+  var revInfo=bkDetectReversals(rows);
+  BK_STATE={acctCode:acctCode,ym:ym,rows:rows,defaultOpening:defaultOpening,openingKnown:openingKnown,prevYm:prevYm,q11Closing:mmByAcct[ym],revFlags:revInfo.flags,revStats:revInfo};
   var totalDebit=rows.reduce(function(s,r){return s+r.debit;},0);
   var totalCredit=rows.reduce(function(s,r){return s+r.credit;},0);
+  var revWrap=document.getElementById('bkRevToggleWrap'),revNote=document.getElementById('bkRevNote');
+  var hasRev=revInfo.pairCount>0;
+  if(revWrap)revWrap.style.display=hasRev?'flex':'none';
+  if(revNote)revNote.style.display=hasRev?'':'none';
+  if(!hasRev){var chk=document.getElementById('bkHideReversedChk');if(chk)chk.checked=false;}
   // สร้างการ์ด KPI ทั้งแถว "ครั้งเดียว" ตอนเปลี่ยนบัญชี/เดือน (มีช่อง input ยอดยกมาฝังอยู่) —
   // ส่วนที่เปลี่ยนตามการพิมพ์ (ยอดคงเหลือ/สถานะเทียบ Q11/ตารางรายการ) ให้ bkRecalc() อัปเดตทีหลัง
   // ยอดฝั่ง "ตามแบงค์" — จาก CSV สเตทเมนท์ธนาคารจริงที่อัปโหลดไว้แล้วในแท็บ "กระทบยอดธนาคาร"
@@ -2494,8 +2509,8 @@ function bkRender(){
         '<div class="kpi-value"><input type="number" id="bkOpeningInput" value="'+defaultOpening.toFixed(2)+'" step="0.01" oninput="bkRecalc()" style="width:100%;max-width:170px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.18);border-radius:6px;padding:5px 8px;color:#E8EEF5;font-size:18px;font-weight:700;font-family:inherit"></div>'+
         '<div class="kpi-sub">'+(openingKnown?('จาก Q11 เดือน '+ymLabelThai(prevYm)+' — '):'⚠️ ไม่มียอด Q11 เดือนนี้ — ')+'<a href="javascript:void(0)" onclick="bkResetOpening()" style="color:var(--blue)">&#8635; รีเซ็ต</a></div>'+
       '</div>'+
-      kpi('green','⬆️','rgba(90,200,120,0.15)','เดบิตรวม (เงินเข้า) — ตาม SAP',fmtKPI(totalDebit),'green',rows.length+' รายการ','')+
-      kpi('red','⬇️','rgba(224,92,92,0.15)','เครดิตรวม (เงินออก) — ตาม SAP',fmtKPI(totalCredit),'red','','')+
+      kpi('green','⬆️','rgba(90,200,120,0.15)','เดบิตรวม (เงินเข้า) — ตาม SAP',fmtKPI(totalDebit),'green',rows.length+' รายการ'+(hasRev?(' &#183; สุทธิ (หัก &#128257; '+revInfo.pairCount+' คู่): '+fmtFull(totalDebit-revInfo.debitTotal)):''),'')+
+      kpi('red','⬇️','rgba(224,92,92,0.15)','เครดิตรวม (เงินออก) — ตาม SAP',fmtKPI(totalCredit),'red',(hasRev?('สุทธิ (หัก &#128257; '+revInfo.pairCount+' คู่): '+fmtFull(totalCredit-revInfo.creditTotal)):''),'')+
       '<div class="kpi-card blue" id="bkClosingCard">'+
         '<div class="kpi-icon-box" style="background:rgba(212,168,67,0.15)"><span>&#129518;</span></div>'+
         '<div class="kpi-label">ยอดคงเหลือปลายเดือน (คำนวณ) — ตาม SAP</div>'+
@@ -2542,6 +2557,49 @@ function bkBankSideStats(sapName,ym){
   var closingDate=upTo.length?upTo[upTo.length-1].date:null;
   return {bank:found.bank,acctNo:found.account.acctNo,hasMonthData:inMonth.length>0,moneyIn:moneyIn,moneyOut:moneyOut,closingBal:closingBal,closingDate:closingDate};
 }
+// ตรวจจับ "คู่กลับรายการ" อัตโนมัติ — จับคู่บรรทัดที่วันที่เดียวกัน ยอดเท่ากัน
+// เดบิต/เครดิตตรงข้ามกัน (เช่น บันทึกผิดแล้วกลับรายการในวันเดียวกัน) เพื่อไม่ให้ยอด
+// "เดบิตรวม/เครดิตรวม" ดูพองขึ้นทั้งที่ผลสุทธิจริงไม่เปลี่ยน — จับคู่ตามลำดับเลขที่เอกสาร
+// (tid) จากน้อยไปมาก ภายในวันเดียวกัน+ยอดเดียวกัน เพื่อให้ผลจับคู่สม่ำเสมอและตรวจสอบย้อนกลับได้
+function bkDetectReversals(rows){
+  var flags=new Array(rows.length).fill(null);
+  var byDate={};
+  rows.forEach(function(r,idx){
+    var d=r.date||'';
+    if(!byDate[d])byDate[d]=[];
+    byDate[d].push(idx);
+  });
+  var pairId=0,debitTotal=0,creditTotal=0;
+  Object.keys(byDate).forEach(function(d){
+    var byAmt={};
+    byDate[d].forEach(function(idx){
+      var r=rows[idx];
+      var isDebit=r.debit>0 && !r.credit;
+      var isCredit=r.credit>0 && !r.debit;
+      if(!isDebit && !isCredit)return;
+      var amt=Math.round((isDebit?r.debit:r.credit)*100)/100;
+      if(!amt)return;
+      var key=amt.toFixed(2);
+      if(!byAmt[key])byAmt[key]={debits:[],credits:[]};
+      byAmt[key][isDebit?'debits':'credits'].push(idx);
+    });
+    Object.keys(byAmt).forEach(function(key){
+      var b=byAmt[key];
+      var byTid=function(a,c){return (parseInt(rows[a].tid,10)||0)-(parseInt(rows[c].tid,10)||0);};
+      b.debits.sort(byTid);
+      b.credits.sort(byTid);
+      var n=Math.min(b.debits.length,b.credits.length);
+      for(var i=0;i<n;i++){
+        pairId++;
+        flags[b.debits[i]]=pairId;
+        flags[b.credits[i]]=pairId;
+        debitTotal+=rows[b.debits[i]].debit;
+        creditTotal+=rows[b.credits[i]].credit;
+      }
+    });
+  });
+  return {flags:flags,pairCount:pairId,debitTotal:debitTotal,creditTotal:creditTotal};
+}
 function bkResetOpening(){
   var inp=document.getElementById('bkOpeningInput');
   if(!inp)return;
@@ -2553,16 +2611,22 @@ function bkRecalc(){
   var inp=document.getElementById('bkOpeningInput');
   var opening=inp?(parseFloat(inp.value)||0):BK_STATE.defaultOpening;
   var bal=opening;
-  var runningRows=BK_STATE.rows.map(function(r){
+  var revFlags=BK_STATE.revFlags||[];
+  var runningRows=BK_STATE.rows.map(function(r,idx){
     bal=bal+r.debit-r.credit;
-    return {date:r.date,tid:r.tid,memo:r.memo,bpName:r.bpName,debit:r.debit,credit:r.credit,createdByName:r.createdByName||'',bal:bal};
+    return {date:r.date,tid:r.tid,memo:r.memo,bpName:r.bpName,debit:r.debit,credit:r.credit,createdByName:r.createdByName||'',bal:bal,isReversed:!!revFlags[idx],pairId:revFlags[idx]||null};
   });
+  var hideChk=document.getElementById('bkHideReversedChk');
+  var hideReversed=!!(hideChk&&hideChk.checked);
+  var visibleRows=hideReversed?runningRows.filter(function(r){return !r.isReversed;}):runningRows;
   var bodyEl=document.getElementById('bkLedgerBody');
   if(bodyEl){
-    bodyEl.innerHTML = runningRows.length ? runningRows.map(function(r){
-      return '<tr><td style="font-size:12px;color:var(--muted)">'+(r.date||'—')+'</td>'+
+    bodyEl.innerHTML = visibleRows.length ? visibleRows.map(function(r){
+      var revStyle=r.isReversed?' style="opacity:0.55"':'';
+      var revBadge=r.isReversed?' <span title="คู่กลับรายการ #'+r.pairId+' — จับคู่จากวันที่+ยอดเดียวกัน เดบิต/เครดิตตรงข้าม" style="font-size:11px;color:var(--gold2);white-space:nowrap">&#128257; กลับรายการ</span>':'';
+      return '<tr'+revStyle+'><td style="font-size:12px;color:var(--muted)">'+(r.date||'—')+'</td>'+
         '<td style="font-size:12px">'+(r.tid||'')+'</td>'+
-        '<td style="font-size:12px">'+(r.memo||'')+'</td>'+
+        '<td style="font-size:12px">'+(r.memo||'')+revBadge+'</td>'+
         '<td style="font-size:12px">'+(r.bpName||'')+'</td>'+
         '<td class="right green">'+(r.debit?fmtFull(r.debit):'—')+'</td>'+
         '<td class="right red">'+(r.credit?fmtFull(r.credit):'—')+'</td>'+
@@ -2592,8 +2656,9 @@ function bkRecalc(){
     {label:'เดบิต',right:true,get:function(r){return fmtFull(r.debit||0);}},
     {label:'เครดิต',right:true,get:function(r){return fmtFull(r.credit||0);}},
     {label:'ยอดคงเหลือ',right:true,get:function(r){return fmtFull(r.bal);}},
-    {label:'ผู้บันทึก',get:function(r){return r.createdByName||'';}}
-  ],runningRows);
+    {label:'ผู้บันทึก',get:function(r){return r.createdByName||'';}},
+    {label:'คู่กลับรายการ',get:function(r){return r.isReversed?('ใช่ (#'+r.pairId+')'):'';}}
+  ],visibleRows);
 }
 
 function docSortKey(d){return dateKey(toSlashDMY(d.dueDate))||'99999999';}
