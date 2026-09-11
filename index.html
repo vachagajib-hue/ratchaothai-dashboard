@@ -2444,6 +2444,12 @@ function bkPopulateYm(){
   if(prevYm && yms.indexOf(prevYm)>=0)ymSel.value=prevYm; else if(yms.length)ymSel.value=yms[yms.length-1];
   bkRender();
 }
+// เก็บสถานะของหน้า "สมุดบัญชีธนาคาร" ที่กำลังแสดงอยู่ (บัญชี+เดือนที่เลือก, รายการดิบก่อนคิด
+// ยอดคงเหลือ, ยอดยกมาเริ่มต้นจาก Q11) ไว้ต่างหากจาก DOM — เพื่อให้ bkRecalc() คำนวณใหม่ตอนผู้ใช้
+// พิมพ์แก้ยอดยกมาเองได้ทันทีโดย "ไม่ต้อง" สร้างการ์ด KPI/ช่อง input ใหม่ทั้งแถว (ถ้าสร้างใหม่ทุกครั้ง
+// ที่พิมพ์ จะทำให้ช่อง input เสีย focus และเคอร์เซอร์กระโดดทุกตัวอักษรที่พิมพ์)
+var BK_STATE={acctCode:null,ym:null,rows:[],defaultOpening:0,openingKnown:false,prevYm:'',q11Closing:undefined};
+
 function bkRender(){
   var acctCode=document.getElementById('bkAcctSel')?document.getElementById('bkAcctSel').value:'';
   var ym=document.getElementById('bkYmSel')?document.getElementById('bkYmSel').value:'';
@@ -2455,6 +2461,7 @@ function bkRender(){
   var acctInfo=bkAccounts().find(function(a){return a.code===acctCode;})||{};
   if(lblEl)lblEl.textContent=acctInfo.name?('— '+acctInfo.name):'';
   if(!acctCode||!ym){
+    BK_STATE={acctCode:null,ym:null,rows:[],defaultOpening:0,openingKnown:false,prevYm:'',q11Closing:undefined};
     if(kpiEl)kpiEl.innerHTML='';
     if(bodyEl)bodyEl.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">— เลือกบัญชีและเดือน/ปี —</td></tr>';
     dmRegisterSimple('bkLedger','สมุดบัญชีธนาคาร',[],[]);
@@ -2470,13 +2477,52 @@ function bkRender(){
   var prevYm=bkPrevYm(ym);
   var mmByAcct=(G.sapMonthlyByAcct||{})[acctCode]||{};
   var openingKnown=mmByAcct[prevYm]!==undefined;
-  var opening=openingKnown?mmByAcct[prevYm]:0;
-  var bal=opening,totalDebit=0,totalCredit=0;
-  var runningRows=rows.map(function(r){
-    totalDebit+=r.debit; totalCredit+=r.credit;
+  var defaultOpening=openingKnown?mmByAcct[prevYm]:0;
+  BK_STATE={acctCode:acctCode,ym:ym,rows:rows,defaultOpening:defaultOpening,openingKnown:openingKnown,prevYm:prevYm,q11Closing:mmByAcct[ym]};
+  var totalDebit=rows.reduce(function(s,r){return s+r.debit;},0);
+  var totalCredit=rows.reduce(function(s,r){return s+r.credit;},0);
+  // สร้างการ์ด KPI ทั้งแถว "ครั้งเดียว" ตอนเปลี่ยนบัญชี/เดือน (มีช่อง input ยอดยกมาฝังอยู่) —
+  // ส่วนที่เปลี่ยนตามการพิมพ์ (ยอดคงเหลือ/สถานะเทียบ Q11/ตารางรายการ) ให้ bkRecalc() อัปเดตทีหลัง
+  if(kpiEl){
+    kpiEl.innerHTML =
+      '<div class="kpi-card blue">'+
+        '<div class="kpi-icon-box" style="background:rgba(74,144,226,0.15)"><span>&#128176;</span></div>'+
+        '<div class="kpi-label">ยอดยกมาต้นเดือน (แก้ไขได้)</div>'+
+        '<div class="kpi-value"><input type="number" id="bkOpeningInput" value="'+defaultOpening.toFixed(2)+'" step="0.01" oninput="bkRecalc()" style="width:100%;max-width:170px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.18);border-radius:6px;padding:5px 8px;color:#E8EEF5;font-size:18px;font-weight:700;font-family:inherit"></div>'+
+        '<div class="kpi-sub">'+(openingKnown?('จาก Q11 เดือน '+ymLabelThai(prevYm)+' — '):'⚠️ ไม่มียอด Q11 เดือนนี้ — ')+'<a href="javascript:void(0)" onclick="bkResetOpening()" style="color:var(--blue)">&#8635; รีเซ็ต</a></div>'+
+      '</div>'+
+      kpi('green','⬆️','rgba(90,200,120,0.15)','เดบิตรวม (เงินเข้า)',fmtKPI(totalDebit),'green',rows.length+' รายการ','')+
+      kpi('red','⬇️','rgba(224,92,92,0.15)','เครดิตรวม (เงินออก)',fmtKPI(totalCredit),'red','','')+
+      '<div class="kpi-card blue" id="bkClosingCard">'+
+        '<div class="kpi-icon-box" style="background:rgba(212,168,67,0.15)"><span>&#129518;</span></div>'+
+        '<div class="kpi-label">ยอดคงเหลือปลายเดือน (คำนวณ)</div>'+
+        '<div class="kpi-value" id="bkClosingVal">—</div>'+
+        '<div class="kpi-sub" id="bkClosingSub"></div>'+
+      '</div>';
+  }
+  bkRecalc();
+}
+
+// แก้ไข "ยอดยกมาต้นเดือน" เองได้ — ใช้กรณีอยากดูยอดคงเหลือปลายเดือนเป็นยอดสุทธิจากรายการใน
+// เดือนนั้นล้วนๆ (เช่น ตั้งยอดยกมา = 0) โดยไม่ต้องพึ่งยอดจริงจาก Q11 — เมื่อยอดยกมาที่พิมพ์ไม่ตรงกับ
+// ยอดอัตโนมัติจาก Q11 ระบบจะไม่ขึ้นเปรียบเทียบ "ตรง/ไม่ตรงกับ Q11" ให้ (เพราะไม่มีความหมายอีกต่อไป
+// เมื่อยอดยกมาถูกกำหนดเองแล้ว) แต่ยอดคงเหลือแต่ละบรรทัด + ยอดปลายเดือนยังคำนวณให้ถูกต้องตามปกติ
+function bkResetOpening(){
+  var inp=document.getElementById('bkOpeningInput');
+  if(!inp)return;
+  inp.value=BK_STATE.defaultOpening.toFixed(2);
+  bkRecalc();
+}
+function bkRecalc(){
+  if(!BK_STATE.acctCode)return;
+  var inp=document.getElementById('bkOpeningInput');
+  var opening=inp?(parseFloat(inp.value)||0):BK_STATE.defaultOpening;
+  var bal=opening;
+  var runningRows=BK_STATE.rows.map(function(r){
     bal=bal+r.debit-r.credit;
     return {date:r.date,tid:r.tid,memo:r.memo,bpName:r.bpName,debit:r.debit,credit:r.credit,createdByName:r.createdByName||'',bal:bal};
   });
+  var bodyEl=document.getElementById('bkLedgerBody');
   if(bodyEl){
     bodyEl.innerHTML = runningRows.length ? runningRows.map(function(r){
       return '<tr><td style="font-size:12px;color:var(--muted)">'+(r.date||'—')+'</td>'+
@@ -2490,18 +2536,20 @@ function bkRender(){
     }).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">— ไม่มีรายการในเดือนนี้ —</td></tr>';
   }
   var closing=bal;
-  var q11Closing=mmByAcct[ym];
-  var diffKnown=q11Closing!==undefined;
+  var isCustomOpening=Math.abs(opening-BK_STATE.defaultOpening)>0.005;
+  var q11Closing=BK_STATE.q11Closing;
+  var diffKnown=!isCustomOpening && q11Closing!==undefined;
   var diff=diffKnown?(closing-q11Closing):null;
   var okMatch=diffKnown&&Math.abs(diff)<1;
-  if(kpiEl){
-    kpiEl.innerHTML =
-      kpi('blue','💰','rgba(74,144,226,0.15)','ยอดยกมาต้นเดือน',fmtKPI(opening),'',openingKnown?('จาก Q11 เดือน '+ymLabelThai(prevYm)):'⚠️ ไม่ทราบยอดยกมา (เริ่มนับที่ 0)','')+
-      kpi('green','⬆️','rgba(90,200,120,0.15)','เดบิตรวม (เงินเข้า)',fmtKPI(totalDebit),'green',runningRows.length+' รายการ','')+
-      kpi('red','⬇️','rgba(224,92,92,0.15)','เครดิตรวม (เงินออก)',fmtKPI(totalCredit),'red','','')+
-      kpi(okMatch?'green':(diffKnown?'red':'blue'),'🧮','rgba(212,168,67,0.15)','ยอดคงเหลือปลายเดือน (คำนวณ)',fmtKPI(closing),'',diffKnown?(okMatch?'✅ ตรงกับ Q11':'⚠️ ต่างจาก Q11 '+fmtFull(diff)+' บาท'):'— ไม่มียอด Q11 เดือนนี้ให้เทียบ','');
-  }
-  dmRegisterSimple('bkLedger','สมุดบัญชีธนาคาร '+acctCode+' ('+ymLabelThai(ym)+')',[
+  var closingCard=document.getElementById('bkClosingCard');
+  var closingVal=document.getElementById('bkClosingVal');
+  var closingSub=document.getElementById('bkClosingSub');
+  if(closingCard)closingCard.className='kpi-card '+(isCustomOpening?'blue':(diffKnown?(okMatch?'green':'red'):'blue'));
+  if(closingVal)closingVal.textContent=fmtKPI(closing);
+  if(closingSub)closingSub.innerHTML = isCustomOpening
+    ? '✏️ ใช้ยอดยกมาที่กำหนดเอง — ไม่เทียบกับ Q11'
+    : (diffKnown ? (okMatch?'✅ ตรงกับ Q11':'⚠️ ต่างจาก Q11 '+fmtFull(diff)+' บาท') : '— ไม่มียอด Q11 เดือนนี้ให้เทียบ');
+  dmRegisterSimple('bkLedger','สมุดบัญชีธนาคาร '+BK_STATE.acctCode+' ('+ymLabelThai(BK_STATE.ym)+')'+(isCustomOpening?' [ยอดยกมากำหนดเอง]':''),[
     {label:'วันที่',get:function(r){return r.date||'—';}},
     {label:'เลขที่เอกสาร',get:function(r){return r.tid||'';}},
     {label:'รายละเอียด',get:function(r){return r.memo||'';}},
