@@ -2483,6 +2483,9 @@ function bkRender(){
   var totalCredit=rows.reduce(function(s,r){return s+r.credit;},0);
   // สร้างการ์ด KPI ทั้งแถว "ครั้งเดียว" ตอนเปลี่ยนบัญชี/เดือน (มีช่อง input ยอดยกมาฝังอยู่) —
   // ส่วนที่เปลี่ยนตามการพิมพ์ (ยอดคงเหลือ/สถานะเทียบ Q11/ตารางรายการ) ให้ bkRecalc() อัปเดตทีหลัง
+  // ยอดฝั่ง "ตามแบงค์" — จาก CSV สเตทเมนท์ธนาคารจริงที่อัปโหลดไว้แล้วในแท็บ "กระทบยอดธนาคาร"
+  // (ถ้ายังไม่เคยอัปโหลด CSV ของบัญชีนี้ ก็จะแสดงเป็น "ไม่มีข้อมูล CSV" แทน ไม่ทำให้หน้าพัง)
+  var bankStats=bkBankSideStats(acctInfo.name||'',ym);
   if(kpiEl){
     kpiEl.innerHTML =
       '<div class="kpi-card blue">'+
@@ -2491,14 +2494,17 @@ function bkRender(){
         '<div class="kpi-value"><input type="number" id="bkOpeningInput" value="'+defaultOpening.toFixed(2)+'" step="0.01" oninput="bkRecalc()" style="width:100%;max-width:170px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.18);border-radius:6px;padding:5px 8px;color:#E8EEF5;font-size:18px;font-weight:700;font-family:inherit"></div>'+
         '<div class="kpi-sub">'+(openingKnown?('จาก Q11 เดือน '+ymLabelThai(prevYm)+' — '):'⚠️ ไม่มียอด Q11 เดือนนี้ — ')+'<a href="javascript:void(0)" onclick="bkResetOpening()" style="color:var(--blue)">&#8635; รีเซ็ต</a></div>'+
       '</div>'+
-      kpi('green','⬆️','rgba(90,200,120,0.15)','เดบิตรวม (เงินเข้า)',fmtKPI(totalDebit),'green',rows.length+' รายการ','')+
-      kpi('red','⬇️','rgba(224,92,92,0.15)','เครดิตรวม (เงินออก)',fmtKPI(totalCredit),'red','','')+
+      kpi('green','⬆️','rgba(90,200,120,0.15)','เดบิตรวม (เงินเข้า) — ตาม SAP',fmtKPI(totalDebit),'green',rows.length+' รายการ','')+
+      kpi('red','⬇️','rgba(224,92,92,0.15)','เครดิตรวม (เงินออก) — ตาม SAP',fmtKPI(totalCredit),'red','','')+
       '<div class="kpi-card blue" id="bkClosingCard">'+
         '<div class="kpi-icon-box" style="background:rgba(212,168,67,0.15)"><span>&#129518;</span></div>'+
-        '<div class="kpi-label">ยอดคงเหลือปลายเดือน (คำนวณ)</div>'+
+        '<div class="kpi-label">ยอดคงเหลือปลายเดือน (คำนวณ) — ตาม SAP</div>'+
         '<div class="kpi-value" id="bkClosingVal">—</div>'+
         '<div class="kpi-sub" id="bkClosingSub"></div>'+
-      '</div>';
+      '</div>'+
+      kpi('green','🏦','rgba(90,200,120,0.15)','เงินเข้ารวม — ตามแบงค์ (CSV)',bankStats?fmtKPI(bankStats.moneyIn):'—','green',bankStats?(bankStats.bank+' '+bankStats.acctNo+(bankStats.hasMonthData?'':' · ไม่มีรายการเดือนนี้')):'ยังไม่มี CSV บัญชีนี้','')+
+      kpi('red','🏦','rgba(224,92,92,0.15)','เงินออกรวม — ตามแบงค์ (CSV)',bankStats?fmtKPI(bankStats.moneyOut):'—','red',bankStats?(bankStats.bank+' '+bankStats.acctNo+(bankStats.hasMonthData?'':' · ไม่มีรายการเดือนนี้')):'ยังไม่มี CSV บัญชีนี้','')+
+      kpi('gold','🏦','rgba(212,168,67,0.15)','ยอดคงเหลือปลายเดือน — ตามแบงค์ (CSV)',bankStats&&bankStats.closingBal!==null?fmtKPI(bankStats.closingBal):'—','gold',bankStats&&bankStats.closingDate?('ข้อมูล ณ '+bankStats.closingDate):(bankStats?'ยังไม่มีรายการก่อนหรือในเดือนนี้':'ยังไม่มี CSV บัญชีนี้'),'');
   }
   bkRecalc();
 }
@@ -2507,6 +2513,35 @@ function bkRender(){
 // เดือนนั้นล้วนๆ (เช่น ตั้งยอดยกมา = 0) โดยไม่ต้องพึ่งยอดจริงจาก Q11 — เมื่อยอดยกมาที่พิมพ์ไม่ตรงกับ
 // ยอดอัตโนมัติจาก Q11 ระบบจะไม่ขึ้นเปรียบเทียบ "ตรง/ไม่ตรงกับ Q11" ให้ (เพราะไม่มีความหมายอีกต่อไป
 // เมื่อยอดยกมาถูกกำหนดเองแล้ว) แต่ยอดคงเหลือแต่ละบรรทัด + ยอดปลายเดือนยังคำนวณให้ถูกต้องตามปกติ
+// หาบัญชีใน CSV สเตทเมนท์ธนาคารที่อัปโหลดไว้แล้ว (แท็บ "กระทบยอดธนาคาร", RBANK_DATA) ที่ตรงกับ
+// บัญชี SAP ที่เลือกอยู่ในหน้าสมุดบัญชีธนาคาร — ค้นทุกธนาคารที่เคยอัปโหลด ไม่ใช่แค่ธนาคารที่เลือก
+// อยู่ในแท็บโน้น เพราะหน้านี้เลือกบัญชีจากฝั่ง SAP โดยตรง ไม่ได้ผูกกับปุ่มเลือกธนาคารหน้ากระทบยอด
+function bkFindBankAccount(sapName){
+  var banks=Object.keys(RBANK_DATA||{});
+  for(var i=0;i<banks.length;i++){
+    var bd2=RBANK_DATA[banks[i]];
+    if(!bd2||!bd2.accounts)continue;
+    var m=bd2.accounts.find(function(x){return acctMatches(x.acctNo,sapName);});
+    if(m)return {bank:banks[i],account:m};
+  }
+  return null;
+}
+// สรุปยอด "ตามแบงค์" (จาก CSV สเตทเมนท์จริง) ของบัญชี+เดือนที่เลือก — ใช้ convention เดียวกับ
+// ตาราง "รายการเดินบัญชีจาก CSV" เดิมที่มีอยู่แล้วในแท็บกระทบยอดธนาคาร (Credit=เงินเข้า,
+// Debit=เงินออก ตามที่สเตทเมนท์ธนาคารระบุ — ตรงข้ามกับฝั่ง GL/SAP ที่ Debit=เงินเข้าบัญชีสินทรัพย์)
+function bkBankSideStats(sapName,ym){
+  var found=bkFindBankAccount(sapName);
+  if(!found)return null;
+  var ymCompact=ym.replace('-','');
+  var txns=(found.account.txns||[]).slice().sort(function(a,b){return dateKey(a.date).localeCompare(dateKey(b.date));});
+  var inMonth=txns.filter(function(t){return dateKey(t.date||'').slice(0,6)===ymCompact;});
+  var upTo=txns.filter(function(t){return dateKey(t.date||'').slice(0,6)<=ymCompact;});
+  var moneyIn=inMonth.reduce(function(s,t){return s+(t.credit||0);},0);
+  var moneyOut=inMonth.reduce(function(s,t){return s+(t.debit||0);},0);
+  var closingBal=upTo.length?upTo[upTo.length-1].bal:null;
+  var closingDate=upTo.length?upTo[upTo.length-1].date:null;
+  return {bank:found.bank,acctNo:found.account.acctNo,hasMonthData:inMonth.length>0,moneyIn:moneyIn,moneyOut:moneyOut,closingBal:closingBal,closingDate:closingDate};
+}
 function bkResetOpening(){
   var inp=document.getElementById('bkOpeningInput');
   if(!inp)return;
