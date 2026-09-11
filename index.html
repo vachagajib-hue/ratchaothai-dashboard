@@ -266,6 +266,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <div class="tab" onclick="switchTab(5)">&#127982; กระทบยอดธนาคาร</div>
 <div class="tab" onclick="switchTab(6)">&#128196; อ่าน PDF Bank</div>
 <div class="tab" onclick="switchTab(7)">&#9878;&#65039; หักกลบ AR/AP</div>
+<div class="tab" onclick="switchTab(8)">&#128176; สมุดบัญชีธนาคาร</div>
 </div>
 <div class="filter-bar">
 <span class="filter-label">&#128197; กรองช่วงเวลา:</span>
@@ -508,6 +509,25 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <thead><tr><th>#</th><th>ชื่อ</th><th style="text-align:right">ยอด AR ค้างรับ</th><th style="text-align:right">ยอด AP ค้างจ่าย</th><th style="text-align:right">ส่วนต่าง (AR-AP)</th><th></th></tr></thead>
 <tbody id="netTbody"></tbody>
 </table></div>
+</div>
+
+<div class="page" id="page8">
+<div class="info-box blue" style="margin-bottom:16px"><div class="info-box-title">&#128176; สมุดบัญชีธนาคาร</div>เลือกบัญชีธนาคาร + เดือน/ปี เพื่อดูรายการเดินบัญชีจริงจาก SAP (Q15_BANK_JOURNAL) เรียงตามวันที่พร้อมยอดคงเหลือสะสมทีละบรรทัด — ใช้กระทบยอดกับสเตทเมนท์ธนาคารได้ง่ายกว่าหน้า "กระทบยอดธนาคาร" (เฉพาะบัญชีธนาคารจริง 1112-xx/1113-xx ไม่รวมเงินสดย่อย)</div>
+<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px">
+<span style="font-size:12px;color:var(--muted);font-weight:600">เลือกบัญชี:</span>
+<select id="bkAcctSel" class="filter-select" style="min-width:300px" onchange="bkPopulateYm()"></select>
+<span style="font-size:12px;color:var(--muted);font-weight:600;margin-left:8px">เดือน/ปี:</span>
+<select id="bkYmSel" class="filter-select" onchange="bkRender()"></select>
+</div>
+<div class="kpi-row" id="bkKpiRow"></div>
+<div class="recon-section">
+<div class="recon-section-title">&#128203; รายการเดินบัญชี <span class="chart-sub" id="bkAcctNameLbl"></span></div>
+<div id="bkExportBtnsWrap"></div>
+<div style="overflow:auto;max-height:560px;border:1px solid var(--border);border-radius:8px"><table id="bkLedgerTbl">
+<thead style="position:sticky;top:0;z-index:2;background:#0b1626"><tr><th>วันที่</th><th>เลขที่เอกสาร</th><th>รายละเอียด</th><th>คู่ค้า</th><th style="text-align:right">เดบิต</th><th style="text-align:right">เครดิต</th><th style="text-align:right">ยอดคงเหลือ</th><th>ผู้บันทึก</th></tr></thead>
+<tbody id="bkLedgerBody"></tbody>
+</table></div>
+</div>
 </div>
 
 </div>
@@ -893,6 +913,9 @@ async function loadAllData(){
         var ix15Credit=findCol15(['credit amount','credit']);
         var ix15BpName=findCol15(['bpname']);
         var ix15Memo=findCol15(['memo']);
+        // v5: คอลัมน์ผู้บันทึกเอกสาร (ออปชันเสริม — ถ้าชีตยังเป็น v3/v4 ที่ยังไม่มีคอลัมน์นี้
+        // ix15CreatedByName จะเป็น -1 และ createdByName จะเป็นค่าว่างเสมอ ไม่กระทบการทำงานอื่น)
+        var ix15CreatedByName=findCol15(['createdbyname']);
         if(ix15Trans>=0 && ix15Acct>=0 && ix15Debit>=0 && ix15Credit>=0){
           var jGroups={};
           q15.rows.forEach(function(r){
@@ -902,13 +925,14 @@ async function loadAllData(){
             var date=ix15Date>=0?normDate(r[ix15Date]):'';
             var bpName=ix15BpName>=0?String(r[ix15BpName]||'').trim():'';
             var memo=ix15Memo>=0?String(r[ix15Memo]||'').trim():'';
+            var createdByName=ix15CreatedByName>=0?String(r[ix15CreatedByName]||'').trim():'';
             if(!jGroups[tid])jGroups[tid]={legs:[],hasBP:false,accts:{}};
             jGroups[tid].legs.push({acct:acct,date:date,debit:debit,credit:credit,bpName:bpName,memo:memo});
             if(bpName)jGroups[tid].hasBP=true;
             if(acct.indexOf('111')===0)jGroups[tid].accts[acct]=true;
             if(acct && acct.indexOf('111')===0){
               if(!sapAllBankLegs[acct])sapAllBankLegs[acct]=[];
-              sapAllBankLegs[acct].push({date:date,debit:debit,credit:credit,tid:tid,bpName:bpName,memo:memo});
+              sapAllBankLegs[acct].push({date:date,debit:debit,credit:credit,tid:tid,bpName:bpName,memo:memo,createdByName:createdByName});
             }
           });
           Object.keys(jGroups).forEach(function(tid){
@@ -2364,6 +2388,131 @@ function renderNet(){
     return '<tr><td class="rank">'+(i+1)+'</td><td>'+r.label+'</td><td class="right gold">'+fmtFull(r.arTotal)+'</td><td class="right red">'+fmtFull(r.apTotal)+'</td><td class="right '+cls+'" style="font-weight:700">'+fmtFull(r.net)+'</td><td><button class="kpi-btn" style="position:static" onclick="showNetDetail(\''+r.key.replace(/'/g,"\\'")+'\')">📋 ดูรายละเอียด</button></td></tr>';
   }).join('');
 }
+
+// ===== หน้า "สมุดบัญชีธนาคาร" (page8, เพิ่ม 11 ก.ย. 2569) =====
+// จุดประสงค์: ให้เลือกบัญชีธนาคารจริง (1112-xx/1113-xx เท่านั้น ไม่รวมเงินสดย่อย 1111-xx ตามที่
+// ตกลงกับผู้ใช้) + เดือน/ปี แล้วแสดงรายการเดินบัญชีจริงจาก Q15_BANK_JOURNAL (G.sapAllBankLegs
+// ซึ่งเก็บทุกบรรทัดที่กระทบบัญชี 111x ไว้แล้วอยู่ก่อนแล้ว ไม่ต้องขอ query ใหม่) พร้อมยอดคงเหลือ
+// สะสมทีละบรรทัด ใช้เทียบกับสเตทเมนท์ธนาคารได้ง่ายกว่าหน้า "กระทบยอดธนาคาร" ที่เน้นจับคู่อัตโนมัติ
+// ยอดยกมาต้นเดือน: ดึงจากยอดปลายเดือนก่อนหน้าใน G.sapMonthlyByAcct (Q11_SAP_MONTHLY_BALANCE —
+// ข้อมูลจริงจาก SAP ไม่ใช่การเดา) ถ้าไม่มีข้อมูลเดือนก่อนหน้า (เช่นเดือนแรกสุดของข้อมูล) จะแจ้ง
+// ตรงๆ ว่า "ไม่ทราบยอดยกมา" แทนการเดาเป็น 0 เงียบๆ — และเทียบยอดคงเหลือปลายเดือนที่คำนวณได้กับ
+// ยอดจริงจาก Q11 ของเดือนนั้นให้อัตโนมัติ ถ้าไม่ตรงกันจะช่วยจับกรณีเอกสารตกหล่นจาก Q15 ได้ทันที
+// (เช่นเดียวกับเคส JT260770001/002 ที่กำลังตรวจสอบอยู่)
+function bkYmOf(d){
+  var m=String(d||'').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return m?(m[3]+'-'+m[2]):'';
+}
+function bkPrevYm(ym){
+  var y=parseInt(ym.slice(0,4),10),m=parseInt(ym.slice(5,7),10);
+  m--; if(m<1){m=12;y--;}
+  return y+'-'+String(m).padStart(2,'0');
+}
+function ymLabelThai(ym){
+  var MTHAI_BK={'01':'ม.ค.','02':'ก.พ.','03':'มี.ค.','04':'เม.ย.','05':'พ.ค.','06':'มิ.ย.','07':'ก.ค.','08':'ส.ค.','09':'ก.ย.','10':'ต.ค.','11':'พ.ย.','12':'ธ.ค.'};
+  var yy=ym.slice(0,4),mm=ym.slice(5,7);
+  return (MTHAI_BK[mm]||mm)+' '+(parseInt(yy,10)+543);
+}
+function bkAccounts(){
+  // เฉพาะบัญชีธนาคารจริง (1112-xx, 1113-xx) — ตัดเงินสดย่อย 1111-xx ออกตามที่ตกลงไว้
+  var rows=(G.bankRows&&G.bankRows.length?G.bankRows:SAP_Q03)||[];
+  return rows.filter(function(r){return /^111[23]-/.test(r.code);}).slice().sort(function(a,b){return a.code.localeCompare(b.code);});
+}
+function bkAvailableYm(acctCode){
+  var legs=(G.sapAllBankLegs&&G.sapAllBankLegs[acctCode])||[];
+  var set={};
+  legs.forEach(function(l){var ym=bkYmOf(l.date);if(ym)set[ym]=true;});
+  return Object.keys(set).sort();
+}
+function bkPopulate(){
+  var accts=bkAccounts();
+  var accSel=document.getElementById('bkAcctSel');
+  if(!accSel)return;
+  var prevAcc=accSel.value;
+  accSel.innerHTML=accts.map(function(a){return '<option value="'+a.code+'">'+a.code+' — '+a.name+'</option>';}).join('')||'<option value="">— ไม่มีบัญชี —</option>';
+  if(prevAcc && accts.some(function(a){return a.code===prevAcc;}))accSel.value=prevAcc;
+  bkPopulateYm();
+}
+function bkPopulateYm(){
+  var acctSel=document.getElementById('bkAcctSel');
+  var acctCode=acctSel?acctSel.value:'';
+  var yms=bkAvailableYm(acctCode);
+  var ymSel=document.getElementById('bkYmSel');
+  if(!ymSel)return;
+  var prevYm=ymSel.value;
+  ymSel.innerHTML=yms.map(function(ym){return '<option value="'+ym+'">'+ymLabelThai(ym)+'</option>';}).join('')||'<option value="">— ไม่มีข้อมูล —</option>';
+  if(prevYm && yms.indexOf(prevYm)>=0)ymSel.value=prevYm; else if(yms.length)ymSel.value=yms[yms.length-1];
+  bkRender();
+}
+function bkRender(){
+  var acctCode=document.getElementById('bkAcctSel')?document.getElementById('bkAcctSel').value:'';
+  var ym=document.getElementById('bkYmSel')?document.getElementById('bkYmSel').value:'';
+  var lblEl=document.getElementById('bkAcctNameLbl');
+  var kpiEl=document.getElementById('bkKpiRow');
+  var bodyEl=document.getElementById('bkLedgerBody');
+  var exportWrap=document.getElementById('bkExportBtnsWrap');
+  if(exportWrap)exportWrap.innerHTML=dmExportBtns('bkLedger');
+  var acctInfo=bkAccounts().find(function(a){return a.code===acctCode;})||{};
+  if(lblEl)lblEl.textContent=acctInfo.name?('— '+acctInfo.name):'';
+  if(!acctCode||!ym){
+    if(kpiEl)kpiEl.innerHTML='';
+    if(bodyEl)bodyEl.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">— เลือกบัญชีและเดือน/ปี —</td></tr>';
+    dmRegisterSimple('bkLedger','สมุดบัญชีธนาคาร',[],[]);
+    return;
+  }
+  var allLegs=(G.sapAllBankLegs&&G.sapAllBankLegs[acctCode])||[];
+  var rows=allLegs.filter(function(l){return bkYmOf(l.date)===ym;}).slice();
+  rows.sort(function(a,b){
+    var ka=dateKey(a.date),kb=dateKey(b.date);
+    if(ka!==kb)return ka<kb?-1:1;
+    return (parseInt(a.tid,10)||0)-(parseInt(b.tid,10)||0);
+  });
+  var prevYm=bkPrevYm(ym);
+  var mmByAcct=(G.sapMonthlyByAcct||{})[acctCode]||{};
+  var openingKnown=mmByAcct[prevYm]!==undefined;
+  var opening=openingKnown?mmByAcct[prevYm]:0;
+  var bal=opening,totalDebit=0,totalCredit=0;
+  var runningRows=rows.map(function(r){
+    totalDebit+=r.debit; totalCredit+=r.credit;
+    bal=bal+r.debit-r.credit;
+    return {date:r.date,tid:r.tid,memo:r.memo,bpName:r.bpName,debit:r.debit,credit:r.credit,createdByName:r.createdByName||'',bal:bal};
+  });
+  if(bodyEl){
+    bodyEl.innerHTML = runningRows.length ? runningRows.map(function(r){
+      return '<tr><td style="font-size:12px;color:var(--muted)">'+(r.date||'—')+'</td>'+
+        '<td style="font-size:12px">'+(r.tid||'')+'</td>'+
+        '<td style="font-size:12px">'+(r.memo||'')+'</td>'+
+        '<td style="font-size:12px">'+(r.bpName||'')+'</td>'+
+        '<td class="right green">'+(r.debit?fmtFull(r.debit):'—')+'</td>'+
+        '<td class="right red">'+(r.credit?fmtFull(r.credit):'—')+'</td>'+
+        '<td class="right" style="font-weight:700">'+fmtFull(r.bal)+'</td>'+
+        '<td style="font-size:12px;color:var(--muted)">'+(r.createdByName||'')+'</td></tr>';
+    }).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">— ไม่มีรายการในเดือนนี้ —</td></tr>';
+  }
+  var closing=bal;
+  var q11Closing=mmByAcct[ym];
+  var diffKnown=q11Closing!==undefined;
+  var diff=diffKnown?(closing-q11Closing):null;
+  var okMatch=diffKnown&&Math.abs(diff)<1;
+  if(kpiEl){
+    kpiEl.innerHTML =
+      kpi('blue','💰','rgba(74,144,226,0.15)','ยอดยกมาต้นเดือน',fmtKPI(opening),'',openingKnown?('จาก Q11 เดือน '+ymLabelThai(prevYm)):'⚠️ ไม่ทราบยอดยกมา (เริ่มนับที่ 0)','')+
+      kpi('green','⬆️','rgba(90,200,120,0.15)','เดบิตรวม (เงินเข้า)',fmtKPI(totalDebit),'green',runningRows.length+' รายการ','')+
+      kpi('red','⬇️','rgba(224,92,92,0.15)','เครดิตรวม (เงินออก)',fmtKPI(totalCredit),'red','','')+
+      kpi(okMatch?'green':(diffKnown?'red':'blue'),'🧮','rgba(212,168,67,0.15)','ยอดคงเหลือปลายเดือน (คำนวณ)',fmtKPI(closing),'',diffKnown?(okMatch?'✅ ตรงกับ Q11':'⚠️ ต่างจาก Q11 '+fmtFull(diff)+' บาท'):'— ไม่มียอด Q11 เดือนนี้ให้เทียบ','');
+  }
+  dmRegisterSimple('bkLedger','สมุดบัญชีธนาคาร '+acctCode+' ('+ymLabelThai(ym)+')',[
+    {label:'วันที่',get:function(r){return r.date||'—';}},
+    {label:'เลขที่เอกสาร',get:function(r){return r.tid||'';}},
+    {label:'รายละเอียด',get:function(r){return r.memo||'';}},
+    {label:'คู่ค้า',get:function(r){return r.bpName||'';}},
+    {label:'เดบิต',right:true,get:function(r){return fmtFull(r.debit||0);}},
+    {label:'เครดิต',right:true,get:function(r){return fmtFull(r.credit||0);}},
+    {label:'ยอดคงเหลือ',right:true,get:function(r){return fmtFull(r.bal);}},
+    {label:'ผู้บันทึก',get:function(r){return r.createdByName||'';}}
+  ],runningRows);
+}
+
 function docSortKey(d){return dateKey(toSlashDMY(d.dueDate))||'99999999';}
 function showNetDetail(key){
   var rows=arApNetRows();
@@ -4203,6 +4352,7 @@ function switchTab(i){
   if(i===3){try{renderPL();}catch(e){}}
   if(i===7){try{renderNet();}catch(e){}}
   if(i===2){try{renderApCat();}catch(e){}}
+  if(i===8){try{bkPopulate();}catch(e){console.error(e);}}
 }
 
 Chart.defaults.color='#8FA3B8';Chart.defaults.font.family='Sarabun';Chart.defaults.font.size=12;
