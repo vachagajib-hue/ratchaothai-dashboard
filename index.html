@@ -2803,6 +2803,15 @@ function bkShowBankDetail(kind){
 // เดบิต/เครดิตตรงข้ามกัน (เช่น บันทึกผิดแล้วกลับรายการในวันเดียวกัน) เพื่อไม่ให้ยอด
 // "เดบิตรวม/เครดิตรวม" ดูพองขึ้นทั้งที่ผลสุทธิจริงไม่เปลี่ยน — จับคู่ตามลำดับเลขที่เอกสาร
 // (tid) จากน้อยไปมาก ภายในวันเดียวกัน+ยอดเดียวกัน เพื่อให้ผลจับคู่สม่ำเสมอและตรวจสอบย้อนกลับได้
+// เคสจริง (11 ก.ย. 2569, บัญชี 1113-5 BBL): รายการรับชำระลูกค้าจริง (memo "Incoming Payments - xxx")
+// กับรายการโอนเงินภายใน (memo "รับเงิน-BSL"/"โอนเงิน TD...คืนเงิน BSL") บังเอิญมียอด+วันที่ตรงกัน
+// (เป็นรูปแบบธุรกิจปกติของบริษัท ไม่ใช่ความบังเอิญหายาก) ทำให้ logic เดิม (จับคู่แค่จาก
+// วันที่+ยอด+เดบิต/เครดิตตรงข้ามกัน โดยไม่ดูว่าเกี่ยวข้องกันจริงหรือไม่) จับคู่ผิดเป็น "กลับรายการ"
+// แล้วตัดทั้งคู่ออกจากการเทียบกับแบงค์ไปเงียบๆ (ดู bkMatchSapBank: r.isReversed ถูกข้ามทุกรอบ)
+// ทำให้รายการรับชำระจริงขึ้น "ยังไม่พบใน SAP" ทั้งที่มีอยู่จริงใน Q15 — แก้โดยกำหนดว่าจะถือเป็น
+// "กลับรายการ" ได้ก็ต่อเมื่อมีหลักฐานจากหมายเหตุ (memo) ยืนยันจริงๆ เท่านั้น (ยึดตามคำที่ SAP ใช้จริง
+// เช่น "Reverse Entry for Incoming Payment No. ...") ไม่ใช่การเดาจากยอด+วันที่เพียงอย่างเดียวอีกต่อไป
+var BK_REVERSAL_MEMO_RE=/reverse\s*entry|reversal|กลับรายการ|ย้อนกลับรายการ|ยกเลิกรายการ/i;
 function bkDetectReversals(rows){
   var flags=new Array(rows.length).fill(null);
   var byDate={};
@@ -2832,11 +2841,15 @@ function bkDetectReversals(rows){
       b.credits.sort(byTid);
       var n=Math.min(b.debits.length,b.credits.length);
       for(var i=0;i<n;i++){
+        var dIdx=b.debits[i],cIdx=b.credits[i];
+        var dMemo=String(rows[dIdx].memo||''),cMemo=String(rows[cIdx].memo||'');
+        // ต้องมีหมายเหตุยืนยันการกลับรายการอยู่ฝั่งใดฝั่งหนึ่งจริง ไม่ใช่แค่ยอด+วันที่ตรงกันเฉยๆ
+        if(!BK_REVERSAL_MEMO_RE.test(dMemo) && !BK_REVERSAL_MEMO_RE.test(cMemo))continue;
         pairId++;
-        flags[b.debits[i]]=pairId;
-        flags[b.credits[i]]=pairId;
-        debitTotal+=rows[b.debits[i]].debit;
-        creditTotal+=rows[b.credits[i]].credit;
+        flags[dIdx]=pairId;
+        flags[cIdx]=pairId;
+        debitTotal+=rows[dIdx].debit;
+        creditTotal+=rows[cIdx].credit;
       }
     });
   });
@@ -3075,7 +3088,7 @@ function renderDashboard(d){
   var topE=d.topExp.slice(0,10);
   document.getElementById('kpi3').innerHTML=
     kpi('red','\ud83d\udcb0','rgba(224,92,92,0.18)','\u0e04\u0e48\u0e32\u0e43\u0e0a\u0e49\u0e08\u0e48\u0e32\u0e22\u0e23\u0e27\u0e21 (YTD)',fmtKPI(d.et),'red','\u0e08\u0e32\u0e01 Q08 Expense','showModalExp()')+
-    (topE[0]?kpi('red','\ud83d\udd11','rgba(224,92,92,0.18)',topE[0].name,fmtKPI(topE[0].amt),'red',(topE[0].amt/d.et*100).toFixed(1)+'%','showModalExp(\''+topE[0].code.replace(/'/g,"\\'")+'\',\''+topE[0].name.replace(/'/g,"\\'")+'\')'):'')+(topE[1]?kpi('gold','\u2699','rgba(212,168,67,0.18)',topE[1].name,fmtKPI(topE[1].amt),'gold',(topE[1].amt/d.et*100).toFixed(1)+'%','showModalExp(\''+topE[1].code.replace(/'/g,"\\'")+'\',\''+topE[1].name.replace(/'/g,"\\'")+'\')'):'')+(topE[2]?kpi('teal','\ud83d\udce6','rgba(43,191,179,0.18)',topE[2].name,fmtKPI(topE[2].amt),'teal',(topE[2].amt/d.et*100).toFixed(1)+'%','showModalExp(\''+topE[2].code.replace(/'/g,"\\'")+'\',\''+topE[2].name.replace(/'/g,"\\'")+'\')'):'');
+    (topE[0]?kpi('red','\ud83d\udd11','rgba(224,92,92,0.18)',topE[0].name,fmtKPI(topE[0].amt),'red',(topE[0].amt/d.et*100).toFixed(1)+'%','showModalExp(\''+(topE[0].code||'').replace(/'/g,"\\'")+'\',\''+topE[0].name.replace(/'/g,"\\'")+'\')'):'')+(topE[1]?kpi('gold','\u2699','rgba(212,168,67,0.18)',topE[1].name,fmtKPI(topE[1].amt),'gold',(topE[1].amt/d.et*100).toFixed(1)+'%','showModalExp(\''+(topE[1].code||'').replace(/'/g,"\\'")+'\',\''+topE[1].name.replace(/'/g,"\\'")+'\')'):'')+(topE[2]?kpi('teal','\ud83d\udce6','rgba(43,191,179,0.18)',topE[2].name,fmtKPI(topE[2].amt),'teal',(topE[2].amt/d.et*100).toFixed(1)+'%','showModalExp(\''+(topE[2].code||'').replace(/'/g,"\\'")+'\',\''+topE[2].name.replace(/'/g,"\\'")+'\')'):'');
   makeChart('expenseBar',{type:'bar',data:{labels:topE.map(function(e){return e.name;}),datasets:[{data:topE.map(function(e){return +fmtM(e.amt);}),backgroundColor:'rgba(212,168,67,0.75)',borderRadius:4}]},options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:gc},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}},afterDataLimits:function(a){a.max=a.max*1.25;}},y:{grid:{display:false},ticks:{color:'#8FA3B8',font:{size:11}}}}},plugins:[barLblPlugin]});
 
   document.getElementById('kpi4').innerHTML=
@@ -3108,7 +3121,7 @@ function renderFallback(){
      apRows2:[{name:'\u0e1a\u0e08\u0e01.\u0e0b\u0e32\u0e19\u0e35\u0e48 \u0e25\u0e35\u0e2a\u0e0b\u0e34\u0e48\u0e07',docNo:'251211423',dueDate:'06.01.2016',bal:3043626000,days:3815}],
      topAP:[['\u0e1a\u0e23\u0e34\u0e29\u0e31\u0e17 \u0e0b\u0e32\u0e19\u0e35\u0e48 \u0e25\u0e35\u0e2a\u0e0b\u0e34\u0e48\u0e07 (\u0e1b\u0e23\u0e30\u0e40\u0e17\u0e28\u0e44\u0e17\u0e22)',3043626000],['\u0e1a\u0e23\u0e34\u0e29\u0e31\u0e17 \u0e25\u0e35\u0e14\u0e40\u0e27\u0e22\u0e4c \u0e40\u0e2e\u0e1f\u0e27\u0e35\u0e48 \u0e41\u0e21\u0e0a\u0e0a\u0e35\u0e19\u0e40\u0e19\u0e2d\u0e23\u0e4c\u0e23\u0e35\u0e48',329643600]],
      et:344565966,
-     topExp:[{name:'\u0e14\u0e2d\u0e01\u0e40\u0e1a\u0e35\u0e49\u0e22\u0e08\u0e48\u0e32\u0e22-\u0e25\u0e34\u0e2a\u0e0b\u0e34\u0e48\u0e07',amt:103174200},{name:'\u0e04\u0e48\u0e32\u0e40\u0e2a\u0e37\u0e48\u0e2d\u0e21\u0e23\u0e32\u0e04\u0e32-\u0e40\u0e04\u0e23\u0e37\u0e48\u0e2d\u0e07\u0e08\u0e31\u0e01\u0e23',amt:64942280},{name:'\u0e15\u0e49\u0e19\u0e17\u0e38\u0e19\u0e02\u0e32\u0e22',amt:25059524},{name:'\u0e04\u0e48\u0e32\u0e08\u0e49\u0e32\u0e07\u0e17\u0e33\u0e02\u0e2d\u0e07\u0e20\u0e32\u0e22\u0e19\u0e2d\u0e01',amt:22237750},{name:'\u0e04\u0e48\u0e32\u0e19\u0e49\u0e33\u0e21\u0e31\u0e19\u0e40\u0e0a\u0e37\u0e49\u0e2d\u0e40\u0e1e\u0e25\u0e34\u0e07/NGV',amt:21986506},{name:'\u0e40\u0e07\u0e34\u0e19\u0e40\u0e14\u0e37\u0e2d\u0e19',amt:19680854}],
+     topExp:[{code:'5470-xx',name:'\u0e14\u0e2d\u0e01\u0e40\u0e1a\u0e35\u0e49\u0e22\u0e08\u0e48\u0e32\u0e22-\u0e25\u0e34\u0e2a\u0e0b\u0e34\u0e48\u0e07',amt:103174200},{code:'5250-xx',name:'\u0e04\u0e48\u0e32\u0e40\u0e2a\u0e37\u0e48\u0e2d\u0e21\u0e23\u0e32\u0e04\u0e32-\u0e40\u0e04\u0e23\u0e37\u0e48\u0e2d\u0e07\u0e08\u0e31\u0e01\u0e23',amt:64942280},{code:'',name:'\u0e15\u0e49\u0e19\u0e17\u0e38\u0e19\u0e02\u0e32\u0e22',amt:25059524},{code:'',name:'\u0e04\u0e48\u0e32\u0e08\u0e49\u0e32\u0e07\u0e17\u0e33\u0e02\u0e2d\u0e07\u0e20\u0e32\u0e22\u0e19\u0e2d\u0e01',amt:22237750},{code:'',name:'\u0e04\u0e48\u0e32\u0e19\u0e49\u0e33\u0e21\u0e31\u0e19\u0e40\u0e0a\u0e37\u0e49\u0e2d\u0e40\u0e1e\u0e25\u0e34\u0e07/NGV',amt:21986506},{code:'',name:'\u0e40\u0e07\u0e34\u0e19\u0e40\u0e14\u0e37\u0e2d\u0e19',amt:19680854}],
      expAll:[{code:'5470-xx',name:'\u0e14\u0e2d\u0e01\u0e40\u0e1a\u0e35\u0e49\u0e22\u0e08\u0e48\u0e32\u0e22-\u0e25\u0e34\u0e2a\u0e0b\u0e34\u0e48\u0e07',amt:103174200},{code:'5250-xx',name:'\u0e04\u0e48\u0e32\u0e40\u0e2a\u0e37\u0e48\u0e2d\u0e21\u0e23\u0e32\u0e04\u0e32-\u0e40\u0e04\u0e23\u0e37\u0e48\u0e2d\u0e07\u0e08\u0e31\u0e01\u0e23',amt:64942280}],
      allMonths:allMonths};
   ACTIVE_MONTHS=[...allMonths];
