@@ -2454,7 +2454,7 @@ function bkPopulateYm(){
 // ยอดคงเหลือ, ยอดยกมาเริ่มต้นจาก Q11) ไว้ต่างหากจาก DOM — เพื่อให้ bkRecalc() คำนวณใหม่ตอนผู้ใช้
 // พิมพ์แก้ยอดยกมาเองได้ทันทีโดย "ไม่ต้อง" สร้างการ์ด KPI/ช่อง input ใหม่ทั้งแถว (ถ้าสร้างใหม่ทุกครั้ง
 // ที่พิมพ์ จะทำให้ช่อง input เสีย focus และเคอร์เซอร์กระโดดทุกตัวอักษรที่พิมพ์)
-var BK_STATE={acctCode:null,ym:null,rows:[],defaultOpening:0,openingKnown:false,prevYm:'',q11Closing:undefined,revFlags:[],revStats:null,sapBankMatched:[],bankDetail:null};
+var BK_STATE={acctCode:null,ym:null,rows:[],defaultOpening:0,openingKnown:false,prevYm:'',q11Closing:undefined,revFlags:[],revStats:null,sapBankMatched:[],sapBankHint:[],bankDetail:null};
 
 function bkRender(){
   var acctCode=document.getElementById('bkAcctSel')?document.getElementById('bkAcctSel').value:'';
@@ -2467,7 +2467,7 @@ function bkRender(){
   var acctInfo=bkAccounts().find(function(a){return a.code===acctCode;})||{};
   if(lblEl)lblEl.textContent=acctInfo.name?('— '+acctInfo.name):'';
   if(!acctCode||!ym){
-    BK_STATE={acctCode:null,ym:null,rows:[],defaultOpening:0,openingKnown:false,prevYm:'',q11Closing:undefined,revFlags:[],revStats:null,sapBankMatched:[],bankDetail:null};
+    BK_STATE={acctCode:null,ym:null,rows:[],defaultOpening:0,openingKnown:false,prevYm:'',q11Closing:undefined,revFlags:[],revStats:null,sapBankMatched:[],sapBankHint:[],bankDetail:null};
     if(kpiEl)kpiEl.innerHTML='';
     if(bodyEl)bodyEl.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:20px">— เลือกบัญชีและเดือน/ปี —</td></tr>';
     var revWrap0=document.getElementById('bkRevToggleWrap'),revNote0=document.getElementById('bkRevNote');
@@ -2496,11 +2496,11 @@ function bkRender(){
     bankTxnsMonth=(foundBank.account.txns||[]).filter(function(t){return dateKey(t.date||'').slice(0,6)===ymCompactM;}).slice()
       .sort(function(a,b){return dateKey(a.date).localeCompare(dateKey(b.date));});
   }
-  var rowsForMatch=rows.map(function(r,i){return {date:r.date,debit:r.debit,credit:r.credit,isReversed:!!revInfo.flags[i]};});
-  var sapBankMatch=bkMatchSapBank(rowsForMatch,bankTxnsMonth);
+  var rowsForMatch=rows.map(function(r,i){return {date:r.date,debit:r.debit,credit:r.credit,isReversed:!!revInfo.flags[i],_orig:r};});
+  var sapBankMatch=bkMatchSapBank(rowsForMatch,bankTxnsMonth,foundBank?(foundBank.account.txns||[]):[],allLegs);
   BK_STATE={acctCode:acctCode,ym:ym,rows:rows,defaultOpening:defaultOpening,openingKnown:openingKnown,prevYm:prevYm,q11Closing:mmByAcct[ym],revFlags:revInfo.flags,revStats:revInfo,
-    sapBankMatched:sapBankMatch.sapMatched,
-    bankDetail:foundBank?{bank:foundBank.bank,acctNo:foundBank.account.acctNo,txns:bankTxnsMonth,matchFlags:sapBankMatch.bankMatched}:null};
+    sapBankMatched:sapBankMatch.sapMatched,sapBankHint:sapBankMatch.sapHint,
+    bankDetail:foundBank?{bank:foundBank.bank,acctNo:foundBank.account.acctNo,txns:bankTxnsMonth,matchFlags:sapBankMatch.bankMatched,hintFlags:sapBankMatch.bankHint}:null};
   var totalDebit=rows.reduce(function(s,r){return s+r.debit;},0);
   var totalCredit=rows.reduce(function(s,r){return s+r.credit;},0);
   var revWrap=document.getElementById('bkRevToggleWrap'),revNote=document.getElementById('bkRevNote');
@@ -2575,7 +2575,9 @@ function bkBankSideStats(sapName,ym){
 // โดยธรรมชาติระหว่าง GL (Debit=เงินเข้าบัญชีสินทรัพย์) กับสเตทเมนท์แบงค์ (Credit=เงินเข้าตามที่แบงค์ระบุ)
 // ตัดรายการที่เป็น "คู่กลับรายการ" ภายใน SAP ออกจากการจับคู่ เพราะเป็นการแก้ไขบันทึกผิดพลาด
 // ไม่ใช่ธุรกรรมที่กระทบเงินสดกับแบงค์จริง จึงไม่ควรถูกตีตราว่า "ยังไม่พบในแบงค์"
-function bkMatchSapBank(sapRows,bankTxns){
+// bankTxnsFull/sapLegsFull (ไม่บังคับ) = ประวัติทั้งหมดของบัญชีนี้ (ไม่จำกัดแค่เดือนที่เลือก) ใช้เฉพาะ
+// ตอนค้นหา "ยอดตรงกันแต่คนละวันที่" (hint) เผื่อกรณีวันที่ตัดจริงคาบเกี่ยวข้ามเดือน (เช่น สิ้นเดือน)
+function bkMatchSapBank(sapRows,bankTxns,bankTxnsFull,sapLegsFull){
   var sapMatched=new Array(sapRows.length).fill(false);
   var bankMatched=new Array(bankTxns.length).fill(false);
   function bucket(list,amtOf){
@@ -2608,21 +2610,178 @@ function bkMatchSapBank(sapRows,bankTxns){
     bucket(bankTxns,function(t){return (t.debit>0&&!t.credit)?t.debit:0;}),
     sapMatched,bankMatched
   );
-  return {sapMatched:sapMatched,bankMatched:bankMatched};
+  // รอบที่ 2: รวมยอดหลายบรรทัดในวันเดียวกัน (ฝั่งใดฝั่งหนึ่ง) ให้เท่ากับยอดอีกฝั่งพอดี — กรณีที่พบจริง:
+  // SAP บันทึกยอดรวมเป็นรายการเดียว (เช่น แบ่งชำระเงินกู้ 6,650,050 บาท) แต่แบงค์แยกตัดเป็นหลายบรรทัด
+  // (เงินต้น 2 รายการ + ค่าธรรมเนียม 2 รายการ) หรือกลับกัน — ยังคงเงื่อนไข "วันเดียวกันเป๊ะ" เหมือนเดิม
+  // ไม่ขยาย tolerance วันที่ ตามที่ตกลงไว้ (ผู้ใช้ยืนยันจะแก้ไขวันที่เอกสารใน SAP ให้ตรงกับแบงค์เอง)
+  bkComboMatchSameDate(sapRows,bankTxns,sapMatched,bankMatched);
+  // รอบที่ 3 (diagnostic เท่านั้น ไม่นับเป็น "จับคู่สำเร็จ"): สำหรับรายการที่ยังไม่พบ ลองขยายค้นหา
+  // ยอดตรงกัน (เดี่ยวหรือรวมหลายบรรทัด) ในช่วง ±5 วันรอบวันที่บันทึก — ถ้าเจอ แปลว่าน่าจะเป็นแค่
+  // "วันที่บันทึกกับวันที่แบงค์ตัดจริงไม่ตรงกัน" ไม่ใช่รายการที่ขาดหายจริง ช่วยลดเวลาตรวจสอบด้วยมือ
+  var WINDOW_DAYS=5;
+  var sapHint=new Array(sapRows.length).fill(null);
+  var bankHint=new Array(bankTxns.length).fill(null);
+  // หา index ของ obj ใน bankTxns (ชุดที่แสดงผลอยู่จริง) ด้วยการเทียบ reference ตรงๆ — ใช้ได้เพราะ
+  // bankTxnsMonth ที่ส่งเข้ามาเป็น bankTxns นั้น filter มาจาก bankTxnsFull อาเรย์เดียวกัน (object เดิม)
+  function indexInBankTxns(obj){return bankTxns.indexOf(obj);}
+  // sapRows (rowsForMatch) เป็นอ็อบเจ็กต์ห่อใหม่ ไม่ใช่ reference เดิมจาก sapLegsFull (allLegs) —
+  // ต้องอิงจาก _orig ที่แนบไว้ตอนสร้าง (ดู bkRender) แทนการเทียบ obj ตรงๆ
+  var origToSapIdx=new Map();
+  var reversedOrigSet=new Set();
+  sapRows.forEach(function(r,i){
+    if(r._orig)origToSapIdx.set(r._orig,i);
+    if(r._orig&&r.isReversed)reversedOrigSet.add(r._orig);
+  });
+  function indexInSapRows(obj){return origToSapIdx.has(obj)?origToSapIdx.get(obj):-1;}
+  sapRows.forEach(function(r,i){
+    if(sapMatched[i]||r.isReversed)return;
+    var isDebit=r.debit>0&&!r.credit,isCredit=r.credit>0&&!r.debit;
+    if(!isDebit&&!isCredit)return;
+    var target=Math.round((isDebit?r.debit:r.credit)*100);
+    if(!target)return;
+    var dk=dateKey(r.date||'');
+    if(!dk)return;
+    var lo=dateKeyShift(dk,-WINDOW_DAYS),hi=dateKeyShift(dk,WINDOW_DAYS);
+    var cands=(bankTxnsFull||[]).filter(function(t){
+      var tk=dateKey(t.date||'');
+      if(!tk||tk===dk||tk<lo||tk>hi)return false;
+      return isDebit?(t.credit>0&&!t.debit):(t.debit>0&&!t.credit);
+    }).map(function(t){return {cents:Math.round((isDebit?t.credit:t.debit)*100),obj:t};});
+    var m=bkFindLooseMatch(target,cands);
+    if(!m)return;
+    var dates=bkUniqueDates(m.items.map(function(c){return c.obj.date;}));
+    sapHint[i]={mode:m.mode,dates:dates};
+    // จุดสำคัญ: กรณี "1 รายการ SAP = รวมหลายบรรทัดแบงค์คนละวัน" (เคสจริงที่พบ) รายการแบงค์แต่ละบรรทัด
+    // เดี่ยวๆ จะหาผลรวมยกกำลังกลับมาเท่ากับยอด SAP เพียงรายการเดียวไม่ได้ (ยอดมันเล็กกว่า) จึงต้อง
+    // ทำเครื่องหมาย hint ย้อนกลับให้ทุกบรรทัดแบงค์ที่ถูกใช้ในชุดนี้ด้วยตรงนี้เลย ไม่ต้องรอให้รอบของ
+    // ฝั่งแบงค์ (ด้านล่าง) หาเจอเอง เพราะฝั่งนั้นค้นหาแบบทีละบรรทัดเดี่ยวเท่านั้น
+    m.items.forEach(function(c){
+      var j=indexInBankTxns(c.obj);
+      if(j>=0&&!bankMatched[j]&&!bankHint[j])bankHint[j]={mode:m.mode,dates:[r.date]};
+    });
+  });
+  bankTxns.forEach(function(t,j){
+    if(bankMatched[j]||bankHint[j])return;
+    var isCredit=t.credit>0&&!t.debit,isDebit2=t.debit>0&&!t.credit;
+    if(!isCredit&&!isDebit2)return;
+    var target=Math.round((isCredit?t.credit:t.debit)*100);
+    if(!target)return;
+    var dk=dateKey(t.date||'');
+    if(!dk)return;
+    var lo=dateKeyShift(dk,-WINDOW_DAYS),hi=dateKeyShift(dk,WINDOW_DAYS);
+    var cands=(sapLegsFull||[]).filter(function(r){
+      var rk=dateKey(r.date||'');
+      if(!rk||rk===dk||rk<lo||rk>hi)return false;
+      if(reversedOrigSet.has(r))return false;
+      return isCredit?(r.debit>0&&!r.credit):(r.credit>0&&!r.debit);
+    }).map(function(r){return {cents:Math.round((isCredit?r.debit:r.credit)*100),obj:r};});
+    var m=bkFindLooseMatch(target,cands);
+    if(!m)return;
+    var dates=bkUniqueDates(m.items.map(function(c){return c.obj.date;}));
+    bankHint[j]={mode:m.mode,dates:dates};
+    m.items.forEach(function(c){
+      var i=indexInSapRows(c.obj);
+      if(i>=0&&!sapMatched[i]&&!sapHint[i])sapHint[i]={mode:m.mode,dates:[t.date]};
+    });
+  });
+  return {sapMatched:sapMatched,bankMatched:bankMatched,sapHint:sapHint,bankHint:bankHint};
+}
+// เลื่อนวันที่ (รูปแบบ YYYYMMDD จาก dateKey) ไป deltaDays วัน แล้วคืนค่ากลับมาเป็น YYYYMMDD เดิม —
+// ใช้ทำกรอบหน้าต่างวันที่สำหรับค้นหาแบบ "คนละวันที่" (เทียบ string ได้ตรงเพราะความยาวเท่ากันเสมอ)
+function dateKeyShift(key,deltaDays){
+  var y=+key.slice(0,4),m=+key.slice(4,6)-1,d=+key.slice(6,8);
+  var dt=new Date(Date.UTC(y,m,d));
+  dt.setUTCDate(dt.getUTCDate()+deltaDays);
+  return ''+dt.getUTCFullYear()+String(dt.getUTCMonth()+1).padStart(2,'0')+String(dt.getUTCDate()).padStart(2,'0');
+}
+// หายอดตรงกัน (เดี่ยวหรือรวมหลายชิ้น) ในชุด candidates ({cents,obj}) — คืน {mode:'single'|'combo', items:[...]} หรือ null
+function bkFindLooseMatch(targetCents,candidates){
+  for(var i=0;i<candidates.length;i++){
+    if(candidates[i].cents===targetCents)return {mode:'single',items:[candidates[i]]};
+  }
+  var items=candidates.map(function(c,i){return {idx:i,cents:c.cents};});
+  var combo=bkComboSubsetSum(items,targetCents,6);
+  if(combo)return {mode:'combo',items:combo.map(function(i){return candidates[i];})};
+  return null;
+}
+function bkUniqueDates(keys){
+  var seen={},out=[];
+  keys.forEach(function(k){if(!seen[k]){seen[k]=true;out.push(k);}});
+  return out;
+}
+// หาชุดย่อยของ items ที่รวมกันได้ targetCents พอดี (DFS ตัดกิ่ง จำกัดไม่เกิน maxItems ชิ้น และพิจารณา
+// ไม่เกิน 12 รายการตั้งต้นต่อวัน กันกรณีวันนั้นมีรายการเยอะผิดปกติจนค้นหานานเกินไป)
+function bkComboSubsetSum(items,targetCents,maxItems){
+  var sorted=items.slice().sort(function(a,b){return b.cents-a.cents;}).slice(0,12);
+  var found=null;
+  function dfs(i,remaining,picked){
+    if(found)return;
+    if(remaining===0&&picked.length>0){found=picked.slice();return;}
+    if(i>=sorted.length||picked.length>=maxItems||remaining<0)return;
+    picked.push(sorted[i].idx);
+    dfs(i+1,remaining-sorted[i].cents,picked);
+    picked.pop();
+    if(found)return;
+    dfs(i+1,remaining,picked);
+  }
+  dfs(0,targetCents,[]);
+  return found;
+}
+// พยายามจับคู่ "1 รายการฝั่งหนึ่ง" กับ "ผลรวมของหลายรายการอีกฝั่งหนึ่ง" (เฉพาะรายการที่ยังไม่ถูกจับคู่
+// และอยู่วันเดียวกัน) — เรียก 4 ทิศทาง (SAP 1 ↔ แบงค์หลาย, แบงค์ 1 ↔ SAP หลาย × ทั้งขาเข้า/ขาออก)
+function bkMatchOneToMany(oneSideIdx,manySideIdx,oneList,manyList,oneField,manyField,oneMatched,manyMatched){
+  oneSideIdx.forEach(function(i){
+    if(oneMatched[i])return;
+    var target=Math.round((oneList[i][oneField]||0)*100);
+    if(!target)return;
+    var avail=manySideIdx.filter(function(j){return !manyMatched[j];}).map(function(j){return {idx:j,cents:Math.round((manyList[j][manyField]||0)*100)};});
+    if(avail.length<2)return; // เหลือ ≤1 รายการ แปลว่าลองจับคู่ 1:1 ไปแล้วในรอบแรกไม่ติด ไม่ต้องลองซ้ำ
+    var combo=bkComboSubsetSum(avail,target,6);
+    if(combo){
+      oneMatched[i]=true;
+      combo.forEach(function(j){manyMatched[j]=true;});
+    }
+  });
+}
+function bkComboMatchSameDate(sapRows,bankTxns,sapMatched,bankMatched){
+  var byDate={};
+  function grp(d){if(!byDate[d])byDate[d]={sapDebit:[],sapCredit:[],bankCredit:[],bankDebit:[]};return byDate[d];}
+  sapRows.forEach(function(r,i){
+    var d=dateKey(r.date||'');
+    if(r.isReversed)return;
+    if(r.debit>0&&!r.credit)grp(d).sapDebit.push(i);
+    if(r.credit>0&&!r.debit)grp(d).sapCredit.push(i);
+  });
+  bankTxns.forEach(function(t,j){
+    var d=dateKey(t.date||'');
+    if(t.credit>0&&!t.debit)grp(d).bankCredit.push(j);
+    if(t.debit>0&&!t.credit)grp(d).bankDebit.push(j);
+  });
+  Object.keys(byDate).forEach(function(d){
+    var g=byDate[d];
+    // ทิศทาง "เงินเข้า": SAP เดบิต ↔ แบงค์เครดิต (ทั้ง 2 ทาง: 1 ต่อหลาย)
+    bkMatchOneToMany(g.sapDebit,g.bankCredit,sapRows,bankTxns,'debit','credit',sapMatched,bankMatched);
+    bkMatchOneToMany(g.bankCredit,g.sapDebit,bankTxns,sapRows,'credit','debit',bankMatched,sapMatched);
+    // ทิศทาง "เงินออก": SAP เครดิต ↔ แบงค์เดบิต (ทั้ง 2 ทาง: 1 ต่อหลาย)
+    bkMatchOneToMany(g.sapCredit,g.bankDebit,sapRows,bankTxns,'credit','debit',sapMatched,bankMatched);
+    bkMatchOneToMany(g.bankDebit,g.sapCredit,bankTxns,sapRows,'debit','credit',bankMatched,sapMatched);
+  });
 }
 // เปิดโมดัลดูรายการย่อยฝั่งแบงค์ (CSV) ของเดือนที่เลือก พร้อมสถานะว่าพบใน SAP หรือยัง —
 // เรียกจากปุ่ม "ดูรายละเอียด" บนการ์ด KPI "เงินเข้ารวม/เงินออกรวม — ตามแบงค์ (CSV)"
 function bkShowBankDetail(kind){
   var info=BK_STATE.bankDetail;
   if(!info||!info.txns.length){return;}
-  var rows=info.txns.map(function(t,i){return {date:t.date,desc:t.desc||'',debit:t.debit||0,credit:t.credit||0,bal:t.bal,matched:!!info.matchFlags[i]};});
+  var rows=info.txns.map(function(t,i){return {date:t.date,desc:t.desc||'',debit:t.debit||0,credit:t.credit||0,bal:t.bal,matched:!!info.matchFlags[i],hint:(info.hintFlags&&info.hintFlags[i])||null};});
   var filtered=kind==='in'?rows.filter(function(r){return r.credit>0;}):rows.filter(function(r){return r.debit>0;});
   filtered.sort(function(a,b){return dateKey(a.date).localeCompare(dateKey(b.date));});
   var titleKind=kind==='in'?'เงินเข้า':'เงินออก';
   var title=titleKind+'ตามแบงค์ (CSV) — '+info.bank+' '+info.acctNo+' ('+ymLabelThai(BK_STATE.ym)+')';
   var bodyRows=filtered.map(function(r){
-    var rowStyle=r.matched?'':' style="background:rgba(224,92,92,0.14)"';
-    var badge=r.matched?'<span style="color:var(--green);font-size:11px;white-space:nowrap">✅ พบใน SAP</span>':'<span style="color:var(--red);font-size:11px;white-space:nowrap">⚠️ ยังไม่พบใน SAP</span>';
+    var badge,rowStyle;
+    if(r.matched){badge='<span style="color:var(--green);font-size:11px;white-space:nowrap">✅ พบใน SAP</span>';rowStyle='';}
+    else if(r.hint){badge='<span title="'+(r.hint.mode==='combo'?'พบผลรวมหลายรายการใน SAP ตรงยอดนี้':'พบรายการยอดตรงกันใน SAP')+'" style="color:var(--gold2);font-size:11px;white-space:nowrap">🟠 พบยอดตรงกัน คนละวันที่ (SAP: '+r.hint.dates.join(', ')+')</span>';rowStyle=' style="background:rgba(212,168,67,0.14)"';}
+    else{badge='<span style="color:var(--red);font-size:11px;white-space:nowrap">⚠️ ยังไม่พบใน SAP</span>';rowStyle=' style="background:rgba(224,92,92,0.14)"';}
     return '<tr'+rowStyle+'><td style="font-size:12px;color:var(--muted)">'+(r.date||'—')+'</td><td style="font-size:12px">'+(r.desc||'')+'</td><td class="right green">'+(r.credit?fmtFull(r.credit):'—')+'</td><td class="right red">'+(r.debit?fmtFull(r.debit):'—')+'</td><td class="right" style="font-weight:700">'+(r.bal!=null?fmtFull(r.bal):'—')+'</td><td>'+badge+'</td></tr>';
   }).join('');
   dmRegisterSimple('bkBankDetail',title,[
@@ -2631,11 +2790,11 @@ function bkShowBankDetail(kind){
     {label:'เงินเข้า',right:true,get:function(r){return fmtFull(r.credit||0);}},
     {label:'เงินออก',right:true,get:function(r){return fmtFull(r.debit||0);}},
     {label:'ยอดคงเหลือ',right:true,get:function(r){return r.bal!=null?fmtFull(r.bal):'';}},
-    {label:'พบใน SAP?',get:function(r){return r.matched?'พบ':'ยังไม่พบ';}}
+    {label:'พบใน SAP?',get:function(r){return r.matched?'พบ':(r.hint?('พบยอดตรงกันคนละวันที่ (SAP: '+r.hint.dates.join(', ')+')'):'ยังไม่พบ');}}
   ],filtered);
   openModal('🏦 '+title,
     dmExportBtns('bkBankDetail')+
-    '<div style="font-size:12px;color:var(--muted);margin:6px 0 10px">แถวสีแดง = รายการที่มีในสเตทเมนท์ธนาคารแล้ว แต่ยังหาบันทึกที่ตรงกัน (วันที่+ยอดเท่ากัน) ใน SAP ไม่พบ</div>'+
+    '<div style="font-size:12px;color:var(--muted);margin:6px 0 10px">แถวสีแดง = รายการที่มีในสเตทเมนท์ธนาคารแล้ว แต่ยังหาบันทึกที่ตรงกัน (วันที่+ยอดเท่ากัน) ใน SAP ไม่พบ · แถวสีส้ม = พบยอดตรงกันใน SAP แล้ว แต่บันทึกคนละวันที่ (น่าจะแค่วันที่เอกสารกับวันที่แบงค์ตัดจริงไม่ตรงกัน ไม่ใช่รายการขาดหาย)</div>'+
     '<div style="overflow:auto;max-height:480px"><table><thead><tr><th>วันที่</th><th>รายละเอียด</th><th style="text-align:right">เงินเข้า</th><th style="text-align:right">เงินออก</th><th style="text-align:right">ยอดคงเหลือ</th><th>สถานะ</th></tr></thead><tbody>'+
     (bodyRows||'<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:16px">— ไม่มีรายการ —</td></tr>')+
     '</tbody></table></div>');
@@ -2696,10 +2855,11 @@ function bkRecalc(){
   var bal=opening;
   var revFlags=BK_STATE.revFlags||[];
   var bankMatched=BK_STATE.sapBankMatched||[];
+  var bankHint=BK_STATE.sapBankHint||[];
   var hasBankCsv=!!BK_STATE.bankDetail;
   var runningRows=BK_STATE.rows.map(function(r,idx){
     bal=bal+r.debit-r.credit;
-    return {date:r.date,tid:r.tid,memo:r.memo,bpName:r.bpName,debit:r.debit,credit:r.credit,createdByName:r.createdByName||'',bal:bal,isReversed:!!revFlags[idx],pairId:revFlags[idx]||null,bankMatched:!!bankMatched[idx]};
+    return {date:r.date,tid:r.tid,memo:r.memo,bpName:r.bpName,debit:r.debit,credit:r.credit,createdByName:r.createdByName||'',bal:bal,isReversed:!!revFlags[idx],pairId:revFlags[idx]||null,bankMatched:!!bankMatched[idx],hint:bankHint[idx]||null};
   });
   var hideChk=document.getElementById('bkHideReversedChk');
   var hideReversed=!!(hideChk&&hideChk.checked);
@@ -2713,6 +2873,7 @@ function bkRecalc(){
       if(r.isReversed)bankCell='<span style="font-size:11px;color:var(--muted)">— (คู่กลับรายการ)</span>';
       else if(!hasBankCsv)bankCell='<span style="font-size:11px;color:var(--muted)">ยังไม่มี CSV</span>';
       else if(r.bankMatched)bankCell='<span style="font-size:11px;color:var(--green)">✅ พบในแบงค์</span>';
+      else if(r.hint)bankCell='<span title="'+(r.hint.mode==='combo'?'พบผลรวมหลายรายการในแบงค์ตรงยอดนี้':'พบรายการยอดตรงกันในแบงค์')+'" style="font-size:11px;color:var(--gold2)">🟠 พบยอดตรงกัน แต่คนละวันที่ (แบงค์: '+r.hint.dates.join(', ')+')</span>';
       else bankCell='<span style="font-size:11px;color:var(--red)">⚠️ ยังไม่พบในแบงค์</span>';
       return '<tr'+revStyle+'><td style="font-size:12px;color:var(--muted)">'+(r.date||'—')+'</td>'+
         '<td style="font-size:12px">'+(r.tid||'')+'</td>'+
@@ -2749,7 +2910,13 @@ function bkRecalc(){
     {label:'ยอดคงเหลือ',right:true,get:function(r){return fmtFull(r.bal);}},
     {label:'ผู้บันทึก',get:function(r){return r.createdByName||'';}},
     {label:'คู่กลับรายการ',get:function(r){return r.isReversed?('ใช่ (#'+r.pairId+')'):'';}},
-    {label:'เทียบกับแบงค์',get:function(r){return r.isReversed?'—':(hasBankCsv?(r.bankMatched?'พบในแบงค์':'ยังไม่พบในแบงค์'):'ยังไม่มี CSV');}}
+    {label:'เทียบกับแบงค์',get:function(r){
+      if(r.isReversed)return '—';
+      if(!hasBankCsv)return 'ยังไม่มี CSV';
+      if(r.bankMatched)return 'พบในแบงค์';
+      if(r.hint)return 'พบยอดตรงกันคนละวันที่ (แบงค์: '+r.hint.dates.join(', ')+')';
+      return 'ยังไม่พบในแบงค์';
+    }}
   ],visibleRows);
 }
 
