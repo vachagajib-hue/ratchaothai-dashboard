@@ -518,6 +518,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <select id="bkAcctSel" class="filter-select" style="min-width:300px" onchange="bkPopulateYm()"></select>
 <span style="font-size:12px;color:var(--muted);font-weight:600;margin-left:8px">เดือน/ปี:</span>
 <select id="bkYmSel" class="filter-select" onchange="bkRender()"></select>
+<button class="hbtn hbtn-gold" style="margin-left:auto" onclick="bkAllBanksUnmatchedReport()">&#128203; รายงานยังไม่พบใน SAP (ทุกธนาคาร)</button>
 </div>
 <div class="kpi-row" id="bkKpiRow"></div>
 <div class="recon-section">
@@ -2799,6 +2800,92 @@ function bkShowBankDetail(kind){
     (bodyRows||'<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:16px">— ไม่มีรายการ —</td></tr>')+
     '</tbody></table></div>');
 }
+// รายงานรวม "รายการยังไม่พบใน SAP" ของ *ทุกธนาคาร* ในเดือน/ปีที่เลือกอยู่ในหน้า "สมุดบัญชีธนาคาร"
+// (เพิ่ม 14 ก.ย. 2569 ตามคำขอ) — ต่างจาก bkShowBankDetail ตรงที่ bkShowBankDetail ดูได้ทีละบัญชี
+// (เฉพาะบัญชีที่เลือกอยู่) ส่วนอันนี้วนทุกบัญชีธนาคารจริง (1112-xx/1113-xx) ที่มี CSV ของเดือนนั้น
+// แล้วรวมเป็นรายงานเดียวแยกหมวดตามธนาคาร — ใช้ตรรกะจับคู่ชุดเดียวกับ bkRender/bkMatchSapBank
+// ทุกประการ เพื่อให้ผลตรงกับคอลัมน์ "เทียบกับแบงค์" ที่เห็นอยู่แล้วในตารางรายบัญชี ไม่มี logic จับคู่ใหม่
+function bkAllBanksUnmatchedReport(){
+  var ymSel=document.getElementById('bkYmSel');
+  var ym=ymSel?ymSel.value:'';
+  if(!ym){alert('กรุณาเลือกบัญชีและเดือน/ปีในหน้า "สมุดบัญชีธนาคาร" ก่อน (ต้องมีอย่างน้อย 1 บัญชีที่มีข้อมูล เพื่อให้มีรายการเดือน/ปีให้เลือก)');return;}
+  var accts=bkAccounts();
+  var byBank={};   // bankCode -> {accounts:[{acctNo,acctName,rows:[...],subIn,subOut}]}
+  var bankOrder=[];
+  var anyBankData=false,grandCount=0,grandIn=0,grandOut=0;
+  accts.forEach(function(acctInfo){
+    var allLegs=(G.sapAllBankLegs&&G.sapAllBankLegs[acctInfo.code])||[];
+    var rows=allLegs.filter(function(l){return bkYmOf(l.date)===ym;}).slice();
+    rows.sort(function(a,b){var ka=dateKey(a.date),kb=dateKey(b.date);if(ka!==kb)return ka<kb?-1:1;return (parseInt(a.tid,10)||0)-(parseInt(b.tid,10)||0);});
+    var revInfo=bkDetectReversals(rows);
+    var foundBank=bkFindBankAccount(acctInfo.name||'');
+    if(!foundBank)return; // บัญชีนี้ยังไม่เคยอัปโหลด CSV — ไม่มีอะไรให้เทียบ ข้าม
+    var ymCompact=ym.replace('-','');
+    var bankTxnsFull=foundBank.account.txns||[];
+    var bankTxnsMonth=bankTxnsFull.filter(function(t){return dateKey(t.date||'').slice(0,6)===ymCompact;}).slice()
+      .sort(function(a,b){return dateKey(a.date).localeCompare(dateKey(b.date));});
+    if(!bankTxnsMonth.length)return; // มี CSV บัญชีนี้ แต่ไม่มีรายการเดือนนี้ — ข้าม
+    anyBankData=true;
+    var rowsForMatch=rows.map(function(r,i){return {date:r.date,debit:r.debit,credit:r.credit,isReversed:!!revInfo.flags[i],_orig:r};});
+    var m=bkMatchSapBank(rowsForMatch,bankTxnsMonth,bankTxnsFull,allLegs);
+    var bankRows=bankTxnsMonth.map(function(t,i){
+      return {date:t.date,desc:t.desc||'',debit:t.debit||0,credit:t.credit||0,bal:t.bal,matched:!!m.bankMatched[i],hint:(m.bankHint&&m.bankHint[i])||null};
+    }).filter(function(r){return !r.matched;}); // เก็บเฉพาะที่ "ยังไม่พบใน SAP" (ทั้งสีแดง=ไม่พบเลย และสีส้ม=พบยอดตรงกันคนละวันที่)
+    if(!bankRows.length)return;
+    bankRows.sort(function(a,b){return dateKey(a.date).localeCompare(dateKey(b.date));});
+    var bankKey=foundBank.bank;
+    if(!byBank[bankKey]){byBank[bankKey]={accounts:[]};bankOrder.push(bankKey);}
+    var subIn=bankRows.reduce(function(s,r){return s+(r.credit||0);},0);
+    var subOut=bankRows.reduce(function(s,r){return s+(r.debit||0);},0);
+    byBank[bankKey].accounts.push({acctNo:foundBank.account.acctNo,acctName:acctInfo.name,rows:bankRows,subIn:subIn,subOut:subOut});
+    grandCount+=bankRows.length;grandIn+=subIn;grandOut+=subOut;
+  });
+  var monthLabel=ymLabelThai(ym);
+  var title='รายการยังไม่พบใน SAP — ทุกธนาคาร ('+monthLabel+')';
+  var flatRows=[]; // สำหรับ export (PDF/Excel) — แถวเดียวรวมทุกธนาคาร
+  var sectionsHtml='';
+  bankOrder.sort(function(a,b){return (BK_TH[a]||a).localeCompare(b,'th');}).forEach(function(bankKey){
+    var bk=byBank[bankKey];
+    var bankIn=0,bankOut=0,bankCnt=0;
+    var acctsHtml=bk.accounts.map(function(a){
+      bankIn+=a.subIn;bankOut+=a.subOut;bankCnt+=a.rows.length;
+      var rowsHtml=a.rows.map(function(r){
+        var badge,rowStyle,statusLabel;
+        if(r.hint){badge='<span title="'+(r.hint.mode==='combo'?'พบผลรวมหลายรายการใน SAP ตรงยอดนี้':'พบรายการยอดตรงกันใน SAP')+'" style="color:var(--gold2);font-size:11px;white-space:nowrap">🟠 พบยอดตรงกัน คนละวันที่ (SAP: '+r.hint.dates.join(', ')+')</span>';rowStyle=' style="background:rgba(212,168,67,0.14)"';statusLabel='พบยอดตรงกันคนละวันที่ (SAP: '+r.hint.dates.join(', ')+')';}
+        else{badge='<span style="color:var(--red);font-size:11px;white-space:nowrap">⚠️ ยังไม่พบใน SAP</span>';rowStyle=' style="background:rgba(224,92,92,0.14)"';statusLabel='ยังไม่พบใน SAP';}
+        flatRows.push({bank:BK_TH[bankKey]||bankKey,acctNo:a.acctNo,acctName:a.acctName,date:r.date,desc:r.desc,credit:r.credit,debit:r.debit,bal:r.bal,status:statusLabel});
+        return '<tr'+rowStyle+'><td style="font-size:12px;color:var(--muted)">'+(r.date||'—')+'</td><td style="font-size:12px">'+(r.desc||'')+'</td><td class="right green">'+(r.credit?fmtFull(r.credit):'—')+'</td><td class="right red">'+(r.debit?fmtFull(r.debit):'—')+'</td><td class="right" style="font-weight:700">'+(r.bal!=null?fmtFull(r.bal):'—')+'</td><td>'+badge+'</td></tr>';
+      }).join('');
+      return '<div style="margin:10px 0 4px;font-size:12.5px;font-weight:700;color:var(--text2)">'+a.acctNo+' — '+a.acctName+' <span style="font-weight:400;color:var(--muted)">('+a.rows.length+' รายการ · เข้า '+fmtFull(a.subIn)+' · ออก '+fmtFull(a.subOut)+')</span></div>'+
+        '<div style="overflow:auto;max-height:320px;margin-bottom:6px"><table><thead><tr><th>วันที่</th><th>รายละเอียด</th><th style="text-align:right">เงินเข้า</th><th style="text-align:right">เงินออก</th><th style="text-align:right">ยอดคงเหลือ</th><th>สถานะ</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div>';
+    }).join('');
+    sectionsHtml+='<div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px">'+
+      '<div style="font-size:14px;font-weight:700;color:var(--gold2);margin-bottom:2px">🏦 '+(BK_TH[bankKey]||bankKey)+' <span style="font-weight:400;color:var(--muted);font-size:12px">— '+bankCnt+' รายการ · เข้า '+fmtFull(bankIn)+' · ออก '+fmtFull(bankOut)+'</span></div>'+
+      acctsHtml+'</div>';
+  });
+  dmRegisterSimple('bkAllBanksUnmatched',title,[
+    {label:'ธนาคาร',get:function(r){return r.bank;}},
+    {label:'เลขบัญชี',get:function(r){return r.acctNo;}},
+    {label:'ชื่อบัญชี (SAP)',get:function(r){return r.acctName;}},
+    {label:'วันที่',get:function(r){return r.date||'—';}},
+    {label:'รายละเอียด',get:function(r){return r.desc||'';}},
+    {label:'เงินเข้า',right:true,get:function(r){return fmtFull(r.credit||0);}},
+    {label:'เงินออก',right:true,get:function(r){return fmtFull(r.debit||0);}},
+    {label:'ยอดคงเหลือ',right:true,get:function(r){return r.bal!=null?fmtFull(r.bal):'';}},
+    {label:'สถานะ',get:function(r){return r.status;}}
+  ],flatRows);
+  var bodyHtml;
+  if(!grandCount){
+    bodyHtml='<div style="text-align:center;color:var(--muted);padding:28px 16px">'+
+      (anyBankData?'✅ ไม่มีรายการค้าง — ทุกรายการในสเตทเมนท์ธนาคาร (CSV) ของเดือนนี้กระทบยอดกับ SAP ครบแล้ว':
+      '⚠️ ไม่พบข้อมูล CSV สเตทเมนท์ธนาคารของเดือนนี้ในบัญชีใดเลย — กรุณาอัปโหลด CSV ก่อน (หน้า "กระทบยอดธนาคาร" หรือ "อ่าน PDF Bank")')+
+      '</div>';
+  } else {
+    bodyHtml='<div style="font-size:12px;color:var(--muted);margin:6px 0 12px">รวมทั้งหมด <b style="color:var(--text)">'+grandCount+' รายการ</b> &nbsp;·&nbsp; เงินเข้ารวม <b style="color:var(--green)">'+fmtFull(grandIn)+'</b> &nbsp;·&nbsp; เงินออกรวม <b style="color:var(--red)">'+fmtFull(grandOut)+'</b><br>แถวสีแดง = มีในสเตทเมนท์ธนาคารแล้ว แต่ยังหาบันทึกที่ตรงกัน (วันที่+ยอดเท่ากัน) ใน SAP ไม่พบ · แถวสีส้ม = พบยอดตรงกันใน SAP แล้ว แต่บันทึกคนละวันที่ (น่าจะแค่วันที่เอกสารกับวันที่แบงค์ตัดจริงไม่ตรงกัน ไม่ใช่รายการขาดหาย) · เฉพาะบัญชีที่มีทั้งข้อมูล SAP และ CSV ของเดือนนี้เท่านั้น</div>'+
+      sectionsHtml;
+  }
+  openModal('📋 '+title, dmExportBtns('bkAllBanksUnmatched')+bodyHtml);
+}
 // ตรวจจับ "คู่กลับรายการ" อัตโนมัติ — จับคู่บรรทัดที่วันที่เดียวกัน ยอดเท่ากัน
 // เดบิต/เครดิตตรงข้ามกัน (เช่น บันทึกผิดแล้วกลับรายการในวันเดียวกัน) เพื่อไม่ให้ยอด
 // "เดบิตรวม/เครดิตรวม" ดูพองขึ้นทั้งที่ผลสุทธิจริงไม่เปลี่ยน — จับคู่ตามลำดับเลขที่เอกสาร
@@ -3199,8 +3286,8 @@ function acctMatches(bankAcctNo, sapName){
 // field (e.g. "Transfer in via BAHTNET from X6669 BSL LEASING CO.,LTD. Other Funds
 // Transfer" has a comma between "CO." and "LTD."). A plain line.split(',') breaks on
 // that comma, shifting the Debit/Credit columns and losing the amounts — this is the
-// fix for that bug. Returns an array of trimmed column values with the wrapping quotes
-// already stripped.
+// fix for that bug (พบ/แก้ ม.ค.–ก.ย. 2569, ดูรายละเอียดใน CSV_Comma_Parser_Bug_Fix_Note.md).
+// Returns an array of trimmed column values with the wrapping quotes already stripped.
 function parseCSVLine(line){
   var result=[],cur='',inQuotes=false;
   for(var i=0;i<line.length;i++){
