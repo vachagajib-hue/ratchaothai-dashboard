@@ -2976,7 +2976,11 @@ function bkAllBanksUnmatchedReport(opts){
     var acctsHtml=bk.accounts.map(function(a){
       var acctCnt=a.months.reduce(function(s,mo){return s+mo.rows.length;},0);
       bankIn+=a.subIn;bankOut+=a.subOut;bankCnt+=acctCnt;
-      var monthsHtml=a.months.map(function(mo){
+      // ตารางเดียวต่อบัญชี (thead ชุดเดียว) แม้จะมีหลายเดือน — คั่นแต่ละเดือนด้วยแถวหัวข้อย่อยใน
+      // tbody แทนที่จะแยกเป็นคนละ <table> ต่อเดือน เพื่อให้ความกว้างคอลัมน์ (วันที่/รายละเอียด/
+      // เงินเข้า/เงินออก/ยอดคงเหลือ/สถานะ) ตรงกันทุกเดือน ไม่ลายตา (แก้ตามที่ผู้ใช้ทักท้วง 18 ก.ย. 2569)
+      var acctBodyHtml=a.months.map(function(mo){
+        var moHeaderRow=yms.length>1?('<tr><td colspan="6" style="background:rgba(255,255,255,0.045);font-size:11.5px;font-weight:700;color:var(--gold2);padding:6px 8px">'+ymLabelThai(mo.ym)+' — '+mo.rows.length+' รายการ</td></tr>'):'';
         var rowsHtml=mo.rows.map(function(r){
           var b=bkTxnBadge(r);
           var ov=manualMatchFor('bkTxn',r.key);
@@ -2984,10 +2988,10 @@ function bkAllBanksUnmatchedReport(opts){
           flatRows.push({bank:BK_TH[bankKey]||bankKey,acctNo:a.acctNo,acctName:a.acctName,ym:ymLabelThai(mo.ym),date:r.date,desc:r.desc,credit:r.credit,debit:r.debit,bal:r.bal,status:statusLabel});
           return '<tr'+b.rowStyle+'><td style="font-size:12px;color:var(--muted)">'+(r.date||'—')+'</td><td style="font-size:12px">'+(r.desc||'')+'</td><td class="right green">'+(r.credit?fmtFull(r.credit):'—')+'</td><td class="right red">'+(r.debit?fmtFull(r.debit):'—')+'</td><td class="right" style="font-weight:700">'+(r.bal!=null?fmtFull(r.bal):'—')+'</td><td>'+b.badge+'</td></tr>';
         }).join('');
-        var moHeader=yms.length>1?('<div style="font-size:11.5px;font-weight:700;color:var(--muted);margin:6px 0 2px">'+ymLabelThai(mo.ym)+' — '+mo.rows.length+' รายการ</div>'):'';
-        return moHeader+'<div style="overflow:auto;max-height:320px;margin-bottom:6px"><table><thead><tr><th>วันที่</th><th>รายละเอียด</th><th style="text-align:right">เงินเข้า</th><th style="text-align:right">เงินออก</th><th style="text-align:right">ยอดคงเหลือ</th><th>สถานะ</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div>';
+        return moHeaderRow+rowsHtml;
       }).join('');
-      return '<div style="margin:10px 0 4px;font-size:12.5px;font-weight:700;color:var(--text2)">'+a.acctNo+' — '+a.acctName+' <span style="font-weight:400;color:var(--muted)">('+acctCnt+' รายการ · เข้า '+fmtFull(a.subIn)+' · ออก '+fmtFull(a.subOut)+')</span></div>'+monthsHtml;
+      var acctTableHtml='<div style="overflow:auto;max-height:360px;margin-bottom:6px"><table style="table-layout:fixed;width:100%"><colgroup><col style="width:90px"><col><col style="width:110px"><col style="width:110px"><col style="width:110px"><col style="width:230px"></colgroup><thead><tr><th>วันที่</th><th>รายละเอียด</th><th style="text-align:right">เงินเข้า</th><th style="text-align:right">เงินออก</th><th style="text-align:right">ยอดคงเหลือ</th><th>สถานะ</th></tr></thead><tbody>'+acctBodyHtml+'</tbody></table></div>';
+      return '<div style="margin:10px 0 4px;font-size:12.5px;font-weight:700;color:var(--text2)">'+a.acctNo+' — '+a.acctName+' <span style="font-weight:400;color:var(--muted)">('+acctCnt+' รายการ · เข้า '+fmtFull(a.subIn)+' · ออก '+fmtFull(a.subOut)+')</span></div>'+acctTableHtml;
     }).join('');
     sectionsHtml+='<div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px">'+
       '<div style="font-size:14px;font-weight:700;color:var(--gold2);margin-bottom:2px">🏦 '+(BK_TH[bankKey]||bankKey)+' <span style="font-weight:400;color:var(--muted);font-size:12px">— '+bankCnt+' รายการ · เข้า '+fmtFull(bankIn)+' · ออก '+fmtFull(bankOut)+'</span></div>'+
