@@ -518,6 +518,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <select id="bkAcctSel" class="filter-select" style="min-width:300px" onchange="bkPopulateYm()"></select>
 <span style="font-size:12px;color:var(--muted);font-weight:600;margin-left:8px">เดือน/ปี:</span>
 <select id="bkYmSel" class="filter-select" onchange="bkRender()"></select>
+<button class="hbtn" onclick="bkOpenReportFilter()">&#128269; ตัวกรองรายงาน (หลายบัญชี/หลายเดือน)</button>
 <button class="hbtn hbtn-gold" style="margin-left:auto" onclick="bkAllBanksUnmatchedReport()">&#128203; รายงานยังไม่พบใน SAP (ทุกธนาคาร)</button>
 </div>
 <div class="kpi-row" id="bkKpiRow"></div>
@@ -1465,7 +1466,7 @@ async function mmSave(){
         try{showRpDetail(RP_DETAIL_REOPEN.code,RP_DETAIL_REOPEN.side);}catch(e){}
       } else if(p.side==='bkTxn'&&BK_DETAIL_REOPEN){
         try{
-          if(BK_DETAIL_REOPEN.type==='all')bkAllBanksUnmatchedReport();
+          if(BK_DETAIL_REOPEN.type==='all')bkAllBanksUnmatchedReport(BK_DETAIL_REOPEN.opts||null);
           else bkShowBankDetail(BK_DETAIL_REOPEN.kind);
         }catch(e){}
       } else {
@@ -2844,66 +2845,149 @@ function bkShowBankDetail(kind){
 // (เฉพาะบัญชีที่เลือกอยู่) ส่วนอันนี้วนทุกบัญชีธนาคารจริง (1112-xx/1113-xx) ที่มี CSV ของเดือนนั้น
 // แล้วรวมเป็นรายงานเดียวแยกหมวดตามธนาคาร — ใช้ตรรกะจับคู่ชุดเดียวกับ bkRender/bkMatchSapBank
 // ทุกประการ เพื่อให้ผลตรงกับคอลัมน์ "เทียบกับแบงค์" ที่เห็นอยู่แล้วในตารางรายบัญชี ไม่มี logic จับคู่ใหม่
-function bkAllBanksUnmatchedReport(){
-  var ymSel=document.getElementById('bkYmSel');
-  var ym=ymSel?ymSel.value:'';
-  if(!ym){alert('กรุณาเลือกบัญชีและเดือน/ปีในหน้า "สมุดบัญชีธนาคาร" ก่อน (ต้องมีอย่างน้อย 1 บัญชีที่มีข้อมูล เพื่อให้มีรายการเดือน/ปีให้เลือก)');return;}
-  BK_DETAIL_REOPEN={type:'all'};
+// รวมรายการ Year-Month ที่มีข้อมูลจริง (Q15) จาก *ทุกบัญชีธนาคาร* เข้าด้วยกัน — ใช้กับตัวกรอง
+// รายงานหลายเดือน/หลายบัญชี (เพิ่ม 18 ก.ย. 2569) ไม่ผูกกับบัญชีที่เลือกอยู่ในดรอปดาวน์หลัก
+// (bkAvailableYm ตัวเดิมผูกกับบัญชีเดียว ยังใช้ที่เดิมสำหรับ dropdown ของตารางสมุดบัญชี ไม่แก้)
+function bkAllAvailableYm(){
+  var set={};
+  bkAccounts().forEach(function(a){
+    bkAvailableYm(a.code).forEach(function(ym){set[ym]=true;});
+  });
+  return Object.keys(set).sort();
+}
+function bkFiltSetAll(cls,val){
+  document.querySelectorAll('.'+cls).forEach(function(el){el.checked=val;});
+}
+// เปิด popup ให้ติ๊กเลือกได้หลายบัญชี + หลายเดือน/ปีพร้อมกัน ก่อนสร้างรายงาน "ยังไม่พบใน SAP"
+// (ค่าเริ่มต้น: ติ๊กบัญชีทั้งหมด, ติ๊กเฉพาะเดือน/ปีที่กำลังดูอยู่ในตาราง — ตามที่ตกลงกับผู้ใช้)
+function bkOpenReportFilter(){
   var accts=bkAccounts();
-  var byBank={};   // bankCode -> {accounts:[{acctNo,acctName,rows:[...],subIn,subOut}]}
+  var yms=bkAllAvailableYm();
+  var curYm=document.getElementById('bkYmSel')?document.getElementById('bkYmSel').value:'';
+  var acctHtml=accts.map(function(a){
+    return '<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer"><input type="checkbox" class="bkFiltAcct" value="'+a.code+'" checked> '+a.code+' — '+a.name+'</label>';
+  }).join('');
+  var ymHtml=yms.map(function(ym){
+    var chk=(ym===curYm)?' checked':'';
+    return '<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer"><input type="checkbox" class="bkFiltYm" value="'+ym+'"'+chk+'> '+ymLabelThai(ym)+'</label>';
+  }).join('');
+  var html=
+    '<div style="display:flex;gap:20px;flex-wrap:wrap">'+
+      '<div style="min-width:260px;flex:1">'+
+        '<div style="font-weight:700;font-size:13px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">บัญชีธนาคาร'+
+          '<span style="font-size:11px;font-weight:400"><a href="javascript:void(0)" onclick="bkFiltSetAll(\'bkFiltAcct\',true)" style="color:var(--blue)">เลือกทั้งหมด</a> · <a href="javascript:void(0)" onclick="bkFiltSetAll(\'bkFiltAcct\',false)" style="color:var(--muted)">ไม่เลือกเลย</a></span>'+
+        '</div>'+
+        '<div style="max-height:280px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px">'+(acctHtml||'<span style="color:var(--muted);font-size:12px">— ไม่มีบัญชี —</span>')+'</div>'+
+      '</div>'+
+      '<div style="min-width:180px;flex:1">'+
+        '<div style="font-weight:700;font-size:13px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">เดือน/ปี'+
+          '<span style="font-size:11px;font-weight:400"><a href="javascript:void(0)" onclick="bkFiltSetAll(\'bkFiltYm\',true)" style="color:var(--blue)">เลือกทั้งหมด</a> · <a href="javascript:void(0)" onclick="bkFiltSetAll(\'bkFiltYm\',false)" style="color:var(--muted)">ไม่เลือกเลย</a></span>'+
+        '</div>'+
+        '<div style="max-height:280px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px">'+(ymHtml||'<span style="color:var(--muted);font-size:12px">— ไม่มีข้อมูล —</span>')+'</div>'+
+      '</div>'+
+    '</div>'+
+    '<div style="margin-top:16px;text-align:right">'+
+      '<button class="hbtn hbtn-gold" onclick="bkRunFilteredReport()">&#128203; สร้างรายงาน</button>'+
+    '</div>';
+  openModal('🔎 ตัวกรองรายงาน "ยังไม่พบใน SAP" (เลือกหลายบัญชี/หลายเดือน)', html);
+}
+function bkRunFilteredReport(){
+  var accts=Array.prototype.slice.call(document.querySelectorAll('.bkFiltAcct:checked')).map(function(el){return el.value;});
+  var yms=Array.prototype.slice.call(document.querySelectorAll('.bkFiltYm:checked')).map(function(el){return el.value;});
+  if(!accts.length||!yms.length){alert('กรุณาเลือกอย่างน้อย 1 บัญชี และ 1 เดือน/ปี');return;}
+  closeModal();
+  bkAllBanksUnmatchedReport({accounts:accts,yms:yms});
+}
+// รายงานรวม "รายการยังไม่พบใน SAP" ของ *ทุกธนาคาร* — ปุ่มหลัก (ไม่ส่ง opts) = พฤติกรรมเดิม
+// (ทุกบัญชี + เดือน/ปีเดียวที่กำลังดูอยู่ในตาราง) ส่วน opts={accounts:[...],yms:[...]} มาจาก popup
+// "ตัวกรองรายงาน" (เพิ่ม 18 ก.ย. 2569 ตามคำขอ) ให้เลือกได้หลายบัญชี+หลายเดือนพร้อมกัน โดยยังใช้
+// ตรรกะจับคู่ชุดเดียวกับ bkRender/bkMatchSapBank ทุกประการ ไม่มี logic จับคู่ใหม่
+function bkAllBanksUnmatchedReport(opts){
+  var multiMode=!!(opts&&opts.accounts&&opts.yms);
+  var yms;
+  if(multiMode){
+    yms=opts.yms.slice().sort();
+    if(!yms.length){alert('กรุณาเลือกอย่างน้อย 1 เดือน/ปี');return;}
+  } else {
+    var ymSel=document.getElementById('bkYmSel');
+    var ym=ymSel?ymSel.value:'';
+    if(!ym){alert('กรุณาเลือกบัญชีและเดือน/ปีในหน้า "สมุดบัญชีธนาคาร" ก่อน (ต้องมีอย่างน้อย 1 บัญชีที่มีข้อมูล เพื่อให้มีรายการเดือน/ปีให้เลือก)');return;}
+    yms=[ym];
+  }
+  BK_DETAIL_REOPEN={type:'all',opts:opts||null};
+  var accts=bkAccounts();
+  if(multiMode){
+    var selSet={};
+    opts.accounts.forEach(function(c){selSet[c]=true;});
+    accts=accts.filter(function(a){return selSet[a.code];});
+  }
+  var byBank={};   // bankCode -> {accounts:[{acctNo,acctName,months:[{ym,rows}],subIn,subOut}]}
   var bankOrder=[];
   var anyBankData=false,grandCount=0,grandIn=0,grandOut=0;
   accts.forEach(function(acctInfo){
-    var allLegs=(G.sapAllBankLegs&&G.sapAllBankLegs[acctInfo.code])||[];
-    var rows=allLegs.filter(function(l){return bkYmOf(l.date)===ym;}).slice();
-    rows.sort(function(a,b){var ka=dateKey(a.date),kb=dateKey(b.date);if(ka!==kb)return ka<kb?-1:1;return (parseInt(a.tid,10)||0)-(parseInt(b.tid,10)||0);});
-    var revInfo=bkDetectReversals(rows);
     var foundBank=bkFindBankAccount(acctInfo.name||'');
     if(!foundBank)return; // บัญชีนี้ยังไม่เคยอัปโหลด CSV — ไม่มีอะไรให้เทียบ ข้าม
-    var ymCompact=ym.replace('-','');
     var bankTxnsFull=foundBank.account.txns||[];
-    var bankTxnsMonth=bankTxnsFull.filter(function(t){return dateKey(t.date||'').slice(0,6)===ymCompact;}).slice()
-      .sort(function(a,b){return dateKey(a.date).localeCompare(dateKey(b.date));});
-    if(!bankTxnsMonth.length)return; // มี CSV บัญชีนี้ แต่ไม่มีรายการเดือนนี้ — ข้าม
-    anyBankData=true;
-    var rowsForMatch=rows.map(function(r,i){return {date:r.date,debit:r.debit,credit:r.credit,isReversed:!!revInfo.flags[i],_orig:r};});
-    var m=bkMatchSapBank(rowsForMatch,bankTxnsMonth,bankTxnsFull,allLegs);
-    var bankKeys=bkTxnKeyList(acctInfo.code,bankTxnsMonth);
-    var bankRows=bankTxnsMonth.map(function(t,i){
-      return {date:t.date,desc:t.desc||'',debit:t.debit||0,credit:t.credit||0,bal:t.bal,matched:!!m.bankMatched[i],hint:(m.bankHint&&m.bankHint[i])||null,key:bankKeys[i]};
-    }).filter(function(r){
-      if(r.matched)return false; // เจอตรงกันอัตโนมัติแล้ว ไม่ต้องขึ้น
-      var ov=manualMatchFor('bkTxn',r.key);
-      if(ov&&ov.status==='matched')return false; // ยืนยันเองว่าตรงกันแล้ว ถือว่าเคลียร์แล้ว ไม่ต้องขึ้นซ้ำ
-      return true; // ที่เหลือ (ยังไม่พบเลย / พบคนละวันที่ / ยืนยันเองว่ายังไม่ตรง) ให้ขึ้นในรายงานต่อ
+    var allLegs=(G.sapAllBankLegs&&G.sapAllBankLegs[acctInfo.code])||[];
+    var monthsForAcct=[];
+    yms.forEach(function(ym){
+      var rows=allLegs.filter(function(l){return bkYmOf(l.date)===ym;}).slice();
+      rows.sort(function(a,b){var ka=dateKey(a.date),kb=dateKey(b.date);if(ka!==kb)return ka<kb?-1:1;return (parseInt(a.tid,10)||0)-(parseInt(b.tid,10)||0);});
+      var revInfo=bkDetectReversals(rows);
+      var ymCompact=ym.replace('-','');
+      var bankTxnsMonth=bankTxnsFull.filter(function(t){return dateKey(t.date||'').slice(0,6)===ymCompact;}).slice()
+        .sort(function(a,b){return dateKey(a.date).localeCompare(dateKey(b.date));});
+      if(!bankTxnsMonth.length)return; // มี CSV บัญชีนี้ แต่ไม่มีรายการเดือนนี้ — ข้ามเดือนนี้
+      anyBankData=true;
+      var rowsForMatch=rows.map(function(r,i){return {date:r.date,debit:r.debit,credit:r.credit,isReversed:!!revInfo.flags[i],_orig:r};});
+      var m=bkMatchSapBank(rowsForMatch,bankTxnsMonth,bankTxnsFull,allLegs);
+      var bankKeys=bkTxnKeyList(acctInfo.code,bankTxnsMonth);
+      var bankRows=bankTxnsMonth.map(function(t,i){
+        return {date:t.date,desc:t.desc||'',debit:t.debit||0,credit:t.credit||0,bal:t.bal,matched:!!m.bankMatched[i],hint:(m.bankHint&&m.bankHint[i])||null,key:bankKeys[i]};
+      }).filter(function(r){
+        if(r.matched)return false; // เจอตรงกันอัตโนมัติแล้ว ไม่ต้องขึ้น
+        var ov=manualMatchFor('bkTxn',r.key);
+        if(ov&&ov.status==='matched')return false; // ยืนยันเองว่าตรงกันแล้ว ถือว่าเคลียร์แล้ว ไม่ต้องขึ้นซ้ำ
+        return true; // ที่เหลือ (ยังไม่พบเลย / พบคนละวันที่ / ยืนยันเองว่ายังไม่ตรง) ให้ขึ้นในรายงานต่อ
+      });
+      if(!bankRows.length)return;
+      bankRows.sort(function(a,b){return dateKey(a.date).localeCompare(dateKey(b.date));});
+      monthsForAcct.push({ym:ym,rows:bankRows});
     });
-    if(!bankRows.length)return;
-    bankRows.sort(function(a,b){return dateKey(a.date).localeCompare(dateKey(b.date));});
+    if(!monthsForAcct.length)return;
     var bankKey=foundBank.bank;
     if(!byBank[bankKey]){byBank[bankKey]={accounts:[]};bankOrder.push(bankKey);}
-    var subIn=bankRows.reduce(function(s,r){return s+(r.credit||0);},0);
-    var subOut=bankRows.reduce(function(s,r){return s+(r.debit||0);},0);
-    byBank[bankKey].accounts.push({acctNo:foundBank.account.acctNo,acctName:acctInfo.name,rows:bankRows,subIn:subIn,subOut:subOut});
-    grandCount+=bankRows.length;grandIn+=subIn;grandOut+=subOut;
+    var subIn=0,subOut=0,subCnt=0;
+    monthsForAcct.forEach(function(mo){
+      subIn+=mo.rows.reduce(function(s,r){return s+(r.credit||0);},0);
+      subOut+=mo.rows.reduce(function(s,r){return s+(r.debit||0);},0);
+      subCnt+=mo.rows.length;
+    });
+    byBank[bankKey].accounts.push({acctNo:foundBank.account.acctNo,acctName:acctInfo.name,months:monthsForAcct,subIn:subIn,subOut:subOut});
+    grandCount+=subCnt;grandIn+=subIn;grandOut+=subOut;
   });
-  var monthLabel=ymLabelThai(ym);
+  var monthLabel=yms.length===1?ymLabelThai(yms[0]):(yms.length+' เดือน: '+yms.map(ymLabelThai).join(', '));
   var title='รายการยังไม่พบใน SAP — ทุกธนาคาร ('+monthLabel+')';
-  var flatRows=[]; // สำหรับ export (PDF/Excel) — แถวเดียวรวมทุกธนาคาร
+  var flatRows=[]; // สำหรับ export (PDF/Excel) — แถวเดียวรวมทุกธนาคาร/ทุกเดือน
   var sectionsHtml='';
   bankOrder.sort(function(a,b){return (BK_TH[a]||a).localeCompare(b,'th');}).forEach(function(bankKey){
     var bk=byBank[bankKey];
     var bankIn=0,bankOut=0,bankCnt=0;
     var acctsHtml=bk.accounts.map(function(a){
-      bankIn+=a.subIn;bankOut+=a.subOut;bankCnt+=a.rows.length;
-      var rowsHtml=a.rows.map(function(r){
-        var b=bkTxnBadge(r);
-        var ov=manualMatchFor('bkTxn',r.key);
-        var statusLabel=ov?(ov.status==='matched'?('ยืนยันเอง'+(ov.note?' — '+ov.note:'')):('ยืนยันว่าไม่ตรง'+(ov.note?' — '+ov.note:''))):(r.hint?('พบยอดตรงกันคนละวันที่ (SAP: '+r.hint.dates.join(', ')+')'):'ยังไม่พบใน SAP');
-        flatRows.push({bank:BK_TH[bankKey]||bankKey,acctNo:a.acctNo,acctName:a.acctName,date:r.date,desc:r.desc,credit:r.credit,debit:r.debit,bal:r.bal,status:statusLabel});
-        return '<tr'+b.rowStyle+'><td style="font-size:12px;color:var(--muted)">'+(r.date||'—')+'</td><td style="font-size:12px">'+(r.desc||'')+'</td><td class="right green">'+(r.credit?fmtFull(r.credit):'—')+'</td><td class="right red">'+(r.debit?fmtFull(r.debit):'—')+'</td><td class="right" style="font-weight:700">'+(r.bal!=null?fmtFull(r.bal):'—')+'</td><td>'+b.badge+'</td></tr>';
+      var acctCnt=a.months.reduce(function(s,mo){return s+mo.rows.length;},0);
+      bankIn+=a.subIn;bankOut+=a.subOut;bankCnt+=acctCnt;
+      var monthsHtml=a.months.map(function(mo){
+        var rowsHtml=mo.rows.map(function(r){
+          var b=bkTxnBadge(r);
+          var ov=manualMatchFor('bkTxn',r.key);
+          var statusLabel=ov?(ov.status==='matched'?('ยืนยันเอง'+(ov.note?' — '+ov.note:'')):('ยืนยันว่าไม่ตรง'+(ov.note?' — '+ov.note:''))):(r.hint?('พบยอดตรงกันคนละวันที่ (SAP: '+r.hint.dates.join(', ')+')'):'ยังไม่พบใน SAP');
+          flatRows.push({bank:BK_TH[bankKey]||bankKey,acctNo:a.acctNo,acctName:a.acctName,ym:ymLabelThai(mo.ym),date:r.date,desc:r.desc,credit:r.credit,debit:r.debit,bal:r.bal,status:statusLabel});
+          return '<tr'+b.rowStyle+'><td style="font-size:12px;color:var(--muted)">'+(r.date||'—')+'</td><td style="font-size:12px">'+(r.desc||'')+'</td><td class="right green">'+(r.credit?fmtFull(r.credit):'—')+'</td><td class="right red">'+(r.debit?fmtFull(r.debit):'—')+'</td><td class="right" style="font-weight:700">'+(r.bal!=null?fmtFull(r.bal):'—')+'</td><td>'+b.badge+'</td></tr>';
+        }).join('');
+        var moHeader=yms.length>1?('<div style="font-size:11.5px;font-weight:700;color:var(--muted);margin:6px 0 2px">'+ymLabelThai(mo.ym)+' — '+mo.rows.length+' รายการ</div>'):'';
+        return moHeader+'<div style="overflow:auto;max-height:320px;margin-bottom:6px"><table><thead><tr><th>วันที่</th><th>รายละเอียด</th><th style="text-align:right">เงินเข้า</th><th style="text-align:right">เงินออก</th><th style="text-align:right">ยอดคงเหลือ</th><th>สถานะ</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div>';
       }).join('');
-      return '<div style="margin:10px 0 4px;font-size:12.5px;font-weight:700;color:var(--text2)">'+a.acctNo+' — '+a.acctName+' <span style="font-weight:400;color:var(--muted)">('+a.rows.length+' รายการ · เข้า '+fmtFull(a.subIn)+' · ออก '+fmtFull(a.subOut)+')</span></div>'+
-        '<div style="overflow:auto;max-height:320px;margin-bottom:6px"><table><thead><tr><th>วันที่</th><th>รายละเอียด</th><th style="text-align:right">เงินเข้า</th><th style="text-align:right">เงินออก</th><th style="text-align:right">ยอดคงเหลือ</th><th>สถานะ</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div>';
+      return '<div style="margin:10px 0 4px;font-size:12.5px;font-weight:700;color:var(--text2)">'+a.acctNo+' — '+a.acctName+' <span style="font-weight:400;color:var(--muted)">('+acctCnt+' รายการ · เข้า '+fmtFull(a.subIn)+' · ออก '+fmtFull(a.subOut)+')</span></div>'+monthsHtml;
     }).join('');
     sectionsHtml+='<div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px">'+
       '<div style="font-size:14px;font-weight:700;color:var(--gold2);margin-bottom:2px">🏦 '+(BK_TH[bankKey]||bankKey)+' <span style="font-weight:400;color:var(--muted);font-size:12px">— '+bankCnt+' รายการ · เข้า '+fmtFull(bankIn)+' · ออก '+fmtFull(bankOut)+'</span></div>'+
@@ -2913,6 +2997,7 @@ function bkAllBanksUnmatchedReport(){
     {label:'ธนาคาร',get:function(r){return r.bank;}},
     {label:'เลขบัญชี',get:function(r){return r.acctNo;}},
     {label:'ชื่อบัญชี (SAP)',get:function(r){return r.acctName;}},
+    {label:'เดือน/ปี',get:function(r){return r.ym;}},
     {label:'วันที่',get:function(r){return r.date||'—';}},
     {label:'รายละเอียด',get:function(r){return r.desc||'';}},
     {label:'เงินเข้า',right:true,get:function(r){return fmtFull(r.credit||0);}},
@@ -2923,11 +3008,11 @@ function bkAllBanksUnmatchedReport(){
   var bodyHtml;
   if(!grandCount){
     bodyHtml='<div style="text-align:center;color:var(--muted);padding:28px 16px">'+
-      (anyBankData?'✅ ไม่มีรายการค้าง — ทุกรายการในสเตทเมนท์ธนาคาร (CSV) ของเดือนนี้กระทบยอดกับ SAP ครบแล้ว':
-      '⚠️ ไม่พบข้อมูล CSV สเตทเมนท์ธนาคารของเดือนนี้ในบัญชีใดเลย — กรุณาอัปโหลด CSV ก่อน (หน้า "กระทบยอดธนาคาร" หรือ "อ่าน PDF Bank")')+
+      (anyBankData?'✅ ไม่มีรายการค้าง — ทุกรายการในสเตทเมนท์ธนาคาร (CSV) ของช่วงที่เลือกกระทบยอดกับ SAP ครบแล้ว':
+      '⚠️ ไม่พบข้อมูล CSV สเตทเมนท์ธนาคารของช่วงที่เลือกในบัญชีใดเลย — กรุณาอัปโหลด CSV ก่อน (หน้า "กระทบยอดธนาคาร" หรือ "อ่าน PDF Bank")')+
       '</div>';
   } else {
-    bodyHtml='<div style="font-size:12px;color:var(--muted);margin:6px 0 12px">รวมทั้งหมด <b style="color:var(--text)">'+grandCount+' รายการ</b> &nbsp;·&nbsp; เงินเข้ารวม <b style="color:var(--green)">'+fmtFull(grandIn)+'</b> &nbsp;·&nbsp; เงินออกรวม <b style="color:var(--red)">'+fmtFull(grandOut)+'</b><br>แถวสีแดง = มีในสเตทเมนท์ธนาคารแล้ว แต่ยังหาบันทึกที่ตรงกัน (วันที่+ยอดเท่ากัน) ใน SAP ไม่พบ · แถวสีส้ม = พบยอดตรงกันใน SAP แล้ว แต่บันทึกคนละวันที่ (น่าจะแค่วันที่เอกสารกับวันที่แบงค์ตัดจริงไม่ตรงกัน ไม่ใช่รายการขาดหาย) · เฉพาะบัญชีที่มีทั้งข้อมูล SAP และ CSV ของเดือนนี้เท่านั้น</div>'+
+    bodyHtml='<div style="font-size:12px;color:var(--muted);margin:6px 0 12px">รวมทั้งหมด <b style="color:var(--text)">'+grandCount+' รายการ</b> &nbsp;·&nbsp; เงินเข้ารวม <b style="color:var(--green)">'+fmtFull(grandIn)+'</b> &nbsp;·&nbsp; เงินออกรวม <b style="color:var(--red)">'+fmtFull(grandOut)+'</b><br>แถวสีแดง = มีในสเตทเมนท์ธนาคารแล้ว แต่ยังหาบันทึกที่ตรงกัน (วันที่+ยอดเท่ากัน) ใน SAP ไม่พบ · แถวสีส้ม = พบยอดตรงกันใน SAP แล้ว แต่บันทึกคนละวันที่ (น่าจะแค่วันที่เอกสารกับวันที่แบงค์ตัดจริงไม่ตรงกัน ไม่ใช่รายการขาดหาย) · เฉพาะบัญชีและเดือนที่มีทั้งข้อมูล SAP และ CSV เท่านั้น</div>'+
       sectionsHtml;
   }
   openModal('📋 '+title, dmExportBtns('bkAllBanksUnmatched')+bodyHtml);
