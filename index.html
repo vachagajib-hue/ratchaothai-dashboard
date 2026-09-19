@@ -2943,7 +2943,11 @@ function bkShowDiffDetail(kind,expectedDiff){
   var hasBankCsv=!!bankInfo;
   var sapRows=(BK_STATE.rows||[]).map(function(r,i){
     return {date:r.date,memo:r.memo,bpName:r.bpName,amt:isIn?(r.debit||0):(r.credit||0),matched:!!sapMatched[i],hint:sapHint[i]||null,isReversed:!!revFlags[i],key:sapKeys[i]};
-  }).filter(function(r){return r.amt>0.004 && !r.isReversed && !r.matched;});
+  // ใช้ Math.abs() แทน amt>0.004 ตรงๆ — บางเอกสารมีบรรทัดปรับปรุงยอดติดลบในคอลัมน์เดบิต/เครดิตเดิม
+  // (เช่น ค่าธรรมเนียมแบงค์ที่หักจากยอดรับเงินในเอกสารเดียวกัน บันทึกเป็นเดบิตติดลบแทนเครดิตแยก) ถ้า
+  // กรองด้วย amt>0.004 เฉยๆ รายการติดลบจะหลุดไปจากทั้ง 2 ตาราง ทั้งที่ยังไปกระทบ sapSum/netDebit อยู่
+  // ทำให้เช็คยอดเต็มไม่ตรงกับการ์ด KPI แบบหาที่มาไม่เจอ (พบจากเอกสาร 33229 บรรทัด -850.00 จริง)
+  }).filter(function(r){return Math.abs(r.amt)>0.004 && !r.isReversed && !r.matched;});
   sapRows.forEach(function(r){r.ov=manualMatchFor('bkSapLeg',r.key);});
   sapRows.sort(function(a,b){return dateKey(a.date).localeCompare(dateKey(b.date));});
   var sapSum=sapRows.reduce(function(s,r){return s+r.amt;},0);
@@ -2951,7 +2955,7 @@ function bkShowDiffDetail(kind,expectedDiff){
   var bankKeys=bankInfo?bkTxnKeyList(BK_STATE.acctCode,bankTxns):[];
   var bankRows=bankTxns.map(function(t,i){
     return {date:t.date,desc:t.desc||'',amt:isIn?(t.credit||0):(t.debit||0),matched:!!(bankInfo.matchFlags&&bankInfo.matchFlags[i]),hint:(bankInfo.hintFlags&&bankInfo.hintFlags[i])||null,key:bankKeys[i]};
-  }).filter(function(r){return r.amt>0.004 && !r.matched;});
+  }).filter(function(r){return Math.abs(r.amt)>0.004 && !r.matched;});
   bankRows.forEach(function(r){r.ov=manualMatchFor('bkTxn',r.key);});
   bankRows.sort(function(a,b){return dateKey(a.date).localeCompare(dateKey(b.date));});
   var bankSum=bankRows.reduce(function(s,r){return s+r.amt;},0);
@@ -3050,13 +3054,13 @@ async function bkBulkConfirmDayMatch(kind,dk,expectedDiff,btnId){
     var sapMatched=BK_STATE.sapBankMatched||[],sapHint=BK_STATE.sapBankHint||[],revFlags=BK_STATE.revFlags||[],sapKeys=BK_STATE.sapKeys||[];
     var sapTargets=(BK_STATE.rows||[]).map(function(r,i){
       return {date:r.date,amt:isIn?(r.debit||0):(r.credit||0),matched:!!sapMatched[i],hint:sapHint[i]||null,isReversed:!!revFlags[i],key:sapKeys[i]};
-    }).filter(function(r){return r.amt>0.004 && !r.isReversed && !r.matched && !r.hint && dateKey(r.date)===dk && !manualMatchFor('bkSapLeg',r.key);});
+    }).filter(function(r){return Math.abs(r.amt)>0.004 && !r.isReversed && !r.matched && !r.hint && dateKey(r.date)===dk && !manualMatchFor('bkSapLeg',r.key);});
     var bankInfo=BK_STATE.bankDetail;
     var bankTxns=bankInfo?(bankInfo.txns||[]):[];
     var bankKeys=bankInfo?bkTxnKeyList(BK_STATE.acctCode,bankTxns):[];
     var bankTargets=bankTxns.map(function(t,i){
       return {date:t.date,amt:isIn?(t.credit||0):(t.debit||0),matched:!!(bankInfo&&bankInfo.matchFlags&&bankInfo.matchFlags[i]),hint:(bankInfo&&bankInfo.hintFlags&&bankInfo.hintFlags[i])||null,key:bankKeys[i]};
-    }).filter(function(r){return r.amt>0.004 && !r.matched && !r.hint && dateKey(r.date)===dk && !manualMatchFor('bkTxn',r.key);});
+    }).filter(function(r){return Math.abs(r.amt)>0.004 && !r.matched && !r.hint && dateKey(r.date)===dk && !manualMatchFor('bkTxn',r.key);});
     if(!sapTargets.length && !bankTargets.length){
       if(btn){btn.disabled=false;btn.textContent='ไม่มีรายการให้ยืนยันแล้ว (อาจมีคนยืนยันไปก่อนหน้านี้)';}
       return;
