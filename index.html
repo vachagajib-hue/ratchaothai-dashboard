@@ -44,6 +44,10 @@ header{background:var(--navy2);border-bottom:2px solid var(--gold);padding:0 24p
 .alert-bar{background:rgba(224,92,92,0.08);border:1px solid rgba(224,92,92,0.25);border-radius:10px;padding:11px 16px;margin-bottom:18px;font-size:13px;color:#F0A0A0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 .kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:12px;margin-bottom:18px;}
 .kpi-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px 44px;position:relative;overflow:hidden;cursor:pointer;transition:transform 0.15s,border-color 0.15s,box-shadow 0.15s;}
+/* แถวย่อยที่จำนวนการ์ดไม่แน่นอน/น้อยกว่าแถวหลัก (เช่นการ์ด "ส่วนต่าง" ในสมุดบัญชีธนาคาร) — จัดกึ่งกลาง
+   แทนการยืดเต็มคอลัมน์ตาราง grid เดิม กันไม่ให้การ์ดที่ตกมาแถวใหม่ค้างอยู่ชิดซ้ายโดดๆ */
+.kpi-row-center{display:flex;justify-content:center;flex-wrap:wrap;gap:12px;margin-bottom:18px;}
+.kpi-row-center .kpi-card{flex:0 1 260px;}
 .kpi-card:hover{transform:translateY(-3px);border-color:rgba(255,255,255,0.18);box-shadow:0 8px 28px rgba(0,0,0,0.35);}
 .kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:14px 14px 0 0;}
 .kpi-card.gold::before{background:linear-gradient(90deg,var(--gold),var(--gold2));}.kpi-card.teal::before{background:linear-gradient(90deg,var(--teal),#5DDDD6);}
@@ -522,6 +526,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <button class="hbtn hbtn-gold" style="margin-left:auto" onclick="bkAllBanksUnmatchedReport()">&#128203; รายงานยังไม่พบใน SAP (ทุกธนาคาร)</button>
 </div>
 <div class="kpi-row" id="bkKpiRow"></div>
+<div class="kpi-row-center" id="bkDiffKpiRow"></div>
 <div class="recon-section">
 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
 <div class="recon-section-title">&#128203; รายการเดินบัญชี <span class="chart-sub" id="bkAcctNameLbl"></span></div>
@@ -2492,6 +2497,7 @@ function bkRender(){
   var ym=document.getElementById('bkYmSel')?document.getElementById('bkYmSel').value:'';
   var lblEl=document.getElementById('bkAcctNameLbl');
   var kpiEl=document.getElementById('bkKpiRow');
+  var diffKpiEl=document.getElementById('bkDiffKpiRow');
   var bodyEl=document.getElementById('bkLedgerBody');
   var exportWrap=document.getElementById('bkExportBtnsWrap');
   if(exportWrap)exportWrap.innerHTML=dmExportBtns('bkLedger');
@@ -2500,6 +2506,7 @@ function bkRender(){
   if(!acctCode||!ym){
     BK_STATE={acctCode:null,ym:null,rows:[],defaultOpening:0,openingKnown:false,prevYm:'',q11Closing:undefined,revFlags:[],revStats:null,sapBankMatched:[],sapBankHint:[],bankDetail:null};
     if(kpiEl)kpiEl.innerHTML='';
+    if(diffKpiEl)diffKpiEl.innerHTML='';
     if(bodyEl)bodyEl.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:20px">— เลือกบัญชีและเดือน/ปี —</td></tr>';
     var revWrap0=document.getElementById('bkRevToggleWrap'),revNote0=document.getElementById('bkRevNote');
     if(revWrap0)revWrap0.style.display='none';
@@ -2569,7 +2576,12 @@ function bkRender(){
       '</div>'+
       kpi('green','🏦','rgba(90,200,120,0.15)','เงินเข้ารวม — ตามแบงค์ (CSV)',bankStats?fmtKPI(bankStats.moneyIn):'—','green',bankStats?(bankStats.bank+' '+bankStats.acctNo+(bankStats.hasMonthData?'':' · ไม่มีรายการเดือนนี้')):'ยังไม่มี CSV บัญชีนี้',(bankStats&&bankStats.hasMonthData)?"bkShowBankDetail('in')":'')+
       kpi('red','🏦','rgba(224,92,92,0.15)','เงินออกรวม — ตามแบงค์ (CSV)',bankStats?fmtKPI(bankStats.moneyOut):'—','red',bankStats?(bankStats.bank+' '+bankStats.acctNo+(bankStats.hasMonthData?'':' · ไม่มีรายการเดือนนี้')):'ยังไม่มี CSV บัญชีนี้',(bankStats&&bankStats.hasMonthData)?"bkShowBankDetail('out')":'')+
-      kpi('gold','🏦','rgba(212,168,67,0.15)','ยอดคงเหลือปลายเดือน — ตามแบงค์ (CSV)',bankStats&&bankStats.closingBal!==null?fmtKPI(bankStats.closingBal):'—','gold',bankStats&&bankStats.closingDate?('ข้อมูล ณ '+bankStats.closingDate):(bankStats?'ยังไม่มีรายการก่อนหรือในเดือนนี้':'ยังไม่มี CSV บัญชีนี้'),'')+
+      kpi('gold','🏦','rgba(212,168,67,0.15)','ยอดคงเหลือปลายเดือน — ตามแบงค์ (CSV)',bankStats&&bankStats.closingBal!==null?fmtKPI(bankStats.closingBal):'—','gold',bankStats&&bankStats.closingDate?('ข้อมูล ณ '+bankStats.closingDate):(bankStats?'ยังไม่มีรายการก่อนหรือในเดือนนี้':'ยังไม่มี CSV บัญชีนี้'),'');
+  }
+  // การ์ด "ส่วนต่าง" 2 ใบแยกไว้เป็นแถวของตัวเอง (กึ่งกลาง) ต่างหากจากแถวหลักด้านบน — เดิมอยู่ท้ายแถว
+  // เดียวกันแล้วล้นไปแถวใหม่แบบชิดซ้ายโดดๆ ตอนจอไม่กว้างพอ (แก้ตามที่ผู้ใช้ทักท้วง 19 ก.ย. 2569)
+  if(diffKpiEl){
+    diffKpiEl.innerHTML =
       bkDiffKpi('⬆️','ส่วนต่างเงินเข้า (SAP สุทธิ − แบงค์)',diffIn,netDebit,bankStats?bankStats.moneyIn:0,"bkShowDiffDetail('in',"+(diffIn===null?0:diffIn)+")")+
       bkDiffKpi('⬇️','ส่วนต่างเงินออก (SAP สุทธิ − แบงค์)',diffOut,netCredit,bankStats?bankStats.moneyOut:0,"bkShowDiffDetail('out',"+(diffOut===null?0:diffOut)+")");
   }
