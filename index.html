@@ -1008,23 +1008,54 @@ async function loadAllData(){
   }
 }
 
-function kpi(acc,icon,ibg,label,val,vc,sub,fn){
+function kpi(acc,icon,ibg,label,val,vc,sub,fn,extra){
   var btn=fn?('<div class="kpi-btn" onclick="event.stopPropagation();'+fn+'">\ud83d\udccb \u0e14\u0e39\u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14</div>'):'';
   return '<div class="kpi-card '+acc+'"'+(fn?' onclick="'+fn+'"':'')+'>'+
     '<div class="kpi-icon-box" style="background:'+ibg+'"><span>'+icon+'</span></div>'+
     '<div class="kpi-label">'+label+'</div><div class="kpi-value '+vc+'">'+val+'</div>'+
-    '<div class="kpi-sub">'+sub+'</div>'+btn+'</div>';
+    '<div class="kpi-sub">'+sub+'</div>'+(extra||'')+btn+'</div>';
 }
 // \u0e01\u0e32\u0e23\u0e4c\u0e14 KPI "\u0e2a\u0e48\u0e27\u0e19\u0e15\u0e48\u0e32\u0e07" \u0e23\u0e30\u0e2b\u0e27\u0e48\u0e32\u0e07\u0e22\u0e2d\u0e14\u0e15\u0e32\u0e21 SAP \u0e01\u0e31\u0e1a\u0e22\u0e2d\u0e14\u0e15\u0e32\u0e21\u0e41\u0e1a\u0e07\u0e04\u0e4c (CSV) \u0e02\u0e2d\u0e07\u0e1d\u0e31\u0e48\u0e07\u0e40\u0e07\u0e34\u0e19\u0e40\u0e02\u0e49\u0e32/\u0e40\u0e07\u0e34\u0e19\u0e2d\u0e2d\u0e01\u0e43\u0e19\u0e2b\u0e19\u0e49\u0e32
 // "\u0e2a\u0e21\u0e38\u0e14\u0e1a\u0e31\u0e0d\u0e0a\u0e35\u0e18\u0e19\u0e32\u0e04\u0e32\u0e23" \u2014 \u0e42\u0e0a\u0e27\u0e4c\u0e1c\u0e25\u0e25\u0e1a\u0e43\u0e2b\u0e49\u0e15\u0e23\u0e07\u0e46 (SAP - \u0e41\u0e1a\u0e07\u0e04\u0e4c) \u0e41\u0e17\u0e19\u0e17\u0e35\u0e48\u0e1c\u0e39\u0e49\u0e43\u0e0a\u0e49\u0e15\u0e49\u0e2d\u0e07\u0e2b\u0e31\u0e01\u0e25\u0e1a\u0e40\u0e2d\u0e07\u0e08\u0e32\u0e01\u0e01\u0e32\u0e23\u0e4c\u0e14\u0e04\u0e39\u0e48\u0e17\u0e35\u0e48\u0e21\u0e35\u0e2d\u0e22\u0e39\u0e48
 // (\u0e40\u0e1e\u0e34\u0e48\u0e21 19 \u0e01.\u0e22. 2569 \u0e15\u0e32\u0e21\u0e04\u0e33\u0e02\u0e2d) diff=null = \u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e21\u0e35 CSV \u0e02\u0e2d\u0e07\u0e41\u0e1a\u0e07\u0e04\u0e4c\u0e40\u0e14\u0e37\u0e2d\u0e19\u0e19\u0e35\u0e49\u0e40\u0e25\u0e22 \u0e43\u0e2b\u0e49\u0e02\u0e36\u0e49\u0e19 "\u2014" \u0e41\u0e17\u0e19 0
 // \u0e17\u0e35\u0e48\u0e08\u0e30\u0e17\u0e33\u0e43\u0e2b\u0e49\u0e40\u0e02\u0e49\u0e32\u0e43\u0e08\u0e1c\u0e34\u0e14\u0e27\u0e48\u0e32\u0e15\u0e23\u0e07\u0e01\u0e31\u0e19\u0e1e\u0e2d\u0e14\u0e35 \u0e44\u0e21\u0e48\u0e21\u0e35 logic \u0e08\u0e31\u0e1a\u0e04\u0e39\u0e48\u0e43\u0e2b\u0e21\u0e48 \u0e43\u0e0a\u0e49\u0e1c\u0e25\u0e23\u0e27\u0e21\u0e17\u0e35\u0e48\u0e04\u0e33\u0e19\u0e27\u0e13\u0e2d\u0e22\u0e39\u0e48\u0e41\u0e25\u0e49\u0e27\u0e43\u0e19 bkRender
-function bkDiffKpi(icon,label,diff,sapVal,bankVal,fn){
+// resolvedNet (\u0e40\u0e1e\u0e34\u0e48\u0e21 23 \u0e01.\u0e22. 2569 \u0e15\u0e32\u0e21\u0e04\u0e33\u0e02\u0e2d) = "\u0e22\u0e2d\u0e14\u0e17\u0e35\u0e48\u0e22\u0e31\u0e07\u0e15\u0e49\u0e2d\u0e07\u0e15\u0e23\u0e27\u0e08\u0e2a\u0e2d\u0e1a\u0e08\u0e23\u0e34\u0e07" \u0e08\u0e32\u0e01 bkDiffResolvedNet() \u2014 \u0e43\u0e0a\u0e49\u0e40\u0e1e\u0e35\u0e22\u0e07\u0e41\u0e2a\u0e14\u0e07\u0e1b\u0e49\u0e32\u0e22\u0e2a\u0e16\u0e32\u0e19\u0e30\u0e40\u0e25\u0e47\u0e01\u0e46 \u0e43\u0e15\u0e49\u0e01\u0e32\u0e23\u0e4c\u0e14 \u0e40\u0e17\u0e48\u0e32\u0e19\u0e31\u0e49\u0e19
+// \u0e44\u0e21\u0e48\u0e01\u0e23\u0e30\u0e17\u0e1a\u0e15\u0e31\u0e27\u0e40\u0e25\u0e02\u0e2b\u0e25\u0e31\u0e01 (diff/val \u0e14\u0e49\u0e32\u0e19\u0e1a\u0e19) \u0e2b\u0e23\u0e37\u0e2d\u0e01\u0e25\u0e44\u0e01 "\u0e40\u0e0a\u0e47\u0e04\u0e22\u0e2d\u0e14\u0e40\u0e15\u0e47\u0e21" \u0e43\u0e19 bkShowDiffDetail \u0e41\u0e21\u0e49\u0e41\u0e15\u0e48\u0e19\u0e49\u0e2d\u0e22 \u2014 \u0e2a\u0e2d\u0e07\u0e2d\u0e22\u0e48\u0e32\u0e07\u0e19\u0e31\u0e49\u0e19\u0e22\u0e31\u0e07\u0e04\u0e07\u0e40\u0e14\u0e34\u0e21\u0e17\u0e38\u0e01\u0e08\u0e38\u0e14
+function bkDiffKpi(icon,label,diff,sapVal,bankVal,fn,resolvedNet){
   var isZero=diff!==null&&Math.abs(diff)<0.01;
   var acc=diff===null?'blue':(isZero?'green':'gold');
   var val=diff===null?'\u2014':((diff>0?'+':'')+fmtKPI(diff));
   var sub=diff===null?'\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e21\u0e35\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23 CSV \u0e02\u0e2d\u0e07\u0e41\u0e1a\u0e07\u0e04\u0e4c\u0e40\u0e14\u0e37\u0e2d\u0e19\u0e19\u0e35\u0e49':(isZero?'\u2705 \u0e15\u0e23\u0e07\u0e01\u0e31\u0e19 (SAP \u0e2a\u0e38\u0e17\u0e18\u0e34 = \u0e41\u0e1a\u0e07\u0e04\u0e4c)':('SAP \u0e2a\u0e38\u0e17\u0e18\u0e34 '+fmtFull(sapVal)+' \u2212 \u0e41\u0e1a\u0e07\u0e04\u0e4c '+fmtFull(bankVal)+' \u00b7 \u0e01\u0e14\u0e14\u0e39\u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23 (\u0e1a\u0e31\u0e0d\u0e0a\u0e35/\u0e40\u0e14\u0e37\u0e2d\u0e19\u0e19\u0e35\u0e49)'));
-  return kpi(acc,icon,'rgba(212,168,67,0.15)',label,val,acc,sub,(diff!==null&&!isZero)?fn:'');
+  var badge='';
+  if(diff!==null&&!isZero&&resolvedNet!==null&&resolvedNet!==undefined){
+    var isResolved=Math.abs(resolvedNet)<0.01;
+    badge=isResolved?
+      '<div style="margin-top:6px;font-size:10.5px;font-weight:700;color:var(--green)">\u2705 \u0e22\u0e37\u0e19\u0e22\u0e31\u0e19\u0e04\u0e23\u0e1a\u0e41\u0e25\u0e49\u0e27</div>':
+      '<div style="margin-top:6px;font-size:10.5px;font-weight:700;color:var(--gold2)">\ud83d\udfe1 \u0e04\u0e07\u0e40\u0e2b\u0e25\u0e37\u0e2d\u0e23\u0e2d\u0e15\u0e23\u0e27\u0e08\u0e2a\u0e2d\u0e1a: '+fmtFull(Math.abs(resolvedNet))+' \u0e1a\u0e32\u0e17</div>';
+  }
+  return kpi(acc,icon,'rgba(212,168,67,0.15)',label,val,acc,sub,(diff!==null&&!isZero)?fn:'',badge);
+}
+// \u0e04\u0e33\u0e19\u0e27\u0e13 "\u0e22\u0e2d\u0e14\u0e17\u0e35\u0e48\u0e22\u0e31\u0e07\u0e15\u0e49\u0e2d\u0e07\u0e15\u0e23\u0e27\u0e08\u0e2a\u0e2d\u0e1a\u0e08\u0e23\u0e34\u0e07" (\u0e2a\u0e38\u0e17\u0e18\u0e34\u0e2b\u0e25\u0e31\u0e07\u0e15\u0e31\u0e14\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e17\u0e35\u0e48\u0e22\u0e37\u0e19\u0e22\u0e31\u0e19/\u0e21\u0e35\u0e40\u0e1a\u0e32\u0e30\u0e41\u0e2a\u0e41\u0e25\u0e49\u0e27\u0e2d\u0e2d\u0e01) \u0e2a\u0e33\u0e2b\u0e23\u0e31\u0e1a\u0e1b\u0e49\u0e32\u0e22\u0e2a\u0e16\u0e32\u0e19\u0e30\u0e40\u0e25\u0e47\u0e01\u0e43\u0e15\u0e49\u0e01\u0e32\u0e23\u0e4c\u0e14 KPI "\u0e2a\u0e48\u0e27\u0e19\u0e15\u0e48\u0e32\u0e07"
+// \u0e43\u0e0a\u0e49\u0e15\u0e23\u0e23\u0e01\u0e30\u0e40\u0e14\u0e35\u0e22\u0e27\u0e01\u0e31\u0e1a\u0e43\u0e19 bkShowDiffDetail (\u0e15\u0e31\u0e14 reversed/matched/amt\u2248 0 \u0e2d\u0e2d\u0e01\u0e01\u0e48\u0e2d\u0e19 \u0e41\u0e25\u0e49\u0e27\u0e15\u0e31\u0e14\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e17\u0e35\u0e48\u0e21\u0e35 hint/\u0e22\u0e37\u0e19\u0e22\u0e31\u0e19\u0e40\u0e2d\u0e07(ov) \u0e2d\u0e2d\u0e01\u0e2d\u0e35\u0e01\u0e0a\u0e31\u0e49\u0e19)
+// \u0e41\u0e22\u0e01\u0e1f\u0e31\u0e07\u0e01\u0e4c\u0e0a\u0e31\u0e19\u0e44\u0e27\u0e49\u0e15\u0e48\u0e32\u0e07\u0e2b\u0e32\u0e01 \u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e44\u0e21\u0e48\u0e15\u0e49\u0e2d\u0e07\u0e41\u0e01\u0e49/\u0e40\u0e2a\u0e35\u0e48\u0e22\u0e07\u0e01\u0e23\u0e30\u0e17\u0e1a modal \u0e40\u0e14\u0e34\u0e21\u0e17\u0e35\u0e48\u0e17\u0e14\u0e2a\u0e2d\u0e1a\u0e41\u0e25\u0e49\u0e27 (\u0e40\u0e1e\u0e34\u0e48\u0e21 23 \u0e01.\u0e22. 2569 \u0e15\u0e32\u0e21\u0e04\u0e33\u0e02\u0e2d)
+function bkDiffResolvedNet(kind){
+  if(!BK_STATE.acctCode||!BK_STATE.ym)return null;
+  var isIn=kind==='in';
+  var sapMatched=BK_STATE.sapBankMatched||[],sapHint=BK_STATE.sapBankHint||[],revFlags=BK_STATE.revFlags||[],sapKeys=BK_STATE.sapKeys||[];
+  var bankInfo=BK_STATE.bankDetail;
+  var sapRows=(BK_STATE.rows||[]).map(function(r,i){
+    return {date:r.date,amt:isIn?(r.debit||0):(r.credit||0),matched:!!sapMatched[i],hint:sapHint[i]||null,isReversed:!!revFlags[i],key:sapKeys[i]};
+  }).filter(function(r){return Math.abs(r.amt)>0.004 && !r.isReversed && !r.matched;});
+  sapRows.forEach(function(r){r.ov=manualMatchFor('bkSapLeg',r.key);});
+  var bankTxns=bankInfo?(bankInfo.txns||[]):[];
+  var bankKeys=bankInfo?bkTxnKeyList(BK_STATE.acctCode,bankTxns):[];
+  var bankRows=bankTxns.map(function(t,i){
+    return {date:t.date,amt:isIn?(t.credit||0):(t.debit||0),matched:!!(bankInfo.matchFlags&&bankInfo.matchFlags[i]),hint:(bankInfo.hintFlags&&bankInfo.hintFlags[i])||null,key:bankKeys[i]};
+  }).filter(function(r){return Math.abs(r.amt)>0.004 && !r.matched;});
+  bankRows.forEach(function(r){r.ov=manualMatchFor('bkTxn',r.key);});
+  var sapNewSum=sapRows.filter(function(r){return !r.hint && !r.ov;}).reduce(function(s,r){return s+r.amt;},0);
+  var bankNewSum=bankRows.filter(function(r){return !r.ov && !r.hint;}).reduce(function(s,r){return s+r.amt;},0);
+  return sapNewSum-bankNewSum;
 }
 
 var barLblPlugin={id:'barLbl',afterDatasetsDraw:function(chart){
@@ -2033,8 +2064,22 @@ function dmExportBtns(id){
 }
 var DM_SIMPLE={};
 function dmRegisterSimple(id,title,columns,rows){ DM_SIMPLE[id]={title:title,columns:columns,rows:rows}; }
+// ทุกคอลัมน์ "จำนวนเงิน" ในรายงานแบบ dmRegisterSimple ส่ง get() เป็นข้อความที่จัดรูปแบบแล้วจาก fmtFull()
+// (เช่น "-17,862,715.34" มีลูกน้ำคั่นหลักพัน) เพราะใช้ค่าเดียวกันไปโชว์บนจอ/พิมพ์ PDF ด้วย — ถ้าเขียนเป็น
+// ข้อความแบบนี้ลง Excel ตรงๆ SheetJS จะสร้างเป็นเซลล์ "ข้อความ" ไม่ใช่ตัวเลข ทำให้ผู้ใช้ลากเลือกแล้ว SUM
+// ที่แถบสถานะ Excel ไม่ได้ ขึ้นแค่ Count (พบจากผู้ใช้จริง 23 ก.ย. 2569) ฟังก์ชันนี้แปลงข้อความที่ "หน้าตา
+// เป็นตัวเลขล้วน" (มี , คั่นหลักพันได้ ติดลบได้ ทศนิยมได้) กลับเป็นตัวเลขจริงเฉพาะคอลัมน์ right:true เท่านั้น
+// ก่อนเขียนไฟล์ — ไม่แตะคอลัมน์อื่น (ข้อความ, เปอร์เซ็นต์ "70.5%", "—" ที่ไม่มีข้อมูล ฯลฯ) เพื่อไม่ให้
+// ความหมายเดิมเพี้ยน และไม่แตะ dmSimplePrintDoc (PDF) เลย เพราะ PDF ต้องการข้อความจัดรูปแบบแบบเดิม
+function dmParseExcelNum(v){
+  if(typeof v!=='string')return v;
+  var s=v.trim();
+  if(!/^-?[\d,]+(\.\d+)?$/.test(s))return v;
+  var n=+s.replace(/,/g,'');
+  return isNaN(n)?v:n;
+}
 function dmSimpleExcel(title,columns,rows){
-  var data=rows.map(function(r){var o={};columns.forEach(function(c){o[c.label]=c.get(r);});return o;});
+  var data=rows.map(function(r){var o={};columns.forEach(function(c){var v=c.get(r);o[c.label]=c.right?dmParseExcelNum(v):v;});return o;});
   var ws=XLSX.utils.json_to_sheet(data);
   var wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,'รายงาน');
@@ -2581,9 +2626,13 @@ function bkRender(){
   // การ์ด "ส่วนต่าง" 2 ใบแยกไว้เป็นแถวของตัวเอง (กึ่งกลาง) ต่างหากจากแถวหลักด้านบน — เดิมอยู่ท้ายแถว
   // เดียวกันแล้วล้นไปแถวใหม่แบบชิดซ้ายโดดๆ ตอนจอไม่กว้างพอ (แก้ตามที่ผู้ใช้ทักท้วง 19 ก.ย. 2569)
   if(diffKpiEl){
+    // ป้ายสถานะเล็กใต้การ์ด "ส่วนต่าง" (เพิ่ม 23 ก.ย. 2569 ตามคำขอ) — บอกว่ารายการที่เหลือ "ยืนยันครบแล้ว"
+    // หรือ "ยังเหลือรอตรวจสอบเท่าไร" โดยไม่แตะตัวเลขหลักของการ์ด/กลไกเช็คยอดเต็มใน bkShowDiffDetail เลย
+    var resolvedNetIn=bkDiffResolvedNet('in');
+    var resolvedNetOut=bkDiffResolvedNet('out');
     diffKpiEl.innerHTML =
-      bkDiffKpi('⬆️','ส่วนต่างเงินเข้า (SAP สุทธิ − แบงค์)',diffIn,netDebit,bankStats?bankStats.moneyIn:0,"bkShowDiffDetail('in',"+(diffIn===null?0:diffIn)+")")+
-      bkDiffKpi('⬇️','ส่วนต่างเงินออก (SAP สุทธิ − แบงค์)',diffOut,netCredit,bankStats?bankStats.moneyOut:0,"bkShowDiffDetail('out',"+(diffOut===null?0:diffOut)+")");
+      bkDiffKpi('⬆️','ส่วนต่างเงินเข้า (SAP สุทธิ − แบงค์)',diffIn,netDebit,bankStats?bankStats.moneyIn:0,"bkShowDiffDetail('in',"+(diffIn===null?0:diffIn)+")",resolvedNetIn)+
+      bkDiffKpi('⬇️','ส่วนต่างเงินออก (SAP สุทธิ − แบงค์)',diffOut,netCredit,bankStats?bankStats.moneyOut:0,"bkShowDiffDetail('out',"+(diffOut===null?0:diffOut)+")",resolvedNetOut);
   }
   bkRecalc();
 }
