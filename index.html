@@ -2801,7 +2801,7 @@ function bkFindLooseMatch(targetCents,candidates){
     if(candidates[i].cents===targetCents)return {mode:'single',items:[candidates[i]]};
   }
   var items=candidates.map(function(c,i){return {idx:i,cents:c.cents};});
-  var combo=bkComboSubsetSum(items,targetCents,6);
+  var combo=bkComboSubsetSum(items,targetCents,20); // เดิม 6 — ดูเหตุผลที่ bkComboSubsetSum ด้านล่าง
   if(combo)return {mode:'combo',items:combo.map(function(i){return candidates[i];})};
   return null;
 }
@@ -2866,12 +2866,19 @@ function bkSapBadge(key,opts){
   return {badge:clickable,clickable:true};
 }
 // หาชุดย่อยของ items ที่รวมกันได้ targetCents พอดี (DFS ตัดกิ่ง จำกัดไม่เกิน maxItems ชิ้น และพิจารณา
-// ไม่เกิน 12 รายการตั้งต้นต่อวัน กันกรณีวันนั้นมีรายการเยอะผิดปกติจนค้นหานานเกินไป)
+// ไม่เกิน 20 รายการตั้งต้นต่อวัน กันกรณีวันนั้นมีรายการเยอะผิดปกติจนค้นหานานเกินไป)
+// เดิม cap อยู่ที่ 12 รายการ/maxItems=6 — พบเคสจริง 24 ก.ย. 2569: ก้อนตั้งจ่าย "Outgoing Payments -
+// 210012" วันเดียวกัน มี 14 บรรทัด (เกิน cap เดิมทั้งคู่) ทำให้จับคู่กับยอดแบงค์ก้อนใหญ่ 1 บรรทัดไม่เจอ
+// ทั้งที่ยอดรวมตรงกันจริง (ยืนยันจากผู้ใช้) จึงขยับ cap ขึ้นเป็น 20 ทั้ง 2 จุด (ดู call site ด้านล่าง)
+// เพิ่ม node-visit guard กัน DFS ใช้เวลานานเกินไปในกรณี edge case (ชุดใหญ่ + ยอดซ้ำกันเยอะผิดปกติ) —
+// ถ้าเกิน cap จะคืน null (ไม่จับคู่) ซึ่งเป็นค่าเริ่มต้นที่ปลอดภัยอยู่แล้ว (แค่ไม่เจอ ไม่ใช่จับคู่ผิด)
 function bkComboSubsetSum(items,targetCents,maxItems){
-  var sorted=items.slice().sort(function(a,b){return b.cents-a.cents;}).slice(0,12);
+  var sorted=items.slice().sort(function(a,b){return b.cents-a.cents;}).slice(0,20);
   var found=null;
+  var visits=0,VISIT_CAP=200000;
   function dfs(i,remaining,picked){
-    if(found)return;
+    if(found||visits>=VISIT_CAP)return;
+    visits++;
     if(remaining===0&&picked.length>0){found=picked.slice();return;}
     if(i>=sorted.length||picked.length>=maxItems||remaining<0)return;
     picked.push(sorted[i].idx);
@@ -2892,7 +2899,7 @@ function bkMatchOneToMany(oneSideIdx,manySideIdx,oneList,manyList,oneField,manyF
     if(!target)return;
     var avail=manySideIdx.filter(function(j){return !manyMatched[j];}).map(function(j){return {idx:j,cents:Math.round((manyList[j][manyField]||0)*100)};});
     if(avail.length<2)return; // เหลือ ≤1 รายการ แปลว่าลองจับคู่ 1:1 ไปแล้วในรอบแรกไม่ติด ไม่ต้องลองซ้ำ
-    var combo=bkComboSubsetSum(avail,target,6);
+    var combo=bkComboSubsetSum(avail,target,20); // เดิม 6 — ดูเหตุผลที่ bkComboSubsetSum ด้านล่าง
     if(combo){
       oneMatched[i]=true;
       combo.forEach(function(j){manyMatched[j]=true;});
