@@ -3339,10 +3339,14 @@ function bkDetectReversals(rows){
     var byAmt={};
     byDate[d].forEach(function(idx){
       var r=rows[idx];
-      var isDebit=r.debit>0 && !r.credit;
-      var isCredit=r.credit>0 && !r.debit;
+      // เดิมเช็ค r.debit>0/r.credit>0 (ต้องเป็นค่าบวกเท่านั้น) — พลาดเคสจริงที่ SAP บันทึกเอกสาร
+      // กลับรายการด้วยค่าติดลบ (เช่น เครดิต -1,000.00 / เดบิต -1,000.00) ทำให้ข้ามการตรวจจับคู่
+      // กลับรายการไปทั้งที่ memo มีคำว่า "Reverse Entry" ชัดเจน (พบ 24 ก.ย. 2569, เอกสาร 22871/22875)
+      // แก้เป็นเช็คแค่ "มีค่า ไม่ใช่ศูนย์" (!==0) แทน เพื่อครอบคลุมทั้งค่าบวกและค่าติดลบ
+      var isDebit=!!r.debit && !r.credit;
+      var isCredit=!!r.credit && !r.debit;
       if(!isDebit && !isCredit)return;
-      var amt=Math.round((isDebit?r.debit:r.credit)*100)/100;
+      var amt=Math.round(Math.abs(isDebit?r.debit:r.credit)*100)/100;
       if(!amt)return;
       var key=amt.toFixed(2);
       if(!byAmt[key])byAmt[key]={debits:[],credits:[]};
