@@ -3186,9 +3186,10 @@ function bkOpenReportFilter(){
       '</div>'+
     '</div>'+
     '<div style="margin-top:16px;text-align:right">'+
+      '<button class="hbtn" onclick="bkRunFilteredDiffSummary()">&#128202; สรุปส่วนต่างรวม</button> '+
       '<button class="hbtn hbtn-gold" onclick="bkRunFilteredReport()">&#128203; สร้างรายงาน</button>'+
     '</div>';
-  openModal('🔎 ตัวกรองรายงาน "ยังไม่พบใน SAP" (เลือกหลายบัญชี/หลายเดือน)', html);
+  openModal('🔎 ตัวกรองรายงาน (เลือกหลายบัญชี/หลายเดือน)', html);
 }
 function bkRunFilteredReport(){
   var accts=Array.prototype.slice.call(document.querySelectorAll('.bkFiltAcct:checked')).map(function(el){return el.value;});
@@ -3196,6 +3197,98 @@ function bkRunFilteredReport(){
   if(!accts.length||!yms.length){alert('กรุณาเลือกอย่างน้อย 1 บัญชี และ 1 เดือน/ปี');return;}
   closeModal();
   bkAllBanksUnmatchedReport({accounts:accts,yms:yms});
+}
+// สรุป "ส่วนต่างเงินเข้า/เงินออก" (SAP สุทธิ − แบงค์) รวมได้หลายบัญชี+หลายเดือนพร้อมกัน (เพิ่ม 25 ก.ย. 2569
+// ตามคำขอ — ผู้ใช้ถามว่ากล่อง "ส่วนต่าง" 2 ใบในหน้าหลักใช้ตัวกรองหลายบัญชี/หลายเดือนได้ไหม คำตอบคือยังไม่ได้
+// เพราะกล่องเดิมผูกกับ BK_STATE ซึ่งรองรับแค่ 1 บัญชี/1 เดือน และมีอีกหลายจุดพึ่งพา BK_STATE อยู่ — ผู้ใช้
+// อนุมัติแนวทาง "เพิ่มกล่องสรุปใหม่แยกต่างหาก ไม่แก้ของเดิม" จึงเขียนฟังก์ชันนี้แยกทั้งหมด ไม่แตะ BK_STATE/
+// bkRender/กล่อง KPI เดิมเลยแม้แต่บรรทัดเดียว เพื่อไม่ให้กระทบฟีเจอร์อื่นที่ผูกกับ BK_STATE (ตัวช่วยกระทบยอด
+// ส่วนต่าง, ตารางเดินบัญชี, ปุ่มรีเซ็ตยอดยกมา, export "สมุดบัญชีธนาคาร") — ใช้สูตรเดียวกับที่ bkRender ใช้
+// คำนวณกล่อง "ส่วนต่าง" ต่อ 1 บัญชี/1 เดือนทุกประการ (netDebit/netCredit หักคู่กลับรายการออกก่อนเทียบกับ
+// ยอดแบงค์) เพียงแค่วนลูปหลายบัญชี+หลายเดือนแล้วรวมยอด ไม่มี logic คำนวณส่วนต่างแบบใหม่
+function bkRunFilteredDiffSummary(){
+  var accts=Array.prototype.slice.call(document.querySelectorAll('.bkFiltAcct:checked')).map(function(el){return el.value;});
+  var yms=Array.prototype.slice.call(document.querySelectorAll('.bkFiltYm:checked')).map(function(el){return el.value;});
+  if(!accts.length||!yms.length){alert('กรุณาเลือกอย่างน้อย 1 บัญชี และ 1 เดือน/ปี');return;}
+  closeModal();
+  bkFilteredDiffSummary({accounts:accts,yms:yms});
+}
+function bkFilteredDiffSummary(opts){
+  var yms=opts.yms.slice().sort();
+  var selSet={};
+  opts.accounts.forEach(function(c){selSet[c]=true;});
+  var accts=bkAccounts().filter(function(a){return selSet[a.code];});
+  var rowsOut=[]; // ต่อบัญชี+เดือนที่มีข้อมูลจริง — สำหรับตารางรายละเอียด + export
+  var grandNetIn=0,grandBankIn=0,grandNetOut=0,grandBankOut=0,anyData=false;
+  accts.forEach(function(acctInfo){
+    var allLegs=(G.sapAllBankLegs&&G.sapAllBankLegs[acctInfo.code])||[];
+    yms.forEach(function(ym){
+      var rows=allLegs.filter(function(l){return bkYmOf(l.date)===ym;});
+      if(!rows.length)return;
+      var sortedRows=rows.slice().sort(function(a,b){
+        var ka=dateKey(a.date),kb=dateKey(b.date);
+        if(ka!==kb)return ka<kb?-1:1;
+        return (parseInt(a.tid,10)||0)-(parseInt(b.tid,10)||0);
+      });
+      var revInfo=bkDetectReversals(sortedRows);
+      var totalDebit=rows.reduce(function(s,r){return s+r.debit;},0);
+      var totalCredit=rows.reduce(function(s,r){return s+r.credit;},0);
+      var netDebit=totalDebit-revInfo.debitTotal;
+      var netCredit=totalCredit-revInfo.creditTotal;
+      var bankStats=bkBankSideStats(acctInfo.name||'',ym);
+      if(!bankStats||!bankStats.hasMonthData)return; // ไม่มี CSV เดือนนี้ — ข้าม (เหมือนกล่อง KPI เดิมที่ขึ้น "—")
+      anyData=true;
+      var diffIn=netDebit-bankStats.moneyIn;
+      var diffOut=netCredit-bankStats.moneyOut;
+      grandNetIn+=netDebit;grandBankIn+=bankStats.moneyIn;
+      grandNetOut+=netCredit;grandBankOut+=bankStats.moneyOut;
+      rowsOut.push({acctCode:acctInfo.code,acctName:acctInfo.name,ym:ym,netIn:netDebit,bankIn:bankStats.moneyIn,diffIn:diffIn,netOut:netCredit,bankOut:bankStats.moneyOut,diffOut:diffOut});
+    });
+  });
+  var grandDiffIn=grandNetIn-grandBankIn;
+  var grandDiffOut=grandNetOut-grandBankOut;
+  var monthLabel=yms.length===1?ymLabelThai(yms[0]):(yms.length+' เดือน: '+yms.map(ymLabelThai).join(', '));
+  var title='สรุปส่วนต่างรวม (SAP สุทธิ − แบงค์) — '+accts.length+' บัญชี ('+monthLabel+')';
+  dmRegisterSimple('bkFilteredDiff',title,[
+    {label:'บัญชี',get:function(r){return r.acctCode+' — '+r.acctName;}},
+    {label:'เดือน/ปี',get:function(r){return ymLabelThai(r.ym);}},
+    {label:'เงินเข้า SAP สุทธิ',right:true,get:function(r){return fmtFull(r.netIn);}},
+    {label:'เงินเข้าแบงค์',right:true,get:function(r){return fmtFull(r.bankIn);}},
+    {label:'ส่วนต่างเงินเข้า',right:true,get:function(r){return fmtFull(r.diffIn);}},
+    {label:'เงินออก SAP สุทธิ',right:true,get:function(r){return fmtFull(r.netOut);}},
+    {label:'เงินออกแบงค์',right:true,get:function(r){return fmtFull(r.bankOut);}},
+    {label:'ส่วนต่างเงินออก',right:true,get:function(r){return fmtFull(r.diffOut);}}
+  ],rowsOut);
+  var bodyHtml;
+  if(!anyData){
+    bodyHtml='<div style="text-align:center;color:var(--muted);padding:28px 16px">⚠️ ไม่พบข้อมูลที่มีทั้ง SAP และ CSV แบงค์ตรงกันในบัญชี/เดือนที่เลือก</div>';
+  } else {
+    var diffInBadge=Math.abs(grandDiffIn)<0.01?'<span style="color:var(--green);font-weight:700">✅ ตรงกัน</span>':('<span style="color:var(--gold2);font-weight:700">'+(grandDiffIn>0?'+':'')+fmtFull(grandDiffIn)+'</span>');
+    var diffOutBadge=Math.abs(grandDiffOut)<0.01?'<span style="color:var(--green);font-weight:700">✅ ตรงกัน</span>':('<span style="color:var(--gold2);font-weight:700">'+(grandDiffOut>0?'+':'')+fmtFull(grandDiffOut)+'</span>');
+    var summaryHtml='<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px">'+
+      '<div style="flex:1;min-width:220px;border:1px solid var(--border);border-radius:10px;padding:12px 14px">'+
+        '<div style="font-size:12px;color:var(--muted);margin-bottom:4px">⬆️ ส่วนต่างเงินเข้ารวม (SAP สุทธิ − แบงค์)</div>'+
+        '<div style="font-size:20px;font-weight:700">'+diffInBadge+'</div>'+
+        '<div style="font-size:11px;color:var(--muted);margin-top:4px">SAP สุทธิรวม '+fmtFull(grandNetIn)+' · แบงค์รวม '+fmtFull(grandBankIn)+'</div>'+
+      '</div>'+
+      '<div style="flex:1;min-width:220px;border:1px solid var(--border);border-radius:10px;padding:12px 14px">'+
+        '<div style="font-size:12px;color:var(--muted);margin-bottom:4px">⬇️ ส่วนต่างเงินออกรวม (SAP สุทธิ − แบงค์)</div>'+
+        '<div style="font-size:20px;font-weight:700">'+diffOutBadge+'</div>'+
+        '<div style="font-size:11px;color:var(--muted);margin-top:4px">SAP สุทธิรวม '+fmtFull(grandNetOut)+' · แบงค์รวม '+fmtFull(grandBankOut)+'</div>'+
+      '</div>'+
+    '</div>';
+    var tblRows=rowsOut.map(function(r){
+      var dIn=Math.abs(r.diffIn)<0.01?'<span style="color:var(--green)">✅ ตรงกัน</span>':('<span style="color:var(--gold2)">'+(r.diffIn>0?'+':'')+fmtFull(r.diffIn)+'</span>');
+      var dOut=Math.abs(r.diffOut)<0.01?'<span style="color:var(--green)">✅ ตรงกัน</span>':('<span style="color:var(--gold2)">'+(r.diffOut>0?'+':'')+fmtFull(r.diffOut)+'</span>');
+      return '<tr><td style="font-size:12px">'+r.acctCode+' — '+r.acctName+'</td><td style="font-size:12px">'+ymLabelThai(r.ym)+'</td>'+
+        '<td class="right" style="font-size:12px">'+fmtFull(r.netIn)+'</td><td class="right" style="font-size:12px">'+fmtFull(r.bankIn)+'</td><td class="right" style="font-size:12px">'+dIn+'</td>'+
+        '<td class="right" style="font-size:12px">'+fmtFull(r.netOut)+'</td><td class="right" style="font-size:12px">'+fmtFull(r.bankOut)+'</td><td class="right" style="font-size:12px">'+dOut+'</td></tr>';
+    }).join('');
+    var tblHtml='<div style="overflow:auto;max-height:360px"><table style="table-layout:fixed;width:100%;min-width:820px"><thead><tr><th>บัญชี</th><th>เดือน/ปี</th><th style="text-align:right">เงินเข้า SAP</th><th style="text-align:right">เงินเข้าแบงค์</th><th style="text-align:right">ส่วนต่างเข้า</th><th style="text-align:right">เงินออก SAP</th><th style="text-align:right">เงินออกแบงค์</th><th style="text-align:right">ส่วนต่างออก</th></tr></thead><tbody>'+tblRows+'</tbody></table></div>'+
+      '<div style="font-size:11px;color:var(--muted);margin-top:8px">เฉพาะบัญชี/เดือนที่มีทั้งข้อมูล SAP และ CSV แบงค์ตรงกันเท่านั้น · สูตรและยอดสุทธิ (หักคู่กลับรายการ) เหมือนกล่อง "ส่วนต่าง" ในหน้าหลักทุกประการ</div>';
+    bodyHtml=summaryHtml+tblHtml;
+  }
+  openModal('📊 '+title, dmExportBtns('bkFilteredDiff')+bodyHtml);
 }
 // รายงานรวม "รายการยังไม่พบใน SAP" ของ *ทุกธนาคาร* — ปุ่มหลัก (ไม่ส่ง opts) = พฤติกรรมเดิม
 // (ทุกบัญชี + เดือน/ปีเดียวที่กำลังดูอยู่ในตาราง) ส่วน opts={accounts:[...],yms:[...]} มาจาก popup
@@ -3364,18 +3457,33 @@ function bkDetectReversals(rows){
       var byTid=function(a,c){return (parseInt(rows[a].tid,10)||0)-(parseInt(rows[c].tid,10)||0);};
       b.debits.sort(byTid);
       b.credits.sort(byTid);
-      var n=Math.min(b.debits.length,b.credits.length);
-      for(var i=0;i<n;i++){
-        var dIdx=b.debits[i],cIdx=b.credits[i];
-        var dMemo=String(rows[dIdx].memo||''),cMemo=String(rows[cIdx].memo||'');
-        // ต้องมีหมายเหตุยืนยันการกลับรายการอยู่ฝั่งใดฝั่งหนึ่งจริง ไม่ใช่แค่ยอด+วันที่ตรงกันเฉยๆ
-        if(!BK_REVERSAL_MEMO_RE.test(dMemo) && !BK_REVERSAL_MEMO_RE.test(cMemo))continue;
-        pairId++;
-        flags[dIdx]=pairId;
-        flags[cIdx]=pairId;
-        debitTotal+=rows[dIdx].debit;
-        creditTotal+=rows[cIdx].credit;
+      var hasEvid=function(idx){return BK_REVERSAL_MEMO_RE.test(String(rows[idx].memo||''));};
+      // เดิมจับคู่ debits[i] กับ credits[i] ตามลำดับเลขที่เอกสารตรงๆ — พบเคสจริง 25 ก.ย. 2569 ที่ทำให้
+      // จับคู่ผิด: เอกสารต้นฉบับที่ลงบัญชีผิดที่ (เดบิต 200,000 + เครดิต 200,000 ในบัญชีเดียวกันเอง เช่น
+      // เอกสาร 31782) ถูกจับคู่ "กันเอง" (เพราะเรียงตามเลขที่เอกสารแล้วมาก่อน) แทนที่จะจับกับเอกสารกลับ
+      // รายการจริง (31785 ที่มีคำว่า "Reversal" ยืนยัน) ซึ่งดันมีเดบิต+เครดิต 200,000 จับคู่กันเองไปก่อน
+      // เหมือนกัน ผลคือยอดของเอกสารต้นฉบับที่ควรถูกกลับรายการเต็มจำนวน เหลือค้างเป็น "ของจริง" ที่ต้องหา
+      // แบงค์รองรับทั้งที่ถูกยกเลิกไปแล้ว — แก้โดยจับคู่ "ฝั่งที่ไม่มีคำว่า Reversal ในหมายเหตุ" (เอกสาร
+      // ต้นฉบับ) กับ "ฝั่งที่มีคำว่า Reversal" (เอกสารกลับรายการ) ก่อนเสมอ แล้วจึงค่อยจับคู่ที่เหลือ (ทั้งคู่มี
+      // หลักฐานอยู่แล้ว) เป็นลำดับสุดท้าย — คู่ที่ไม่มีหลักฐานฝั่งใดเลยจะไม่ถูกจับคู่เหมือนเดิม (ปลอดภัยกว่า)
+      var noEvidDebits=b.debits.filter(function(i){return !hasEvid(i);});
+      var evidDebits=b.debits.filter(hasEvid);
+      var noEvidCredits=b.credits.filter(function(i){return !hasEvid(i);});
+      var evidCredits=b.credits.filter(hasEvid);
+      function takePairs(list1,list2){
+        var n=Math.min(list1.length,list2.length);
+        for(var i=0;i<n;i++){
+          var dIdx=list1.shift(),cIdx=list2.shift();
+          pairId++;
+          flags[dIdx]=pairId;
+          flags[cIdx]=pairId;
+          debitTotal+=rows[dIdx].debit;
+          creditTotal+=rows[cIdx].credit;
+        }
       }
+      takePairs(noEvidDebits,evidCredits); // ต้นฉบับ(เดบิต) ↔ กลับรายการ(เครดิต) ก่อน
+      takePairs(evidDebits,noEvidCredits); // กลับรายการ(เดบิต) ↔ ต้นฉบับ(เครดิต)
+      takePairs(evidDebits,evidCredits);   // เหลือที่มีหลักฐานทั้ง 2 ฝั่ง (เช่น 2 เอกสารกลับรายการชนกัน)
     });
   });
   return {flags:flags,pairCount:pairId,debitTotal:debitTotal,creditTotal:creditTotal};
