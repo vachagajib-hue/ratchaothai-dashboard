@@ -683,7 +683,8 @@ async function fetchSheet(name, _attempt){
     return{cols,rows:rows.map(function(r){return cols.map(function(c){return r[c];});})};
   }catch(err){
     var MAX_RETRIES=2; // ลองรวมสูงสุด 3 ครั้ง (1 ครั้งแรก + retry 2 ครั้ง)
-    if(attempt>=MAX_RETRIES)throw err;
+    // "Sheet not found" = ชื่อแท็บในชีตไม่ตรง ลองซ้ำก็ไม่หาย — แจ้ง error ทันทีไม่ต้องรอ retry
+    if(attempt>=MAX_RETRIES||/Sheet not found/i.test(String(err&&err.message||err)))throw err;
     console.warn('fetchSheet('+name+') ล้มเหลว (ครั้งที่ '+(attempt+1)+'): '+(err&&err.message||err)+' — กำลังลองใหม่…');
     await sleepMs(800*(attempt+1)); // หน่วงเพิ่มขึ้นทีละรอบ (backoff): 800ms, 1600ms
     return fetchSheet(name, attempt+1);
@@ -3776,12 +3777,26 @@ async function loadProjectData(){
     var got={};
     // ดึงทีละ 2 ชีต และถ้าชีตไหนล้มเหลว (เช่น 404 ชั่วคราวจาก Apps Script) จะรอแล้วลองซ้ำอีก 2 รอบอัตโนมัติ
     for(var pass=0;pass<3;pass++){
-      var todo=names.filter(function(n){return !got[n];});
+      var todo=names.filter(function(n){return !got[n]&&!/Sheet not found/i.test(PROJ.failMsg[n]||'');});
       if(!todo.length)break;
       if(pass>0)await sleepMs(3000*pass);
       await fetchBatched(todo.map(function(n){
         return function(){return fetchSheet(n).then(function(r){got[n]=r;delete PROJ.failMsg[n];}).catch(function(e){PROJ.failMsg[n]=String((e&&e.message)||e);console.warn('โหลด '+n+' ไม่สำเร็จ (รอบ '+(pass+1)+')',e);});};
       }),2);
+    }
+    // ถ้าชีตไหน "Sheet not found" ทั้งที่ชื่อแท็บดูเหมือนถูก มักเกิดจากอักขระที่มองไม่เห็นติดอยู่กับชื่อแท็บ
+    // (เช่น ช่องว่างท้ายชื่อจากการคัดลอก) — ลองชื่อที่ต่างกันเล็กน้อยให้อัตโนมัติ และแจ้งผู้ใช้ว่าพบเป็นแบบไหน
+    var VARIANTS=[[' ','ช่องว่างท้ายชื่อ'],['  ','ช่องว่าง 2 ตัวท้ายชื่อ'],['\u00a0','ช่องว่างพิเศษ (nbsp) ท้ายชื่อ'],['\u200b','อักขระล่องหน (zero-width) ท้ายชื่อ'],['\n','ขึ้นบรรทัดใหม่ท้ายชื่อ'],[' (v2)','คำต่อท้าย " (v2)"']];
+    PROJ.alias={};
+    var missing=names.filter(function(n){return !got[n]&&/Sheet not found/i.test(PROJ.failMsg[n]||'');});
+    for(var mi=0;mi<missing.length;mi++){
+      var mn=missing[mi];
+      for(var vi=0;vi<VARIANTS.length&&!got[mn];vi++){
+        try{var rr=await fetchSheet(mn+VARIANTS[vi][0]);got[mn]=rr;PROJ.alias[mn]=VARIANTS[vi][1];delete PROJ.failMsg[mn];}catch(e){}
+      }
+      if(!got[mn]){
+        try{var rr2=await fetchSheet(' '+mn);got[mn]=rr2;PROJ.alias[mn]='ช่องว่างหน้าชื่อ';delete PROJ.failMsg[mn];}catch(e){}
+      }
     }
     PROJ.failed=names.filter(function(n){return !got[n];});
     var res=names.map(function(n){return got[n]||{rows:[]};});
@@ -3795,7 +3810,7 @@ async function loadProjectData(){
     };
     PROJ.rec=res[1].rows.map(mkFlow);
     PROJ.pay=res[2].rows.map(mkFlow);
-    var mkOpen=function(r){return {code:String(r[1]||'--').trim()||'--',name:String(r[2]||'').trim(),doc:String(r[3]||''),party:String(r[7]||'').trim(),bal:parseFloat(r[9])||0,days:parseFloat(r[10])||0};};
+    var mkOpen=function(r){var dk=projDateKey(r[4]);return {code:String(r[1]||'--').trim()||'--',name:String(r[2]||'').trim(),doc:String(r[3]||''),party:String(r[7]||'').trim(),bal:parseFloat(r[9])||0,days:parseFloat(r[10])||0,dk:dk,mk:projMK(dk)};};
     PROJ.ar=res[3].rows.map(mkOpen);
     PROJ.ap=res[4].rows.map(mkOpen);
     PROJ.loaded=true;
@@ -3811,14 +3826,22 @@ async function loadProjectData(){
 function projKeep(r){
   var c=PROJ._ctx;
   if(r.dk&&r.dk>c.today)return 'future';
+  if(c.range){if(!projInRange(r,c.range))return 'out';return 'ok';}
   if(c.filtered&&(!r.mk||!c.fm[r.mk]))return 'out';
   return 'ok';
 }
-function projAggregate(){
+// ช่วงเวลาที่เลือกเองในหน้าต่างรายละเอียด: range={from:'YYYY-MM'|null,to:'YYYY-MM'|null}
+function projInRange(r,range){
+  if(!range)return true;
+  if(!r.mk)return false;
+  return (!range.from||r.mk>=range.from)&&(!range.to||r.mk<=range.to);
+}
+function projAggregate(range){
   var today=projTodayKey();
   var filtered=!!(G&&G.allMonths&&G.allMonths.length&&ACTIVE_MONTHS.length!==G.allMonths.length);
   var fm={};ACTIVE_MONTHS.forEach(function(m){fm[m]=true;});
-  PROJ._ctx={today:today,filtered:filtered,fm:fm};
+  if(range)filtered=true;
+  PROJ._ctx={today:today,filtered:filtered,fm:fm,range:range||null};
   var map={},fut={rec:0,pay:0,nRec:0,nPay:0};
   var get=function(code,name){
     if(!map[code])map[code]={code:code,name:name||'',rec:0,pay:0,ar:0,ap:0,arN:0,apN:0,nRec:0,nPay:0};
@@ -3835,8 +3858,9 @@ function projAggregate(){
   };
   feed(PROJ.rec,'rec','nRec','rec','nRec');
   feed(PROJ.pay,'pay','nPay','pay','nPay');
-  PROJ.ar.forEach(function(r){var o=get(r.code,r.name);o.ar+=r.bal;o.arN++;});
-  PROJ.ap.forEach(function(r){var o=get(r.code,r.name);o.ap+=r.bal;o.apN++;});
+  // ลูกหนี้/เจ้าหนี้ค้าง: ปกติเป็นยอด ณ ปัจจุบัน แต่ถ้าเลือกช่วงเวลาในหน้าต่างรายละเอียด จะนับเฉพาะใบที่ลงวันที่ในช่วงนั้น
+  PROJ.ar.forEach(function(r){if(range&&!projInRange(r,range))return;var o=get(r.code,r.name);o.ar+=r.bal;o.arN++;});
+  PROJ.ap.forEach(function(r){if(range&&!projInRange(r,range))return;var o=get(r.code,r.name);o.ap+=r.bal;o.apN++;});
   Object.keys(map).forEach(function(c){if(!map[c].name&&PROJ.master[c])map[c].name=PROJ.master[c].name;});
   return {map:map,fut:fut,filtered:filtered};
 }
@@ -3891,6 +3915,7 @@ function renderProjectPage(){
         '<a href="'+APPS_URL+'?sheet='+encodeURIComponent(n)+'" target="_blank" rel="noopener" style="color:var(--blue)">[เปิดทดสอบชีตนี้]</a>';
     });
   }
+  Object.keys(PROJ.alias||{}).forEach(function(n){note+='<br>&#9888;&#65039; แท็บ <strong>'+projEsc(n)+'</strong> โหลดได้ แต่ชื่อแท็บในชีตมี'+projEsc(PROJ.alias[n])+' — แนะนำให้ลบชื่อแท็บแล้วพิมพ์ใหม่ให้ตรง';});
   if(PROJ.undated)note+='<br>&#9888;&#65039; พบ '+PROJ.undated+' รายการที่อ่านวันที่ไม่ได้ — ไม่ถูกนับเมื่อกรองช่วงเวลา';
   projSetNote(note,PROJ.failed.length?'gold':'blue');
 
@@ -3951,7 +3976,7 @@ function renderProjectPage(){
 // ---------------------------------------------------------------------------
 var PROJ_DOCTYPE={0:'ไม่ได้ตัดกับเอกสารใด (ยอดคงเหลือ)',13:'ใบแจ้งหนี้ขาย',14:'ใบลดหนี้ขาย',203:'ใบมัดจำขาย',18:'ใบแจ้งหนี้ซื้อ',19:'ใบลดหนี้ซื้อ',204:'ใบมัดจำซื้อ',30:'สมุดรายวัน (JE)'};
 var PROJ_MODAL_LIMIT=1500;
-var PM={n:0,view:'flat',proj:'ALL_P',filter:'all',exp:null,seq:0};
+var PM={n:0,view:'flat',proj:'ALL_P',filter:'all',exp:null,seq:0,range:null,sel:{m1:'',y1:'',m2:'',y2:''}};
 function projDocTypeLbl(t){return PROJ_DOCTYPE[t]||('ประเภท '+t);}
 function projFmtDK(dk){if(!dk)return '—';return String(dk%100).padStart(2,'0')+'.'+String(Math.floor(dk/100)%100).padStart(2,'0')+'.'+Math.floor(dk/10000);}
 function projNameOf(code,name){return name||(PROJ.master[code]&&PROJ.master[code].name)||'';}
@@ -3976,6 +4001,7 @@ var PM_COLS={
   type:{t:'ตัดกับ',kind:0,h:function(l){return projEsc(projDocTypeLbl(l.type));},x:function(l){return projDocTypeLbl(l.type);}},
   amt:{t:'จำนวนเงิน (บาท)',kind:1,h:function(l){return fmtFull(l.amt);},x:function(l){return l.amt;}},
   rem:{t:'หมายเหตุ',kind:0,h:function(l){return projEsc(l.remarks||'');},x:function(l){return l.remarks||'';}},
+  docdate:{t:'วันที่เอกสาร',kind:0,h:function(l){return projFmtDK(l.dk);},x:function(l){return projFmtDK(l.dk);}},
   ovd:{t:'เกินกำหนด (วัน)',kind:2,h:function(l){return l.days>0?'<span style="color:var(--red)">'+l.days+'</span>':'ยังไม่ครบกำหนด';},x:function(l){return l.days>0?l.days:0;}}
 };
 function projSearch(id){return '<input class="modal-search" style="margin-bottom:12px" placeholder="&#128269; ค้นหา…" oninput="filterTbl(this,\''+id+'\')">';}
@@ -4063,24 +4089,56 @@ function projLineExport(title,cols,lines,groups,total){
 // ---------- หน้าต่างรายละเอียด ----------
 function projShowKpi(n){
   if(!PROJ.loaded){openModal('รายละเอียด','<div style="padding:16px">ยังไม่มีข้อมูลโครงการ — กดปุ่ม "ลองโหลดใหม่" ด้านบนก่อน</div>');return;}
-  PM.n=n;PM.view=(n===5)?'type':'flat';PM.proj=(n===8)?'ALL':'ALL_P';PM.filter='all';
+  PM.n=n;PM.view=(n===5)?'type':'flat';PM.proj=(n===8)?'ALL':'ALL_P';PM.filter='all';PM.range=null;PM.sel={m1:'',y1:'',m2:'',y2:''};
   projModalRender();
 }
 function projSetView(v){PM.view=v;projModalRender();}
 function projSetProj(v){PM.proj=v;projModalRender();}
 function projSetFilter(v){PM.filter=v;projModalRender();}
+// ตัวกรองเดือน/ปีภายในหน้าต่างรายละเอียด (ทำงานเหมือนแถบกรองด้านบนของ Dashboard แต่ใช้เฉพาะหน้าต่างนี้)
+function projSetPeriod(){
+  var g=function(id){var e=document.getElementById(id);return e?e.value:'';};
+  var m1=g('pmM1'),y1=g('pmY1'),m2=g('pmM2'),y2=g('pmY2');
+  PM.sel={m1:m1,y1:y1,m2:m2,y2:y2};
+  if(!y1&&!y2){PM.range=null;projModalRender();return;}
+  var from=y1&&m1?y1+'-'+String(m1).padStart(2,'0'):(y1?y1+'-01':null);
+  var to=y2&&m2?y2+'-'+String(m2).padStart(2,'0'):(y2?y2+'-12':null);
+  if(from&&to&&from>to){var t=from;from=to;to=t;PM.sel={m1:m2,y1:y2,m2:m1,y2:y1};}
+  PM.range={from:from,to:to};
+  projModalRender();
+}
+function projResetPeriod(){PM.range=null;PM.sel={m1:'',y1:'',m2:'',y2:''};projModalRender();}
+function projYears(){
+  var ys={};
+  [PROJ.rec,PROJ.pay,PROJ.ar,PROJ.ap].forEach(function(a){a.forEach(function(r){if(r.mk)ys[r.mk.slice(0,4)]=1;});});
+  return Object.keys(ys).sort();
+}
+function projPeriodBar(n,A){
+  var sel=PM.sel,yrs=projYears();
+  var mSel=function(id,v){return '<select id="'+id+'" class="filter-select" style="font-size:12px;padding:5px 8px" onchange="projSetPeriod()"><option value="">— เดือน —</option>'+
+    [1,2,3,4,5,6,7,8,9,10,11,12].map(function(m){return '<option value="'+m+'"'+(String(v)===String(m)?' selected':'')+'>'+MTHAI[m]+'</option>';}).join('')+'</select>';};
+  var ySel=function(id,v){return '<select id="'+id+'" class="filter-select" style="font-size:12px;padding:5px 8px" onchange="projSetPeriod()"><option value="">— ปี —</option>'+
+    yrs.map(function(y){return '<option value="'+y+'"'+(String(v)===y?' selected':'')+'>'+(+y+543)+'</option>';}).join('')+'</select>';};
+  var open=(n===6||n===7);
+  var hint=PM.range?(open?'กรองตามวันที่ของใบแจ้งหนี้ (เฉพาะใบที่ยังค้างอยู่)':(n===1||n===4?'กรองตามวันที่รับ/จ่ายเงิน · ลูกหนี้/เจ้าหนี้ในตารางนับเฉพาะใบที่ลงวันที่ในช่วงนี้':'กรองตามวันที่รับ/จ่ายเงิน')):
+    (open?'ยังไม่ได้เลือกช่วง — แสดงยอดค้างทั้งหมด ณ ปัจจุบัน':(A.filtered?'ตอนนี้ใช้ตามตัวกรองด้านบนของหน้าหลัก':'ตอนนี้แสดงทุกช่วงเวลา'));
+  return '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,0.03)">'+
+    '<span style="font-size:11px;color:var(--muted);font-weight:600">📅 ช่วงเวลา:</span>'+mSel('pmM1',sel.m1)+ySel('pmY1',sel.y1)+'<span style="font-size:12px;color:var(--muted)">ถึง</span>'+mSel('pmM2',sel.m2)+ySel('pmY2',sel.y2)+
+    (PM.range?'<button class="recon-bank-btn" onclick="projResetPeriod()">✕ ล้างช่วงนี้</button>':'')+
+    '<span style="font-size:11px;color:var(--muted)">'+hint+'</span></div>';
+}
 function projToggleGrp(i){var r=document.getElementById('pmD'+i),a=document.getElementById('pmA'+i);if(!r)return;var o=r.style.display==='none';r.style.display=o?'':'none';if(a)a.textContent=o?'▾':'▸';}
 function projToggleAll(open){document.querySelectorAll('tr[id^="pmD"]').forEach(function(r){r.style.display=open?'':'none';});document.querySelectorAll('span[id^="pmA"]').forEach(function(a){a.textContent=open?'▾':'▸';});}
 function projBtn(label,active,fn){return '<button class="recon-bank-btn '+(active?'active':'')+'" onclick="'+fn+'">'+label+'</button>';}
 
 function projModalRender(){
-  var n=PM.n,A=projAggregate(),map=A.map,NP='--';
+  var n=PM.n,A=projAggregate(PM.range),map=A.map,NP='--';
   var rows=Object.keys(map).map(function(c){return map[c];});
   var projRows=rows.filter(function(o){return o.code!==NP;});
   var np=map[NP]||{rec:0,pay:0,ar:0,ap:0,nRec:0,nPay:0};
-  var period=A.filtered?'ช่วงเวลาที่เลือก':'ทุกช่วงเวลา';
+  var period=PM.range?((PM.range.from?mlbl(PM.range.from):'ต้น')+' — '+(PM.range.to?mlbl(PM.range.to):'ปัจจุบัน')):(A.filtered?'ช่วงเวลาที่เลือก':'ทุกช่วงเวลา');
   var norm=function(r,side){return {code:r.code,name:r.name,dk:r.dk,doc:r.doc,party:r.party,type:r.type,amt:r.amt,remarks:r.remarks,side:side||'',days:r.days};};
-  var normOpen=function(r){return {code:r.code,name:r.name,dk:null,doc:r.doc,party:r.party,type:0,amt:r.bal,remarks:'',side:'',days:r.days};};
+  var normOpen=function(r){return {code:r.code,name:r.name,dk:r.dk,doc:r.doc,party:r.party,type:0,amt:r.bal,remarks:'',side:'',days:r.days};};
   var okRec=PROJ.rec.filter(function(r){return projKeep(r)==='ok';}).map(function(r){return norm(r,'รับ');});
   var okPay=PROJ.pay.filter(function(r){return projKeep(r)==='ok';}).map(function(r){return norm(r,'จ่าย');});
   var title='',stats='',tool='',body='',exp=null;
@@ -4138,10 +4196,10 @@ function projModalRender(){
     var base,cols,color,defOrder,label;
     if(n===2){base=okRec;cols=[PM_COLS.date,PM_COLS.prj,PM_COLS.doc,PM_COLS.party,PM_COLS.type,PM_COLS.amt,PM_COLS.rem];color='var(--gold2)';label='เงินรับตามโครงการ';title='📥 เงินรับตามโครงการ ('+period+')';base=base.slice().sort(byDateDesc);}
     else if(n===3){base=okPay;cols=[PM_COLS.date,PM_COLS.prj,PM_COLS.doc,PM_COLS.party,PM_COLS.type,PM_COLS.amt,PM_COLS.rem];color='var(--red)';label='เงินจ่ายตามโครงการ';title='📤 เงินจ่ายตามโครงการ ('+period+')';base=base.slice().sort(byDateDesc);}
-    else if(n===6){base=PROJ.ar.map(normOpen);cols=[PM_COLS.prj,PM_COLS.doc,PM_COLS.party,PM_COLS.amt,PM_COLS.ovd];color='var(--gold2)';label='ลูกหนี้ค้างรับ';title='💼 ลูกหนี้ค้างรับตามโครงการ (ยอด ณ ปัจจุบัน)';base=base.slice().sort(byAmtDesc);}
-    else if(n===7){base=PROJ.ap.map(normOpen);cols=[PM_COLS.prj,PM_COLS.doc,PM_COLS.party,PM_COLS.amt,PM_COLS.ovd];color='var(--red)';label='เจ้าหนี้ค้างจ่าย';title='📝 เจ้าหนี้ค้างจ่ายตามโครงการ (ยอด ณ ปัจจุบัน)';base=base.slice().sort(byAmtDesc);}
-    else{base=PROJ.rec.filter(function(r){return projKeep(r)==='future';}).map(function(r){return norm(r,'รับ');}).concat(PROJ.pay.filter(function(r){return projKeep(r)==='future';}).map(function(r){var l=norm(r,'จ่าย');l.amt=-l.amt;return l;}));
-      cols=[PM_COLS.date,PM_COLS.side,PM_COLS.prj,PM_COLS.doc,PM_COLS.party,PM_COLS.amt,PM_COLS.rem];color='var(--blue)';label='รายการลงวันที่ล่วงหน้า';title='🗓 รายการลงวันที่ล่วงหน้า (หลังวันนี้)';base.sort(function(a,b){return (a.dk||0)-(b.dk||0);});}
+    else if(n===6){base=PROJ.ar.filter(function(r){return projInRange(r,PM.range);}).map(normOpen);cols=[PM_COLS.docdate,PM_COLS.prj,PM_COLS.doc,PM_COLS.party,PM_COLS.amt,PM_COLS.ovd];color='var(--gold2)';label='ลูกหนี้ค้างรับ';title='💼 ลูกหนี้ค้างรับตามโครงการ ('+(PM.range?'ใบลงวันที่ '+period:'ยอด ณ ปัจจุบัน')+')';base=base.slice().sort(byAmtDesc);}
+    else if(n===7){base=PROJ.ap.filter(function(r){return projInRange(r,PM.range);}).map(normOpen);cols=[PM_COLS.docdate,PM_COLS.prj,PM_COLS.doc,PM_COLS.party,PM_COLS.amt,PM_COLS.ovd];color='var(--red)';label='เจ้าหนี้ค้างจ่าย';title='📝 เจ้าหนี้ค้างจ่ายตามโครงการ ('+(PM.range?'ใบลงวันที่ '+period:'ยอด ณ ปัจจุบัน')+')';base=base.slice().sort(byAmtDesc);}
+    else{base=PROJ.rec.filter(function(r){return projKeep(r)==='future'&&projInRange(r,PM.range);}).map(function(r){return norm(r,'รับ');}).concat(PROJ.pay.filter(function(r){return projKeep(r)==='future'&&projInRange(r,PM.range);}).map(function(r){var l=norm(r,'จ่าย');l.amt=-l.amt;return l;}));
+      cols=[PM_COLS.date,PM_COLS.side,PM_COLS.prj,PM_COLS.doc,PM_COLS.party,PM_COLS.amt,PM_COLS.rem];color='var(--blue)';label='รายการลงวันที่ล่วงหน้า';title='🗓 รายการลงวันที่ล่วงหน้า (หลังวันนี้'+(PM.range?' · '+period:'')+')';base.sort(function(a,b){return (a.dk||0)-(b.dk||0);});}
     if((n===6||n===7)&&PROJ.failed.indexOf(n===6?'Q20_PROJECT_AR_OPEN':'Q21_PROJECT_AP_OPEN')>=0){
       openModal(title,'<div style="padding:16px;color:var(--gold2)">&#9888;&#65039; โหลดชีต '+(n===6?'Q20_PROJECT_AR_OPEN':'Q21_PROJECT_AP_OPEN')+' ไม่สำเร็จ ('+projEsc(PROJ.failMsg[n===6?'Q20_PROJECT_AR_OPEN':'Q21_PROJECT_AP_OPEN']||'?')+') — กด "ลองโหลดใหม่" ที่แถบด้านบนของหน้า</div>');return;
     }
@@ -4176,7 +4234,7 @@ function projModalRender(){
   }
   if(exp)exp.title=exp.title.replace(/[\u{1F000}-\u{1FFFF}\u2600-\u27BF\uFE0F\u200D]/gu,'').replace(/\s+/g,' ').trim();
   PM.exp=exp;
-  openModal(title,stats+'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">'+tool+'</div>'+body);
+  openModal(title,stats+projPeriodBar(n,A)+'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">'+tool+'</div>'+body);
 }
 var PM_GRP_LINE_LIMIT=300;
 
