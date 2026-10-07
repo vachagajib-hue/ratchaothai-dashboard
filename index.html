@@ -4654,9 +4654,16 @@ function renderRecon(){
         cmpKey=meKey;cmpBank=sumB;
         var ym=meKey.slice(0,4)+'-'+meKey.slice(4,6);
         var gRows={};matchedAccts.forEach(function(a){(grpByBank[a.acctNo]||[]).forEach(function(x){gRows[x.acct.code]=x;});});
-        var codes=Object.keys(gRows),tot=0,miss=false;
-        codes.forEach(function(c){var mm=(G.sapMonthlyByAcct||{})[c];if(mm&&mm[ym]!==undefined)tot+=mm[ym];else miss=true;});
-        if(!miss&&codes.length)cmpSap=tot;else why='ไม่มียอด SAP สิ้นเดือน (Q11)';
+        var codes=Object.keys(gRows),tot=0,miss=false,carried={};
+        // Q11 มีแถวเฉพาะเดือนที่บัญชีมีรายการเคลื่อนไหว (GROUP BY บัญชี+เดือน) เดือนที่ไม่มีแถว = ยอดเท่ากับเดือนก่อนหน้า จึงยกยอดจากเดือนล่าสุดที่มี
+        codes.forEach(function(c){
+          var mm=(G.sapMonthlyByAcct||{})[c];
+          if(mm&&mm[ym]!==undefined){tot+=mm[ym];return;}
+          var ks=mm?Object.keys(mm).filter(function(k){return k<ym;}).sort():[];
+          if(ks.length){tot+=mm[ks[ks.length-1]];carried[c]=ks[ks.length-1];}else miss=true;
+        });
+        if(!miss&&codes.length){cmpSap=tot;r.carried=Object.keys(carried).length?Object.keys(carried).map(function(c){return c+' จาก '+carried[c];}).join(', '):'';}
+        else why='ไม่มียอด SAP (Q11) ของบัญชีนี้ก่อนหรือใน '+ym;
         r.groupKey=codes.slice().sort().join('+');r.groupSize=codes.length;
       }else why='สเตทเมนต์ไม่ครอบคลุมสิ้นเดือนก่อนหน้า (เริ่มหลังสิ้นเดือน) — ต้องมีสเตทเมนต์ของเดือนก่อน';
     }
@@ -4672,6 +4679,7 @@ function renderRecon(){
     if(!matchedAccts.length)sumInfo.noFile.push(acct.code+' '+acct.name);
     var badges='';
     if(r.groupSize>1)badges+=' <span class="badge badge-gold" title="เลขบัญชี Bank เดียวกันถูกผูกกับ '+r.groupSize+' รหัส SAP ('+projEsc(r.groupKey)+') จึงเทียบกับผลรวมของทุกรหัส">รวม '+r.groupSize+' รหัส</span>';
+    if(acct.code==='1112-10')badges+=' <span class="badge badge-red" title="Finding #3 ในบันทึกโปรเจกต์: ยอด Q11 ของ 1112-10 สะสมจาก JE ตั้งแต่ 31/12/2568 อาจคลาดเคลื่อนจากยอดยกมา/JE ก้อนใหญ่ มิ.ย. 2569 — ยืนยันกับ SAP ก่อนสรุปว่า Bank ผิด">Q11 อาจผิด</span>';
     if(/USD/i.test(acct.name))badges+=' <span class="badge badge-gold" title="บัญชีสกุล USD — ตรวจว่ายอดสเตทเมนต์และยอด SAP เป็นสกุลเดียวกัน (USD หรือบาท)">USD</span>';
     var statusHtml;
     if(!matchedAccts.length)statusHtml='<span class="recon-status-na" title="'+projEsc(known||'ยังไม่พบสเตทเมนต์ที่ตรงกับเลขบัญชีนี้')+'">— '+(known?'ไม่มีไฟล์ Bank (ทราบแล้ว)':'ไม่มีข้อมูล Bank')+'</span>';
@@ -4679,13 +4687,13 @@ function renderRecon(){
     else statusHtml=ok3?'<span class="recon-status-ok">✅ ตรงกัน</span>':'<span class="recon-status-err">❌ ต้องตรวจสอบ</span>';
     var bg=i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)';
     var dash='<span style="color:var(--muted)">—</span>';
-    tbody.insertAdjacentHTML('beforeend','<tr style="background:'+bg+'"><td class="rank">'+(i+1)+'</td><td style="color:var(--teal);font-size:12px">'+acct.code+'</td><td>'+acct.name+badges+'</td>'+
+    tbody.insertAdjacentHTML('beforeend','<tr style="background:'+bg+'"><td class="rank">'+(i+1)+'</td><td style="color:var(--teal);font-size:12px">'+acct.code+'</td><td>'+acct.name+badges+(matchedAccts.length?'<div style="font-size:10.5px;color:var(--muted)">↔ Bank: '+matchedAccts.map(function(a){return projEsc(a.acctNo);}).join(', ')+'</div>':'')+'</td>'+
       '<td class="right '+(acct.bal>=0?'green':'red')+'">'+fmtFull(acct.bal)+'</td>'+
       '<td class="right" style="color:var(--teal);font-weight:600">'+(realBankBal!==null?fmtFull(realBankBal):dash)+'</td>'+
       '<td>'+(asOfKey?'<span style="font-size:11px;color:var(--gold2)">'+fmtDK(asOfKey)+'</span>':dash)+'</td>'+
       '<td>'+(cmpKey?'<span style="font-size:11px;color:var(--gold2)">'+fmtDK(cmpKey)+'</span>':dash)+'</td>'+
       '<td class="right">'+(cmpBank!==null?fmtFull(cmpBank):dash)+'</td>'+
-      '<td class="right">'+(cmpSap!==null?fmtFull(cmpSap):dash)+'</td>'+
+      '<td class="right">'+(cmpSap!==null?fmtFull(cmpSap)+(r.carried?'<div style="font-size:10.5px;color:var(--muted)">ยกยอด: '+projEsc(r.carried)+'</div>':''):dash)+'</td>'+
       '<td class="right" style="color:'+(d3===null?'var(--muted)':ok3?'var(--green)':'var(--red)')+';font-weight:700">'+(d3!==null?fmtFull(d3):'—')+'</td>'+
       '<td>'+statusHtml+'</td></tr>');
   });
@@ -5495,6 +5503,13 @@ async function loadBankFromSheets() {
         bal: bal
       });
       grouped[key].lastBal = bal;
+    });
+
+    // เรียงรายการตามวันที่ (คงลำดับเดิมในวันเดียวกัน) — ถ้าแถวในชีตไม่เรียงตามเวลา (เช่น อัปโหลดเดือนก่อนทีหลัง)
+    // ยอดคงเหลือ "แถวสุดท้าย" จะไม่ใช่ยอดล่าสุดจริง
+    Object.values(grouped).forEach(function(g) {
+      g.txns = g.txns.map(function(t, i) { return {t: t, i: i}; }).sort(function(a, b) { return dateKey(a.t.date).localeCompare(dateKey(b.t.date)) || a.i - b.i; }).map(function(o) { return o.t; });
+      if (g.txns.length) g.lastBal = g.txns[g.txns.length - 1].bal;
     });
 
     // Feed into RBANK_DATA
