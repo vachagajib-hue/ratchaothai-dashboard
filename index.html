@@ -446,9 +446,10 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 </div>
 <div class="recon-section">
 <div class="recon-section-title">&#128269; รายละเอียดการกระทบยอดรายบัญชี</div>
+<div id="reconAsOfNote" class="info-box blue" style="margin-bottom:12px;font-size:12.5px;line-height:1.7"></div>
 <input class="modal-search" style="margin-bottom:12px" placeholder="&#128269; ค้นหาชื่อบัญชี…" oninput="filterTbl(this,'reconDetailTbl')">
 <div style="overflow-x:auto"><table id="reconDetailTbl">
-<thead><tr><th>#</th><th>รหัส SAP</th><th>ชื่อบัญชี</th><th style="text-align:right">ยอด SAP</th><th style="text-align:right">ยอด Bank</th><th>ข้อมูล Bank ณ วันที่</th><th style="text-align:right">ส่วนต่าง</th><th>สถานะ</th></tr></thead>
+<thead><tr><th>#</th><th>รหัส SAP</th><th>ชื่อบัญชี</th><th style="text-align:right">ยอด SAP ปัจจุบัน</th><th style="text-align:right">ยอด Bank ล่าสุด</th><th>สเตทเมนต์ถึงวันที่</th><th>เทียบ ณ วันที่</th><th style="text-align:right">Bank ณ วันนั้น</th><th style="text-align:right">SAP ณ วันนั้น (Q11)</th><th style="text-align:right">ส่วนต่างวันเดียวกัน</th><th>สถานะ</th></tr></thead>
 <tbody id="reconDetailBody"></tbody>
 </table></div>
 </div>
@@ -4553,7 +4554,13 @@ function renderRecon(){
   var bankTotal=bd?bd.accounts.reduce(function(s,a){return s+a.bal;},0):null;
   var diff=bankTotal!==null?bankTotal-sapTotal:null;
   var hasData=!!bd;
-  var updDate=hasData&&bd.accounts.length?(bd.period||'\u2014'):'\u2014';
+  var updDate='\u2014';
+  if(hasData&&bd.accounts.length){
+    var minK='',maxK='';
+    bd.accounts.forEach(function(a){(a.txns||[]).forEach(function(t){var dk=dateKey(t.date||'');if(!dk)return;if(!minK||dk<minK)minK=dk;if(!maxK||dk>maxK)maxK=dk;});});
+    var fk=function(k){return k.slice(6,8)+'/'+k.slice(4,6)+'/'+k.slice(0,4);};
+    updDate=minK?(fk(minK)+'\u2013'+fk(maxK)):(bd.period||'\u2014');
+  }
   var gc='rgba(255,255,255,0.05)';
 
   function sf(n){var neg=n<0;var s=Math.abs(n).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});return'<strong style="color:'+(neg?'var(--red)':'var(--green)')+'">&#3647; '+(neg?'('+s+')':s)+'</strong>';}
@@ -4611,30 +4618,88 @@ function renderRecon(){
   fb+='<div class="recon-formula-row"><span style="color:'+(diff===null?'var(--muted)':Math.abs(diff||0)<1?'var(--green)':'var(--red)')+'"><strong>\u0e2a\u0e48\u0e27\u0e19\u0e15\u0e48\u0e32\u0e07 = Bank \u2212 SAP</strong></span><span>'+(diff===null?'<span style="color:var(--muted)">\u2014</span>':sf(diff))+'</span></div>';
   document.getElementById('reconFormulaBox').innerHTML=fb;
 
-  // Detail table
+  // Detail table — เทียบ Bank กับ SAP "ณ วันเดียวกัน" (สิ้นเดือน จาก Q11) แทนการเทียบยอดล่าสุดของ Bank กับยอด SAP ปัจจุบัน (คนละวันที่)
   var tbody=document.getElementById('reconDetailBody');tbody.innerHTML='';
-  sapList.forEach(function(acct,i){
-    var matchedAccts=hasData?bd.accounts.filter(function(a){return acctMatches(a.acctNo, acct.name);}):[];
+  // บัญชีที่ผู้ใช้ยืนยันแล้วว่ายังไม่มีไฟล์ Bank (เลขบัญชีเฉพาะตัวเลข)
+  var NOFILE_KNOWN={'0031742447':'ผู้ใช้ยืนยันว่ายังไม่มีไฟล์ Bank (7 ต.ค. 2569)','2979208149':'ผู้ใช้ยืนยันว่ายังไม่มีไฟล์ Bank (7 ต.ค. 2569)'};
+  var pad2=function(n){return String(n).padStart(2,'0');};
+  var fmtDK=function(dk){return dk?dk.slice(6,8)+'/'+dk.slice(4,6)+'/'+dk.slice(0,4):'';};
+  var monthEndKey=function(y,m){return String(y)+pad2(m)+pad2(new Date(y,m,0).getDate());};
+  var rowsInfo=sapList.map(function(acct){
+    return {acct:acct,matched:hasData?bd.accounts.filter(function(a){return acctMatches(a.acctNo,acct.name);}):[]};
+  });
+  // SAP หลายรหัสที่ชี้เลขบัญชี Bank เดียวกัน (เช่น 123-2-45987-1) ต้องเทียบ "ผลรวม" ไม่งั้นยอด Bank ถูกนับซ้ำ
+  var grpByBank={};
+  rowsInfo.forEach(function(r){r.matched.forEach(function(a){(grpByBank[a.acctNo]=grpByBank[a.acctNo]||[]).push(r);});});
+  var sumInfo={ok:0,bad:0,na:0,netDiff:0,absDiff:0,noFile:[],dupGroups:[],seen:{}};
+  rowsInfo.forEach(function(r,i){
+    var acct=r.acct,matchedAccts=r.matched;
     var bankBal=matchedAccts.length?matchedAccts.reduce(function(s,a){return s+a.bal;},0):null;
     var realBankBal=bankBal===0?null:bankBal;
-    // \u0e2b\u0e32\u0e22\u0e2d\u0e14 "\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25 Bank \u0e13 \u0e27\u0e31\u0e19\u0e17\u0e35\u0e48" \u0e08\u0e32\u0e01\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48\u0e02\u0e2d\u0e07\u0e18\u0e38\u0e23\u0e01\u0e23\u0e23\u0e21\u0e25\u0e48\u0e32\u0e2a\u0e38\u0e14\u0e43\u0e19\u0e2a\u0e40\u0e15\u0e17\u0e40\u0e21\u0e19\u0e17\u0e4c\u0e17\u0e35\u0e48\u0e2d\u0e48\u0e32\u0e19\u0e44\u0e14\u0e49\u0e02\u0e2d\u0e07\u0e1a\u0e31\u0e0d\u0e0a\u0e35\u0e19\u0e35\u0e49
-    // (SAP \u0e40\u0e1b\u0e47\u0e19\u0e22\u0e2d\u0e14\u0e2a\u0e14 \u0e13 \u0e27\u0e31\u0e19\u0e19\u0e35\u0e49\u0e40\u0e2a\u0e21\u0e2d \u0e41\u0e15\u0e48 Bank \u0e40\u0e1b\u0e47\u0e19\u0e22\u0e2d\u0e14 \u0e13 \u0e27\u0e31\u0e19\u0e15\u0e31\u0e14\u0e2a\u0e40\u0e15\u0e17\u0e40\u0e21\u0e19\u0e17\u0e4c\u0e25\u0e48\u0e32\u0e2a\u0e38\u0e14\u0e17\u0e35\u0e48\u0e2d\u0e31\u0e1b\u0e42\u0e2b\u0e25\u0e14 \u2014 \u0e2d\u0e32\u0e08\u0e44\u0e21\u0e48\u0e15\u0e23\u0e07\u0e01\u0e31\u0e19
-    // \u0e0b\u0e36\u0e48\u0e07\u0e40\u0e1b\u0e47\u0e19\u0e2a\u0e32\u0e40\u0e2b\u0e15\u0e38\u0e2b\u0e25\u0e31\u0e01\u0e17\u0e35\u0e48\u0e17\u0e33\u0e43\u0e2b\u0e49 "\u0e2a\u0e48\u0e27\u0e19\u0e15\u0e48\u0e32\u0e07" \u0e14\u0e39\u0e2a\u0e39\u0e07\u0e17\u0e31\u0e49\u0e07\u0e17\u0e35\u0e48\u0e44\u0e21\u0e48\u0e43\u0e0a\u0e48\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e15\u0e01\u0e2b\u0e25\u0e48\u0e19\u0e08\u0e23\u0e34\u0e07)
-    var asOfKey='',asOfDate='';
-    matchedAccts.forEach(function(a){
-      (a.txns||[]).forEach(function(t){
-        var dk=dateKey(t.date||'');
-        if(dk&&dk>asOfKey){asOfKey=dk;asOfDate=t.date;}
+    var asOfKey='';
+    matchedAccts.forEach(function(a){(a.txns||[]).forEach(function(t){var dk=dateKey(t.date||'');if(dk&&dk>asOfKey)asOfKey=dk;});});
+    // วันที่เทียบ: ถ้าสเตทเมนต์ไม่ถึงสิ้นเดือน ใช้สิ้นเดือนก่อนหน้า (ยอด SAP ใน Q11 เป็นยอดสิ้นเดือนเท่านั้น)
+    var cmpKey='',cmpBank=null,cmpSap=null,why='';
+    if(asOfKey){
+      var y=+asOfKey.slice(0,4),m=+asOfKey.slice(4,6);
+      var meKey=monthEndKey(y,m);
+      if(asOfKey<meKey){m--;if(m<1){m=12;y--;}meKey=monthEndKey(y,m);}
+      var sumB=0,anyB=false;
+      matchedAccts.forEach(function(a){
+        var best=null;
+        (a.txns||[]).forEach(function(t){var dk=dateKey(t.date||'');if(dk&&dk<=meKey&&(!best||dk>=best.dk))best={dk:dk,bal:t.bal||0};});
+        if(best){sumB+=best.bal;anyB=true;}
       });
-    });
-    var d2=realBankBal!==null?realBankBal-acct.bal:null;
-    var ok=d2!==null&&Math.abs(d2)<1;
+      if(anyB){
+        cmpKey=meKey;cmpBank=sumB;
+        var ym=meKey.slice(0,4)+'-'+meKey.slice(4,6);
+        var gRows={};matchedAccts.forEach(function(a){(grpByBank[a.acctNo]||[]).forEach(function(x){gRows[x.acct.code]=x;});});
+        var codes=Object.keys(gRows),tot=0,miss=false;
+        codes.forEach(function(c){var mm=(G.sapMonthlyByAcct||{})[c];if(mm&&mm[ym]!==undefined)tot+=mm[ym];else miss=true;});
+        if(!miss&&codes.length)cmpSap=tot;else why='ไม่มียอด SAP สิ้นเดือน (Q11)';
+        r.groupKey=codes.slice().sort().join('+');r.groupSize=codes.length;
+      }else why='สเตทเมนต์ไม่ครอบคลุมสิ้นเดือนก่อนหน้า (เริ่มหลังสิ้นเดือน) — ต้องมีสเตทเมนต์ของเดือนก่อน';
+    }
+    var d3=(cmpBank!==null&&cmpSap!==null)?cmpBank-cmpSap:null;
+    var ok3=d3!==null&&Math.abs(d3)<1;
+    var firstOfGroup=true;
+    if(r.groupKey){if(sumInfo.seen[r.groupKey])firstOfGroup=false;else sumInfo.seen[r.groupKey]=1;}
+    if(d3!==null&&firstOfGroup){if(ok3)sumInfo.ok++;else{sumInfo.bad++;sumInfo.netDiff+=d3;sumInfo.absDiff+=Math.abs(d3);}}
+    else if(d3===null&&matchedAccts.length)sumInfo.na++;
+    if(r.groupSize>1&&firstOfGroup)sumInfo.dupGroups.push(r.groupKey);
+    var digits=String(acct.name).replace(/[^0-9]/g,'');
+    var known='';Object.keys(NOFILE_KNOWN).forEach(function(k){if(digits.indexOf(k)>=0)known=NOFILE_KNOWN[k];});
+    if(!matchedAccts.length)sumInfo.noFile.push(acct.code+' '+acct.name);
+    var badges='';
+    if(r.groupSize>1)badges+=' <span class="badge badge-gold" title="เลขบัญชี Bank เดียวกันถูกผูกกับ '+r.groupSize+' รหัส SAP ('+projEsc(r.groupKey)+') จึงเทียบกับผลรวมของทุกรหัส">รวม '+r.groupSize+' รหัส</span>';
+    if(/USD/i.test(acct.name))badges+=' <span class="badge badge-gold" title="บัญชีสกุล USD — ตรวจว่ายอดสเตทเมนต์และยอด SAP เป็นสกุลเดียวกัน (USD หรือบาท)">USD</span>';
+    var statusHtml;
+    if(!matchedAccts.length)statusHtml='<span class="recon-status-na" title="'+projEsc(known||'ยังไม่พบสเตทเมนต์ที่ตรงกับเลขบัญชีนี้')+'">— '+(known?'ไม่มีไฟล์ Bank (ทราบแล้ว)':'ไม่มีข้อมูล Bank')+'</span>';
+    else if(d3===null)statusHtml='<span class="recon-status-na" title="'+projEsc(why)+'">⏳ เทียบวันเดียวกันไม่ได้</span><div style="font-size:10.5px;color:var(--muted)">'+projEsc(why)+'</div>';
+    else statusHtml=ok3?'<span class="recon-status-ok">✅ ตรงกัน</span>':'<span class="recon-status-err">❌ ต้องตรวจสอบ</span>';
     var bg=i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)';
-    var statusHtml=realBankBal===null?'<span class="recon-status-na">\u2014 \u0e44\u0e21\u0e48\u0e21\u0e35\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25</span>':ok?'<span class="recon-status-ok">\u2705 \u0e01\u0e23\u0e30\u0e17\u0e1a\u0e41\u0e25\u0e49\u0e27</span>':'<span class="recon-status-err">\u274c \u0e15\u0e49\u0e2d\u0e07\u0e15\u0e23\u0e27\u0e08\u0e2a\u0e2d\u0e1a</span>';
-    var diffColor=d2===null?'var(--muted)':Math.abs(d2)<1?'var(--green)':'var(--red)';
-    var asOfHtml=asOfDate?'<span style="font-size:11px;color:var(--gold2)">'+asOfDate+'</span>':'<span style="color:var(--muted);font-size:11px">\u2014</span>';
-    tbody.insertAdjacentHTML('beforeend','<tr style="background:'+bg+'"><td class="rank">'+(i+1)+'</td><td style="color:var(--teal);font-size:12px">'+acct.code+'</td><td>'+acct.name+'</td><td class="right '+(acct.bal>=0?'green':'red')+'">'+fmtFull(acct.bal)+'</td><td class="right" style="color:var(--teal);font-weight:600">'+(realBankBal!==null?fmtFull(realBankBal):'<span style="color:var(--muted)">\u2014</span>')+'</td><td>'+asOfHtml+'</td><td class="right" style="color:'+diffColor+';font-weight:700">'+(d2!==null?fmtFull(d2):'<span style="color:var(--muted)">\u2014</span>')+'</td><td>'+statusHtml+'</td></tr>');
+    var dash='<span style="color:var(--muted)">—</span>';
+    tbody.insertAdjacentHTML('beforeend','<tr style="background:'+bg+'"><td class="rank">'+(i+1)+'</td><td style="color:var(--teal);font-size:12px">'+acct.code+'</td><td>'+acct.name+badges+'</td>'+
+      '<td class="right '+(acct.bal>=0?'green':'red')+'">'+fmtFull(acct.bal)+'</td>'+
+      '<td class="right" style="color:var(--teal);font-weight:600">'+(realBankBal!==null?fmtFull(realBankBal):dash)+'</td>'+
+      '<td>'+(asOfKey?'<span style="font-size:11px;color:var(--gold2)">'+fmtDK(asOfKey)+'</span>':dash)+'</td>'+
+      '<td>'+(cmpKey?'<span style="font-size:11px;color:var(--gold2)">'+fmtDK(cmpKey)+'</span>':dash)+'</td>'+
+      '<td class="right">'+(cmpBank!==null?fmtFull(cmpBank):dash)+'</td>'+
+      '<td class="right">'+(cmpSap!==null?fmtFull(cmpSap):dash)+'</td>'+
+      '<td class="right" style="color:'+(d3===null?'var(--muted)':ok3?'var(--green)':'var(--red)')+';font-weight:700">'+(d3!==null?fmtFull(d3):'—')+'</td>'+
+      '<td>'+statusHtml+'</td></tr>');
   });
+  var unmatchedBank=hasData?bd.accounts.filter(function(a){return !sapList.some(function(s){return acctMatches(a.acctNo,s.name);});}):[];
+  var noteEl=document.getElementById('reconAsOfNote');
+  if(noteEl){
+    var nt='<strong>ผลเทียบ ณ วันเดียวกัน</strong> (ยอด Bank ณ สิ้นเดือนเทียบกับยอด SAP สิ้นเดือนจาก Q11): ตรงกัน <span style="color:var(--green)">'+sumInfo.ok+'</span> · ต้องตรวจสอบ <span style="color:var(--red)">'+sumInfo.bad+'</span> · เทียบไม่ได้ '+sumInfo.na+' · ไม่มีไฟล์ Bank '+sumInfo.noFile.length+
+      (sumInfo.bad?' · ส่วนต่างสุทธิ <strong style="color:var(--red)">'+fmtFull(sumInfo.netDiff)+'</strong> (รวมขนาดสัมบูรณ์ '+fmtFull(sumInfo.absDiff)+')':'');
+    nt+='<br><span style="color:var(--muted)">ส่วนต่างบน KPI ด้านบนเทียบยอดล่าสุดของ Bank (คนละวันที่ตามสเตทเมนต์ของแต่ละบัญชี) กับยอด SAP ปัจจุบัน จึงไม่ควรใช้เป็นข้อสรุปว่าบัญชีไม่ตรง — ให้ใช้ตารางนี้แทน</span>';
+    if(sumInfo.noFile.length)nt+='<br>⚠️ ไม่มีสเตทเมนต์ Bank: '+sumInfo.noFile.map(projEsc).join(' · ');
+    if(sumInfo.dupGroups.length)nt+='<br>⚠️ เลขบัญชี Bank เดียวกันถูกผูกกับหลายรหัส SAP (เทียบรวมให้แล้ว): '+sumInfo.dupGroups.map(projEsc).join(' ; ')+' — ควรตรวจว่ารหัสบัญชีใน SAP ซ้ำหรือไม่';
+    if(unmatchedBank.length)nt+='<br>⚠️ บัญชีในสเตทเมนต์ที่จับคู่กับบัญชี SAP ไม่ได้: '+unmatchedBank.map(function(a){return projEsc(a.acctNo);}).join(', ');
+    noteEl.innerHTML=nt;
+  }
 
   // ===== \u0e41\u0e22\u0e01\u0e2a\u0e48\u0e27\u0e19\u0e15\u0e48\u0e32\u0e07: \u0e02\u0e32\u0e23\u0e31\u0e1a vs \u0e02\u0e32\u0e08\u0e48\u0e32\u0e22 =====
   // \u0e40\u0e17\u0e35\u0e22\u0e1a\u0e40\u0e09\u0e1e\u0e32\u0e30\u0e0a\u0e48\u0e27\u0e07\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48\u0e17\u0e35\u0e48\u0e21\u0e35\u0e18\u0e38\u0e23\u0e01\u0e23\u0e23\u0e21\u0e08\u0e23\u0e34\u0e07\u0e43\u0e19\u0e2a\u0e40\u0e15\u0e17\u0e40\u0e21\u0e19\u0e17\u0e4c\u0e02\u0e2d\u0e07\u0e1a\u0e31\u0e0d\u0e0a\u0e35\u0e19\u0e31\u0e49\u0e19 (min-max \u0e02\u0e2d\u0e07 txns \u0e17\u0e35\u0e48\u0e2d\u0e48\u0e32\u0e19\u0e44\u0e14\u0e49)
