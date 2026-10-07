@@ -43,6 +43,7 @@ header{background:var(--navy2);border-bottom:2px solid var(--gold);padding:0 24p
 .page{display:none;padding:20px 24px;}.page.active{display:block;}
 .alert-bar{background:rgba(224,92,92,0.08);border:1px solid rgba(224,92,92,0.25);border-radius:10px;padding:11px 16px;margin-bottom:18px;font-size:13px;color:#F0A0A0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 .kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:12px;margin-bottom:18px;}
+.kpi-row.kpi4g{grid-template-columns:repeat(4,minmax(0,1fr));}@media(max-width:900px){.kpi-row.kpi4g{grid-template-columns:repeat(2,minmax(0,1fr));}}
 .kpi-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px 44px;position:relative;overflow:hidden;cursor:pointer;transition:transform 0.15s,border-color 0.15s,box-shadow 0.15s;}
 /* แถวย่อยที่จำนวนการ์ดไม่แน่นอน/น้อยกว่าแถวหลัก (เช่นการ์ด "ส่วนต่าง" ในสมุดบัญชีธนาคาร) — จัดกึ่งกลาง
    แทนการยืดเต็มคอลัมน์ตาราง grid เดิม กันไม่ให้การ์ดที่ตกมาแถวใหม่ค้างอยู่ชิดซ้ายโดดๆ */
@@ -387,12 +388,16 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 </div>
 
 <div class="page" id="page4">
-<div class="info-box blue" style="margin-bottom:16px"><div class="info-box-title">&#128204; หมายเหตุ</div>ตัวอย่างโครงสร้าง — ยอดจริงต้องดึงจาก SAP โดยใช้ Project Code</div>
-<div class="kpi-row" id="kpi4"></div>
-<div class="chart-row-2" style="margin-bottom:16px">
-<div class="chart-card"><div class="chart-title">Cash Flow แต่ละโครงการ</div><canvas id="projectBar" style="max-height:220px"></canvas></div>
-<div class="chart-card"><div class="chart-title">สัดส่วนรายได้ต่อโครงการ</div><canvas id="projectPie" style="max-height:220px"></canvas></div>
-</div></div>
+<div class="info-box blue" id="projNote" style="margin-bottom:16px">&#9203; กำลังโหลดข้อมูลโครงการจาก SAP…</div>
+<div class="kpi-row kpi4g" id="kpi4"></div>
+<div class="chart-row-2" style="margin-bottom:8px">
+<div class="chart-card"><div class="chart-title">Cash Flow แต่ละโครงการ (10 อันดับแรก ไม่รวมไม่ระบุโครงการ)</div><canvas id="projectBar" style="max-height:240px"></canvas></div>
+<div class="chart-card"><div class="chart-title">สัดส่วนเงินรับต่อโครงการ</div><canvas id="projectPie" style="max-height:240px"></canvas></div>
+</div>
+<div id="projNonLine" style="margin:0 0 16px 4px;font-size:13px;color:var(--text2)"></div>
+<div class="chart-card" style="margin-bottom:16px"><div class="chart-title">สรุปรายโครงการ (บาท)</div>
+<div style="overflow:auto;max-height:520px"><table id="projTbl"><thead style="position:sticky;top:0;background:#0b1626;z-index:2"><tr><th>รหัส</th><th>ชื่อโครงการ</th><th style="text-align:right">เงินรับ</th><th style="text-align:right">เงินจ่าย</th><th style="text-align:right">สุทธิ</th><th style="text-align:right">ลูกหนี้ค้างรับ</th><th style="text-align:right">เจ้าหนี้ค้างจ่าย</th></tr></thead><tbody id="projTbody"></tbody></table></div></div>
+</div>
 <div class="page" id="page5">
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
 <div class="recon-section">
@@ -994,6 +999,7 @@ async function loadAllData(){
     buildFilters(allMonths);
     st.textContent='\u0e2a\u0e23\u0e49\u0e32\u0e07\u0e01\u0e23\u0e32\u0e1f\u2026';st.className='loading-status ok';
     renderDashboard(G);
+    try{loadProjectData();}catch(e){console.error(e);}
     try{plBuildFilters();renderPL();}catch(e){}
     try{renderApCat();}catch(e){}
     document.getElementById('liveText').textContent='\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e08\u0e32\u0e01 Google Sheets (Live)';
@@ -3726,17 +3732,192 @@ function renderDashboard(d){
     (topE[0]?kpi('red','\ud83d\udd11','rgba(224,92,92,0.18)',topE[0].name,fmtKPI(topE[0].amt),'red',(topE[0].amt/d.et*100).toFixed(1)+'%','showModalExp(\''+(topE[0].code||'').replace(/'/g,"\\'")+'\',\''+topE[0].name.replace(/'/g,"\\'")+'\')'):'')+(topE[1]?kpi('gold','\u2699','rgba(212,168,67,0.18)',topE[1].name,fmtKPI(topE[1].amt),'gold',(topE[1].amt/d.et*100).toFixed(1)+'%','showModalExp(\''+(topE[1].code||'').replace(/'/g,"\\'")+'\',\''+topE[1].name.replace(/'/g,"\\'")+'\')'):'')+(topE[2]?kpi('teal','\ud83d\udce6','rgba(43,191,179,0.18)',topE[2].name,fmtKPI(topE[2].amt),'teal',(topE[2].amt/d.et*100).toFixed(1)+'%','showModalExp(\''+(topE[2].code||'').replace(/'/g,"\\'")+'\',\''+topE[2].name.replace(/'/g,"\\'")+'\')'):'');
   makeChart('expenseBar',{type:'bar',data:{labels:topE.map(function(e){return e.name;}),datasets:[{data:topE.map(function(e){return +fmtM(e.amt);}),backgroundColor:'rgba(212,168,67,0.75)',borderRadius:4}]},options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:gc},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}},afterDataLimits:function(a){a.max=a.max*1.25;}},y:{grid:{display:false},ticks:{color:'#8FA3B8',font:{size:11}}}}},plugins:[barLblPlugin]});
 
-  document.getElementById('kpi4').innerHTML=
-    kpi('blue','\ud83c\udfd7','rgba(91,143,249,0.18)','\u0e42\u0e04\u0e23\u0e07\u0e01\u0e32\u0e23\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14','8 \u0e42\u0e04\u0e23\u0e07\u0e01\u0e32\u0e23','blue','\u0e01\u0e33\u0e25\u0e31\u0e07\u0e14\u0e33\u0e40\u0e19\u0e34\u0e19\u0e01\u0e32\u0e23','')+
-    kpi('green','\u2705','rgba(76,175,125,0.18)','Cash Flow \u0e1a\u0e27\u0e01','5 \u0e42\u0e04\u0e23\u0e07\u0e01\u0e32\u0e23','green','\u0e2a\u0e38\u0e02\u0e20\u0e32\u0e1e\u0e14\u0e35','')+
-    kpi('red','\u26a0','rgba(224,92,92,0.18)','Cash Flow \u0e15\u0e34\u0e14\u0e25\u0e1a','3 \u0e42\u0e04\u0e23\u0e07\u0e01\u0e32\u0e23','red','\u0e15\u0e49\u0e2d\u0e07\u0e15\u0e34\u0e14\u0e15\u0e32\u0e21','')+
-    kpi('gold','\ud83d\udcbc','rgba(212,168,67,0.18)','\u0e25\u0e39\u0e01\u0e2b\u0e19\u0e35\u0e49\u0e04\u0e49\u0e32\u0e07\u0e15\u0e32\u0e21\u0e42\u0e04\u0e23\u0e07\u0e01\u0e32\u0e23',fmtKPI(d.at),'gold','\u0e23\u0e2d\u0e14\u0e36\u0e07 Project Code','showModalAR()');
-  var pL=['\u0e40\u0e2b\u0e21\u0e37\u0e2d\u0e07\u0e25\u0e33\u0e1b\u0e32\u0e07','Hongsa','\u0e28\u0e34\u0e25\u0e32\u0e2a\u0e32\u0e19\u0e19\u0e17\u0e4c','EGAT','\u0e17\u0e23\u0e32\u0e22\u0e01\u0e23\u0e38\u0e07\u0e28\u0e23\u0e35','\u0e0b\u0e35\u0e41\u0e1e\u0e04'];
-  var pR=[45.2,120,28.5,85,60,32],pP=[32.1,98,31.2,62,55,38];
-  makeChart('projectBar',{type:'bar',data:{labels:pL,datasets:[{label:'\u0e40\u0e07\u0e34\u0e19\u0e23\u0e31\u0e1a',data:pR,backgroundColor:'rgba(76,175,125,0.8)',borderRadius:4},{label:'\u0e40\u0e07\u0e34\u0e19\u0e08\u0e48\u0e32\u0e22',data:pP,backgroundColor:'rgba(224,92,92,0.8)',borderRadius:4}]},options:{plugins:{legend:{labels:{color:'#8FA3B8',boxWidth:12}}},scales:{x:{grid:{color:gc},ticks:{color:'#8FA3B8',font:{size:10}}},y:{grid:{color:gc},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}},afterDataLimits:function(a){a.max=a.max*1.18;}}}},plugins:[barLblPlugin]});
-  makeChart('projectPie',{type:'doughnut',data:{labels:pL,datasets:[{data:pR,backgroundColor:['#4CAF7D','#2BBFB3','#D4A843','#E05C5C','#5B8FF9','#F06292'],borderWidth:2,borderColor:'#070f1c'}]},options:{plugins:{legend:{position:'bottom',labels:{color:'#8FA3B8',boxWidth:10,padding:10,font:{size:10}}}},cutout:'55%'}});
+  try{renderProjectPage();}catch(e){console.error('renderProjectPage',e);}
 
   renderRecon();
+}
+
+
+// ============================================================================
+// หน้า "Cash Flow ตามโครงการ" — ข้อมูลจริงจาก SAP (ชีต Q17–Q21) แทนข้อมูลจำลองเดิม
+// Q17 = รายชื่อโครงการ, Q18 = เงินรับรายบรรทัดตัดเอกสาร, Q19 = เงินจ่ายรายบรรทัดตัดเอกสาร,
+// Q20 = ลูกหนี้ค้างรับรายใบ, Q21 = เจ้าหนี้ค้างจ่ายรายใบ
+// คอลัมน์ (รวมคอลัมน์ "#" ที่ผู้ใช้เพิ่มไว้หน้าสุด = index 0):
+//   Q17: [#, ProjectCode, ProjectName, Active, ValidFrom, ValidTo]
+//   Q18/Q19: [#, ProjectCode, ProjectName, PaymentDate, PaymentDocNum, PartyCode, PartyName, AppliedDocType, AppliedDocNum, AppliedAmount, Remarks]
+//   Q20/Q21: [#, ProjectCode, ProjectName, InvoiceDocNum, DocDate, DueDate, PartyCode, PartyName, DocTotal, OutstandingAmount, DaysOverdue]
+// หลักการ: โหลดเบื้องหลังหลังหน้าหลักแสดงแล้ว (ไม่ทำให้หน้าแรกช้าลง) ชีตไหนดึงไม่ได้จะแจ้งบนหน้า ไม่เดาตัวเลข
+// เงินรับ/จ่ายที่ "ลงวันที่ล่วงหน้า" (หลังวันนี้) ถูกแยกออกจากตัวเลขหลัก — ยังไม่ใช่เงินเข้า/ออกจริง
+// เอกสารที่ลงบัญชีพัก 9999% ถูกตัดออกที่ฝั่ง SQL แล้ว (เอกสารปรับยอดปิดปี 2025)
+// ============================================================================
+var PROJ={loaded:false,loading:false,failed:[],master:{},rec:[],pay:[],ar:[],ap:[],undated:0};
+function projEsc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function projDateKey(v){
+  var d=null;
+  if(v instanceof Date){d=v;}
+  else if(typeof v==='string'){
+    var m=v.match(/(\d{2})\.(\d{2})\.(\d{4})/);
+    if(m)return (+m[3])*10000+(+m[2])*100+(+m[1]);
+    m=v.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if(m)return (+m[1])*10000+(+m[2])*100+(+m[3]);
+  }
+  if(!d||isNaN(d.getTime()))return null;
+  return d.getFullYear()*10000+(d.getMonth()+1)*100+d.getDate();
+}
+function projTodayKey(){var n=new Date();return n.getFullYear()*10000+(n.getMonth()+1)*100+n.getDate();}
+function projMK(dk){return dk?String(Math.floor(dk/10000))+'-'+String(Math.floor(dk/100)%100).padStart(2,'0'):null;}
+
+async function loadProjectData(){
+  if(PROJ.loading)return;
+  PROJ.loading=true;PROJ.loaded=false;PROJ.failed=[];
+  try{renderProjectPage();}catch(e){}
+  try{
+    var names=['Q17_PROJECT_MASTER','Q18_PROJECT_CASH_RECEIPT','Q19_PROJECT_CASH_PAYMENT','Q20_PROJECT_AR_OPEN','Q21_PROJECT_AP_OPEN'];
+    var res=await fetchBatched(names.map(function(n){
+      return function(){return fetchSheet(n).catch(function(e){console.warn('โหลด '+n+' ไม่สำเร็จ',e);PROJ.failed.push(n);return {rows:[]};});};
+    }),3);
+    PROJ.master={};
+    res[0].rows.forEach(function(r){var c=String(r[1]||'').trim();if(c)PROJ.master[c]={name:String(r[2]||'').trim(),active:String(r[3]||'').trim()!=='N'};});
+    PROJ.undated=0;
+    var mkFlow=function(r){
+      var dk=projDateKey(r[3]);
+      if(!dk)PROJ.undated++;
+      return {code:String(r[1]||'--').trim()||'--',name:String(r[2]||'').trim(),dk:dk,mk:projMK(dk),doc:String(r[4]||''),party:String(r[6]||'').trim(),type:+r[7]||0,amt:parseFloat(r[9])||0,remarks:String(r[10]||'').trim()};
+    };
+    PROJ.rec=res[1].rows.map(mkFlow);
+    PROJ.pay=res[2].rows.map(mkFlow);
+    var mkOpen=function(r){return {code:String(r[1]||'--').trim()||'--',name:String(r[2]||'').trim(),doc:String(r[3]||''),party:String(r[7]||'').trim(),bal:parseFloat(r[9])||0,days:parseFloat(r[10])||0};};
+    PROJ.ar=res[3].rows.map(mkOpen);
+    PROJ.ap=res[4].rows.map(mkOpen);
+    PROJ.loaded=true;
+  }catch(e){
+    console.error('loadProjectData error',e);
+    PROJ.failed.push('ประมวลผล');
+  }
+  PROJ.loading=false;
+  try{renderProjectPage();}catch(e){console.error(e);}
+}
+
+// รวมยอดรายโครงการตามช่วงเวลาที่เลือก (ใช้ตัวกรองเดือน/ปีเดียวกับหน้าอื่น)
+function projAggregate(){
+  var today=projTodayKey();
+  var filtered=!!(G&&G.allMonths&&G.allMonths.length&&ACTIVE_MONTHS.length!==G.allMonths.length);
+  var fm={};ACTIVE_MONTHS.forEach(function(m){fm[m]=true;});
+  var map={},fut={rec:0,pay:0,nRec:0,nPay:0};
+  var get=function(code,name){
+    if(!map[code])map[code]={code:code,name:name||'',rec:0,pay:0,ar:0,ap:0,arN:0,apN:0,nRec:0,nPay:0};
+    if(!map[code].name&&name)map[code].name=name;
+    return map[code];
+  };
+  var feed=function(rows,key,nkey,futKey,futN){
+    rows.forEach(function(r){
+      if(r.dk&&r.dk>today){fut[futKey]+=r.amt;fut[futN]++;return;}
+      if(filtered&&(!r.mk||!fm[r.mk]))return;
+      var o=get(r.code,r.name);o[key]+=r.amt;o[nkey]++;
+    });
+  };
+  feed(PROJ.rec,'rec','nRec','rec','nRec');
+  feed(PROJ.pay,'pay','nPay','pay','nPay');
+  PROJ.ar.forEach(function(r){var o=get(r.code,r.name);o.ar+=r.bal;o.arN++;});
+  PROJ.ap.forEach(function(r){var o=get(r.code,r.name);o.ap+=r.bal;o.apN++;});
+  Object.keys(map).forEach(function(c){if(!map[c].name&&PROJ.master[c])map[c].name=PROJ.master[c].name;});
+  return {map:map,fut:fut,filtered:filtered};
+}
+
+function projSetNote(html,cls){
+  var el=document.getElementById('projNote');if(!el)return;
+  el.className='info-box '+(cls||'blue');el.innerHTML=html;
+}
+function projClearCharts(){
+  ['projectBar','projectPie'].forEach(function(id){if(chartInstances[id]){chartInstances[id].destroy();delete chartInstances[id];}});
+}
+
+function renderProjectPage(){
+  var kEl=document.getElementById('kpi4');if(!kEl)return;
+  var tb=document.getElementById('projTbody'),nonEl=document.getElementById('projNonLine');
+  var retry=' <button class="hbtn hbtn-muted" style="margin-left:8px" onclick="PROJ.loading=false;loadProjectData()">&#128260; ลองโหลดใหม่</button>';
+  if(PROJ.loading){
+    projSetNote('&#9203; กำลังโหลดข้อมูลโครงการจาก SAP (Q17–Q21)…','blue');
+    kEl.innerHTML='';if(tb)tb.innerHTML='';if(nonEl)nonEl.innerHTML='';projClearCharts();return;
+  }
+  if(!PROJ.loaded){
+    projSetNote('&#9888;&#65039; ยังไม่มีข้อมูลโครงการ'+(PROJ.failed.length?' — โหลดไม่สำเร็จ: <strong>'+projEsc(PROJ.failed.join(', '))+'</strong>':'')+retry,'gold');
+    kEl.innerHTML='';if(tb)tb.innerHTML='';if(nonEl)nonEl.innerHTML='';projClearCharts();return;
+  }
+  var gc='rgba(255,255,255,0.05)';
+  var A=projAggregate(),map=A.map,fut=A.fut;
+  var rows=Object.keys(map).map(function(c){return map[c];});
+  var NP='--';
+  var projRows=rows.filter(function(o){return o.code!==NP;});
+  var np=map[NP]||{rec:0,pay:0,ar:0,ap:0,nRec:0,nPay:0,arN:0,apN:0};
+  var sum=function(arr,k){return arr.reduce(function(s,o){return s+o[k];},0);};
+  var pRec=sum(projRows,'rec'),pPay=sum(projRows,'pay');
+  var totRec=pRec+np.rec,totPay=pPay+np.pay;
+  var covRec=totRec>0?(pRec/totRec*100):0,covPay=totPay>0?(pPay/totPay*100):0;
+  var active=projRows.filter(function(o){return o.nRec+o.nPay>0;});
+  var pos=active.filter(function(o){return o.rec-o.pay>=0;}).length,neg=active.length-pos;
+  var pAR=sum(projRows,'ar'),pAP=sum(projRows,'ap');
+  var masterCnt=Object.keys(PROJ.master).length;
+  var nameOf=function(o){return o.name||(PROJ.master[o.code]&&PROJ.master[o.code].name)||'';};
+
+  // แถบหมายเหตุ: ที่มา + ความครอบคลุม + ชีตที่โหลดไม่ได้
+  var covCls=(covRec>=80&&covPay>=80)?'badge-green':(covRec>=50&&covPay>=50)?'badge-gold':'badge-red';
+  var note='&#128204; ข้อมูลจริงจาก SAP ตาม Project Code · '+(A.filtered?'ช่วงเวลาที่เลือก':'ทุกช่วงเวลา (เริ่ม ม.ค. 2025)')+
+    ' · ตัดเอกสารบัญชีพัก 9999% (รายการปรับยอดปิดปี 2025) และรายการลงวันที่ล่วงหน้าออกแล้ว'+
+    '<br>ความครอบคลุมโครงการ: เงินรับ <span class="badge '+covCls+'">'+covRec.toFixed(1)+'%</span> เงินจ่าย <span class="badge '+covCls+'">'+covPay.toFixed(1)+'%</span> '+
+    '<span style="color:var(--muted)">(ส่วนที่เหลือคือ "ไม่ระบุโครงการ" — ยังไม่ผูกรหัสโครงการใน SAP จึงไม่นำไปเฉลี่ยให้โครงการใด)</span>'+
+    '<br><span style="color:var(--muted)">ตัวเลขรวมหน้านี้ยึดการตัดชำระรายเอกสารใน SAP จึงอาจไม่เท่ายอดรวมหน้าภาพรวม (Q01/Q02) ลูกหนี้/เจ้าหนี้คงค้างเป็นยอด ณ ปัจจุบัน ไม่กรองตามช่วงเวลา</span>';
+  if(PROJ.failed.length)note+='<br>&#9888;&#65039; โหลดชีตไม่สำเร็จ: <strong>'+projEsc(PROJ.failed.join(', '))+'</strong> (ตัวเลขที่เกี่ยวข้องจะเป็น 0)'+retry;
+  if(PROJ.undated)note+='<br>&#9888;&#65039; พบ '+PROJ.undated+' รายการที่อ่านวันที่ไม่ได้ — ไม่ถูกนับเมื่อกรองช่วงเวลา';
+  projSetNote(note,PROJ.failed.length?'gold':'blue');
+
+  var net=pRec-pPay,npNet=np.rec-np.pay;
+  kEl.innerHTML=
+    kpi('blue','🏗','rgba(91,143,249,0.18)','โครงการที่มีเคลื่อนไหว',active.length+' โครงการ','blue','จากทั้งหมด '+masterCnt+' โครงการใน SAP','')+
+    kpi('teal','📥','rgba(43,191,179,0.18)','เงินรับตามโครงการ',fmtKPI(pRec),'gold','คิดเป็น '+covRec.toFixed(1)+'% ของเงินรับทั้งหมด','')+
+    kpi('red','📤','rgba(224,92,92,0.18)','เงินจ่ายตามโครงการ',fmtKPI(pPay),'red','คิดเป็น '+covPay.toFixed(1)+'% ของเงินจ่ายทั้งหมด','')+
+    kpi(net>=0?'green':'red','💹',net>=0?'rgba(76,175,125,0.18)':'rgba(224,92,92,0.18)','Cash Flow สุทธิตามโครงการ',fmtKPI(net),net>=0?'green':'red','บวก '+pos+' · ติดลบ '+neg+' โครงการ','')+
+    kpi('gold','❔','rgba(212,168,67,0.18)','ไม่ระบุโครงการ (สุทธิ)',fmtKPI(npNet),npNet>=0?'green':'red','รับ '+fmtKPI(np.rec)+' · จ่าย '+fmtKPI(np.pay),'')+
+    kpi('gold','💼','rgba(212,168,67,0.18)','ลูกหนี้ค้างรับตามโครงการ',fmtKPI(pAR),'gold','ไม่ระบุโครงการ '+fmtKPI(np.ar),'')+
+    kpi('red','📝','rgba(224,92,92,0.18)','เจ้าหนี้ค้างจ่ายตามโครงการ',fmtKPI(pAP),'red','ไม่ระบุโครงการ '+fmtKPI(np.ap),'')+
+    kpi('teal','🗓','rgba(43,191,179,0.18)','ลงวันที่ล่วงหน้า (ไม่รวมข้างต้น)',fmtKPI(fut.pay),'teal','จ่าย '+fut.nPay+' รายการ · รับ '+fmtKPI(fut.rec)+' ('+fut.nRec+' รายการ)','');
+
+  // กราฟแท่ง: เฉพาะโครงการที่ระบุรหัส (ไม่รวม "ไม่ระบุโครงการ" เพราะยอดอาจใหญ่จนกลบโครงการอื่น — แสดงแยกใต้กราฟ)
+  var top=active.slice().sort(function(a,b){return (b.rec+b.pay)-(a.rec+a.pay);}).slice(0,10);
+  var lbls=top.map(function(o){var n=nameOf(o);return [o.code,n.length>14?n.slice(0,14)+'…':n];});
+  makeChart('projectBar',{type:'bar',data:{labels:lbls,datasets:[
+    {label:'เงินรับ',data:top.map(function(o){return +fmtM(o.rec);}),backgroundColor:'rgba(76,175,125,0.8)',borderRadius:4},
+    {label:'เงินจ่าย',data:top.map(function(o){return +fmtM(o.pay);}),backgroundColor:'rgba(224,92,92,0.8)',borderRadius:4}]},
+    options:{plugins:{legend:{labels:{color:'#8FA3B8',boxWidth:12}}},scales:{x:{grid:{color:gc},ticks:{color:'#8FA3B8',font:{size:10}}},y:{grid:{color:gc},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}},afterDataLimits:function(a){a.max=a.max*1.18;}}}},plugins:[barLblPlugin]});
+
+  // โดนัท: สัดส่วนเงินรับ — 5 โครงการสูงสุด + โครงการอื่น + ไม่ระบุโครงการ (สีเทา)
+  var byRec=projRows.filter(function(o){return o.rec>0;}).sort(function(a,b){return b.rec-a.rec;});
+  var pieTop=byRec.slice(0,5),pieRest=byRec.slice(5).reduce(function(s,o){return s+o.rec;},0);
+  var pl=pieTop.map(function(o){return o.code+' '+nameOf(o).slice(0,12);}),pd=pieTop.map(function(o){return +fmtM(o.rec);}),pc=['#4CAF7D','#2BBFB3','#D4A843','#E05C5C','#5B8FF9'].slice(0,pieTop.length);
+  if(pieRest>0){pl.push('โครงการอื่นๆ');pd.push(+fmtM(pieRest));pc.push('#F06292');}
+  if(np.rec>0){pl.push('ไม่ระบุโครงการ');pd.push(+fmtM(np.rec));pc.push('#6B7C93');}
+  makeChart('projectPie',{type:'doughnut',data:{labels:pl,datasets:[{data:pd,backgroundColor:pc,borderWidth:2,borderColor:'#070f1c'}]},
+    options:{plugins:{legend:{position:'bottom',labels:{color:'#8FA3B8',boxWidth:10,padding:10,font:{size:10}}},tooltip:{callbacks:{label:function(c){return ' '+c.label+': '+(+c.raw).toFixed(2)+' ล้านบาท';}}}},cutout:'55%'}});
+
+  if(nonEl)nonEl.innerHTML='<span class="badge badge-gold">ไม่ระบุโครงการ</span> รับ <strong>'+fmtKPI(np.rec)+'</strong> ('+np.nRec+' รายการ) · จ่าย <strong>'+fmtKPI(np.pay)+'</strong> ('+np.nPay+' รายการ) · สุทธิ <strong style="color:var(--'+(npNet>=0?'green':'red')+')">'+fmtKPI(npNet)+'</strong> — ไม่แสดงในกราฟแท่งด้านบนเพื่อไม่ให้กลบโครงการอื่น';
+
+  // ตารางสรุปรายโครงการ (+ แถวไม่ระบุโครงการ + แถวรวม)
+  if(tb){
+    var list=projRows.filter(function(o){return o.rec||o.pay||o.ar||o.ap;}).sort(function(a,b){return (b.rec+b.pay)-(a.rec+a.pay)||b.ar-a.ar;});
+    var tr=function(o,label,badge,isTotal){
+      var n=o.rec-o.pay,cls=n>=0?'green':'red';
+      return '<tr'+(isTotal?' style="font-weight:700;border-top:2px solid var(--border)"':'')+'><td>'+label+'</td><td>'+badge+'</td>'+
+        '<td class="right gold">'+fmtFull(o.rec)+'</td><td class="right red">'+fmtFull(o.pay)+'</td><td class="right '+cls+'">'+fmtFull(n)+'</td>'+
+        '<td class="right">'+fmtFull(o.ar)+'</td><td class="right">'+fmtFull(o.ap)+'</td></tr>';
+    };
+    var html=list.map(function(o){
+      var inactive=PROJ.master[o.code]&&!PROJ.master[o.code].active?' <span class="badge badge-red">ปิดโครงการ</span>':'';
+      return tr(o,projEsc(o.code),projEsc(nameOf(o))+inactive,false);
+    }).join('');
+    html+=tr(np,'--','<span class="badge badge-gold">ไม่ระบุโครงการ</span>',false);
+    html+=tr({rec:totRec,pay:totPay,ar:pAR+np.ar,ap:pAP+np.ap},'','รวมทั้งหมด',true);
+    tb.innerHTML=html;
+  }
 }
 
 function renderFallback(){
