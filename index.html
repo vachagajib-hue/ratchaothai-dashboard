@@ -399,6 +399,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <div style="overflow:auto;max-height:520px"><table id="projTbl"><thead style="position:sticky;top:0;background:#0b1626;z-index:2"><tr><th>รหัส</th><th>ชื่อโครงการ</th><th style="text-align:right">เงินรับ</th><th style="text-align:right">เงินจ่าย</th><th style="text-align:right">สุทธิ</th><th style="text-align:right">ลูกหนี้ค้างรับ</th><th style="text-align:right">เจ้าหนี้ค้างจ่าย</th></tr></thead><tbody id="projTbody"></tbody></table></div></div>
 </div>
 <div class="page" id="page5">
+<div id="bankLoadStatus" class="info-box blue" style="display:none"></div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
 <div class="recon-section">
 <div class="recon-section-title">&#128228; อัปโหลด Bank Statement (CSV)</div>
@@ -5377,16 +5378,32 @@ async function saveBankToSheetsRetry(bank, acctNo, acctName, period, txns, retri
   return res;
 }
 
+// แถบสถานะการโหลด Bank Statement จากชีต BANK_STATEMENTS (แสดงบนหน้ากระทบยอดธนาคาร)
+// เดิมถ้าดึงชีตไม่สำเร็จ (404 ชั่วคราว/หมดเวลา/ชีตตอบ error) จะเงียบ แล้วหน้าแสดงเหมือน "ยังไม่ได้อัปโหลด" ทั้งที่ข้อมูลอยู่ในชีต
+function bankSetStatus(html, cls){
+  var el=document.getElementById('bankLoadStatus');if(!el)return;
+  el.className='info-box '+(cls||'blue');el.style.display=html?'':'none';el.style.marginBottom='16px';el.innerHTML=html||'';
+}
 async function loadBankFromSheets() {
+  bankSetStatus('&#9203; กำลังโหลด Bank Statement จากชีต BANK_STATEMENTS…','blue');
   try {
-    var res = await fetch(APPS_URL + '?sheet=BANK_STATEMENTS', {
-      method: 'GET',
-      mode: 'cors',
-      credentials: 'omit'
-    });
-    var data = await res.json();
-    var rows = data.rows || [];
-    if (!rows.length) return;
+    var rows = null, lastErr = null;
+    for (var attempt = 0; attempt < 3 && rows === null; attempt++) {
+      if (attempt > 0) await sleepMs(2000 * attempt);
+      try {
+        var sh = await fetchSheet('BANK_STATEMENTS');
+        rows = sh.rows.map(function(arr) { var o = {}; sh.cols.forEach(function(c, i) { o[c] = arr[i]; }); return o; });
+      } catch (e) { lastErr = e; console.warn('loadBankFromSheets ล้มเหลว (รอบ ' + (attempt + 1) + ')', e); }
+    }
+    if (rows === null) {
+      bankSetStatus('&#9888;&#65039; โหลด Bank Statement จากชีต BANK_STATEMENTS ไม่สำเร็จ — สาเหตุ: <span style="color:var(--red)">' + projEsc(String((lastErr && lastErr.message) || lastErr || 'ไม่ทราบ')) +
+        '</span> (ข้อมูลในชีตไม่ได้หาย) <button class="hbtn hbtn-muted" style="margin-left:8px" onclick="loadBankFromSheets()">&#128260; ลองโหลดใหม่</button>', 'gold');
+      return;
+    }
+    if (!rows.length) {
+      bankSetStatus('&#8505;&#65039; ชีต BANK_STATEMENTS ยังไม่มีข้อมูล — ยอด Bank จะแสดงหลังอัปโหลดสเตทเมนท์ (CSV/PDF)', 'blue');
+      return;
+    }
 
     // Group by bank + acctNo
     var grouped = {};
@@ -5428,6 +5445,9 @@ async function loadBankFromSheets() {
 
     var total = Object.values(grouped).length;
     var txnTotal = rows.length;
+    var bkSet = {};Object.values(grouped).forEach(function(g) { bkSet[g.bank] = (bkSet[g.bank] || 0) + 1; });
+    bankSetStatus('&#9989; โหลด Bank Statement จากชีต BANK_STATEMENTS แล้ว: ' + total + ' บัญชี · ' + txnTotal.toLocaleString() + ' รายการ (' +
+      Object.keys(bkSet).map(function(k) { return projEsc(k) + ' ' + bkSet[k] + ' บัญชี'; }).join(', ') + ')', 'blue');
     console.log('Loaded from Sheets:', total, 'accounts,', txnTotal, 'transactions');
 
     // Show notification
@@ -5447,6 +5467,7 @@ async function loadBankFromSheets() {
     }
   } catch(err) {
     console.error('loadBankFromSheets error:', err);
+    bankSetStatus('&#9888;&#65039; อ่านข้อมูล Bank Statement จากชีตไม่สำเร็จ (ประมวลผลผิดพลาด): <span style="color:var(--red)">' + projEsc(String((err && err.message) || err)) + '</span> <button class="hbtn hbtn-muted" style="margin-left:8px" onclick="loadBankFromSheets()">&#128260; ลองโหลดใหม่</button>', 'gold');
   }
 }
 
