@@ -273,6 +273,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <div class="tab" onclick="switchTab(7)">&#9878;&#65039; หักกลบ AR/AP</div>
 <div class="tab" onclick="switchTab(8)">&#128176; สมุดบัญชีธนาคาร</div>
 <div class="tab" onclick="switchTab(9)">&#128197; รายได้-ค่าใช้จ่ายตามดิว</div>
+<div class="tab" onclick="switchTab(10)">&#128202; ค้างจ่ายสะสมรายเดือน</div>
 </div>
 <div class="filter-bar">
 <span class="filter-label">&#128197; กรองช่วงเวลา:</span>
@@ -552,6 +553,26 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 </div>
 <div class="page" id="page9">
 <div id="dueRoot"><div class="info-box blue">&#9203; กำลังเตรียมหน้ารายงาน…</div></div>
+</div>
+<div class="page" id="page10">
+<style>
+.mxwrap{overflow:auto;max-height:78vh;border:1px solid var(--border);border-radius:10px}
+.mxt{border-collapse:separate;border-spacing:0;font-size:12.5px;min-width:100%}
+.mxt th,.mxt td{padding:7px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+.mxt thead th{position:sticky;top:0;z-index:3;background:#0b1626;text-align:right;font-size:11.5px;color:var(--muted);font-weight:600;line-height:1.3}
+.mxt .mxn{position:sticky;left:0;z-index:2;background:#0f1e32;text-align:left;min-width:260px;max-width:340px;white-space:normal}
+.mxt thead th.mxn{z-index:4}
+.mxt td.mxc{text-align:right;cursor:pointer;line-height:1.25}
+.mxt td.mxc:hover{outline:1px solid var(--gold);outline-offset:-1px}
+.mxt td.mxe{color:var(--muted);cursor:default;opacity:.45}
+.mxt tr.mxs td{background:#142640;font-weight:700}
+.mxt tr.mxs td.mxn{background:#142640}
+.mxt tr.mxg td{background:#1a3050;font-weight:700;border-top:2px solid var(--border)}
+.mxt tr.mxg td.mxn{background:#1a3050}
+.mxsub{display:block;font-size:10.5px;color:var(--muted);font-weight:400}
+.mxt .mxsep{border-left:2px solid rgba(255,255,255,.14)}
+</style>
+<div id="mxRoot"><div class="info-box blue">&#9203; กำลังเตรียมหน้ารายงาน…</div></div>
 </div>
 
 </div>
@@ -6039,8 +6060,9 @@ function switchTab(i){
   if(i===7){try{renderNet();}catch(e){}}
   if(i===2){try{renderApCat();}catch(e){}}
   if(i===8){try{bkPopulate();}catch(e){console.error(e);}}
-  var fb=document.querySelector('.filter-bar');if(fb)fb.style.display=(i===9?'none':'');
+  var fb=document.querySelector('.filter-bar');if(fb)fb.style.display=((i===9||i===10)?'none':'');
   if(i===9){try{dueEnter();}catch(e){console.error(e);}}
+  if(i===10){try{mxEnter();}catch(e){console.error(e);}}
 }
 
 // ============================================================================
@@ -6118,6 +6140,7 @@ async function dueLoad(force){
   if(DUE.loaded&&!force)return;
   DUE.loading=true;DUE.loaded=false;DUE.failMsg={};DUE._asOfKey=0;DUE.alias={};
   try{dueRender();}catch(e){}
+  try{mxRender();}catch(e){}
   var got={};
   try{
     for(var pass=0;pass<2;pass++){
@@ -6138,6 +6161,7 @@ async function dueLoad(force){
   }catch(e){console.error('dueLoad',e);DUE.failMsg._=String((e&&e.message)||e);}
   DUE.loading=false;
   try{dueRender();}catch(e){console.error(e);}
+  try{mxRender();}catch(e){console.error(e);}
 }
 function dueInit(){
   if(!DUE.sel){var n=new Date();DUE.sel={m1:n.getMonth()+1,y1:n.getFullYear(),m2:n.getMonth()+1,y2:n.getFullYear()};}
@@ -6359,7 +6383,7 @@ function dueRender(){
   var bar='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,0.03)">'+
     '<span style="font-size:12px;color:var(--muted);font-weight:600">📅 ครบกำหนดชำระ:</span>'+mSel('dueM1',s.m1)+ySel('dueY1',s.y1)+'<span style="font-size:13px;color:var(--muted)">ถึง</span>'+mSel('dueM2',s.m2)+ySel('dueY2',s.y2)+
     '<button class="recon-bank-btn" onclick="duePreset(\'prev\')">เดือนก่อน</button><button class="recon-bank-btn" onclick="duePreset(\'cur\')">เดือนนี้</button><button class="recon-bank-btn" onclick="duePreset(\'next\')">เดือนหน้า</button><button class="recon-bank-btn" onclick="duePreset(\'year\')">ทั้งปีนี้</button>'+
-    '<button class="hbtn hbtn-muted" style="margin-left:auto" onclick="dueLoad(true)">🔄 โหลดข้อมูลใหม่</button></div>';
+    '<button class="hbtn hbtn-gold" style="margin-left:auto" onclick="switchTab(10)">📊 ดูค้างสะสมรายเดือน (หมวด × เดือน)</button><button class="hbtn hbtn-muted" onclick="dueLoad(true)">🔄 โหลดข้อมูลใหม่</button></div>';
   var note='';
   if(DUE.loading)note='<div class="info-box blue" style="margin-bottom:14px">⏳ กำลังโหลดข้อมูลจากชีต '+DUE_NAMES.rev+' และ '+DUE_NAMES.exp+'…</div>';
   else if(!DUE.loaded)note='';
@@ -6428,9 +6452,10 @@ function dueDayDiff(dk){
 function dueDetail(side,idx,view){
   if(view)DUE.detView=view;
   var V=DUE.detView||'party';
-  var A=dueAgg(side),isRev=side==='rev',paidWord=isRev?'รับแล้ว':'จ่ายแล้ว',openWord=isRev?'ค้างรับ':'ค้างจ่าย',pw=isRev?'ลูกค้า':'เจ้าหนี้';
+  var A=(idx==='ctx')?null:dueAgg(side),isRev=side==='rev',paidWord=isRev?'รับแล้ว':'จ่ายแล้ว',openWord=isRev?'ค้างรับ':'ค้างจ่าย',pw=isRev?'ลูกค้า':'เจ้าหนี้';
   var rows,label;
-  if(idx>=0){var c=A.cats[idx];if(!c)return;rows=c.rows;label=c.cat;}
+  if(idx==='ctx'){if(!DUE._ctx)return;rows=DUE._ctx.rows;label=DUE._ctx.label;}
+  else if(idx>=0){var c=A.cats[idx];if(!c)return;rows=c.rows;label=c.cat;}
   else if(idx===-2){rows=A.T.rows.filter(function(x){return x.over>0;});label='เฉพาะที่เลยกำหนดและยังค้าง';}
   else{rows=A.T.rows;label='ทุกกลุ่ม';}
   rows=rows.slice().sort(function(a,b){return (a.r.dd||0)-(b.r.dd||0)||b.out-a.out;});
@@ -6451,14 +6476,15 @@ function dueDetail(side,idx,view){
     var g=gm[k];g.total+=x.r.total;g.paid+=x.r.paid;g.out+=x.out;g.over+=x.over;g.docs[x.r.type+'|'+x.r.doc]=1;g.rows.push(x);
   });
   var groups=Object.keys(gm).map(function(k){var g=gm[k];g.nDocs=Object.keys(g.docs).length;return g;}).sort(function(a,b){return b.out-a.out||b.total-a.total;});
-  var title=(isRev?'รายได้':'ค่าใช้จ่าย')+'ครบกำหนด '+dueLbl()+' — '+label;
+  var title=(isRev?'รายได้':'ค่าใช้จ่าย')+'ครบกำหนด '+(idx==='ctx'?DUE._ctx.period:dueLbl())+' — '+label;
   var idF='dueDet_'+side,idG='dueGrp_'+side,idP='dueDetP_'+side;
   dmRegisterSimple(idF,title,flatCols,rows);
   dmRegisterSimple(idP,title+' (รายใบ จัดเรียงตาม'+pw+')',flatCols,rows.slice().sort(function(a,b){return String(a.r.party).localeCompare(String(b.r.party),'th')||(a.r.dd||0)-(b.r.dd||0);}));
   dmRegisterSimple(idG,title+' (สรุปรายชื่อ'+pw+')',[{label:pw,get:function(g){return g.name;}},{label:'จำนวนใบ',right:true,get:function(g){return g.nDocs;}},{label:'ครบกำหนด',right:true,get:function(g){return fmtFull(g.total);}},
     {label:paidWord,right:true,get:function(g){return fmtFull(g.paid);}},{label:openWord,right:true,get:function(g){return fmtFull(g.out);}},{label:'เลยกำหนด',right:true,get:function(g){return fmtFull(g.over);}},{label:'% ชำระแล้ว',right:true,get:function(g){return duePct(g.paid,g.total).toFixed(1)+'%';}}],
     groups.concat([{name:'รวมทั้งหมด',nDocs:rows.length?Object.keys(rows.reduce(function(m,x){m[x.r.type+'|'+x.r.doc]=1;return m;},{})).length:0,total:tot,paid:paid,out:out,over:over}]));
-  var viewBtn=function(k,lab){return '<button class="recon-bank-btn '+(V===k?'active':'')+'" onclick="dueDetail(\''+side+'\','+idx+',\''+k+'\')">'+lab+'</button>';};
+  var idxJs=(idx==='ctx')?"'ctx'":idx;
+  var viewBtn=function(k,lab){return '<button class="recon-bank-btn '+(V===k?'active':'')+'" onclick="dueDetail(\''+side+'\','+idxJs+',\''+k+'\')">'+lab+'</button>';};
   var btn=function(fn,lab,cls){return '<button class="hbtn '+cls+'" onclick="'+fn+'">'+lab+'</button>';};
   var tools='<div style="display:flex;gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap;margin-bottom:12px"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span style="font-size:12px;color:var(--muted)">มุมมอง:</span>'+viewBtn('party','จัดกลุ่มตามชื่อ'+pw)+viewBtn('flat','รายใบ')+
     (V==='party'?'<button class="recon-bank-btn" onclick="dueToggleAll(true)">▾ ขยายทั้งหมด</button><button class="recon-bank-btn" onclick="dueToggleAll(false)">▸ ยุบทั้งหมด</button>':'')+'</div>'+
@@ -6491,6 +6517,289 @@ function dueDetail(side,idx,view){
       '</tbody></table></div>';
   }
   openModal((isRev?'💵 ':'💸 ')+title,tools+stats+body);
+}
+
+// ============================================================================
+// หน้า "ค้างจ่ายสะสมรายเดือน" (tab 10) — เมทริกซ์ หมวด/กลุ่ม x เดือนที่ครบกำหนด
+// ใช้ข้อมูลชุดเดียวกับหน้า "รายได้-ค่าใช้จ่ายตามดิว" (DUE.rev / DUE.exp จากชีต Q26 / Q27) ไม่ต้องรัน SQL เพิ่ม
+// นิยาม: แต่ละเซลล์ = ใบที่ DueDate อยู่ในเดือนนั้น · "จ่ายแล้ว/รับแล้ว" = ยอดชำระสะสมถึงวันที่ข้อมูลล่าสุด (AsOfDate)
+//   ไม่ใช่ยอดค้าง ณ สิ้นเดือนนั้นในอดีต (Q26/Q27 ไม่มีวันที่ชำระรายครั้ง) · "ค้างสะสม" = ผลรวมยอดค้างวันนี้ของใบที่ครบกำหนดตั้งแต่ ม.ค. ถึงเดือนที่เลือก
+//   คอลัมน์ "ก่อนปีนี้/ยอดยกมา" = ใบที่ครบกำหนดก่อน 1 ม.ค. ของปีที่เลือก (รวมใบยกมา TRC บัญชี 9999 ที่ครบกำหนดเก่า) แยกไว้ไม่ปนกับเดือนของปี
+// ============================================================================
+var MX={y:null,toM:null,side:'exp',view:'out',unit:'M',cur:null,open:{},cap:40};
+var MX_SEC={
+  exp:[{k:'op',n:'ค่าใช้จ่ายดำเนินงาน (บัญชี 5xxx)'},{k:'loan',n:'เงินยืม / เงินกู้'},{k:'tax',n:'ภาษี (ภาษีหัก ณ ที่จ่าย ฯลฯ)'},{k:'susp',n:'บัญชีพัก / รอเคลียร์'},{k:'oth',n:'อื่น ๆ (มัดจำ เงินทดรอง สินค้าคงเหลือ ฯลฯ)'},{k:'open',n:'ยอดยกมาจากระบบเดิม TRC (บัญชีพัก 9999)'}],
+  rev:[{k:'sale',n:'รายได้จากการขาย / บริการ'},{k:'open',n:'ยอดยกมาจากระบบเดิม TRC (บัญชีพัก 9999)'}]
+};
+function mxSecKey(side,r){
+  var a=r.acct||'',nm=r.acctName||'';
+  if(/^9999/.test(a))return 'open';
+  if(side==='rev')return 'sale';
+  if(/^5/.test(a))return 'op';
+  if(/พัก|รอเคลียร์/.test(nm))return 'susp';
+  if(/ภาษี/.test(nm))return 'tax';
+  if(/ยืม|กู้/.test(nm)||/^(1160|1161|2211|2212)/.test(a))return 'loan';
+  return 'oth';
+}
+function mxIsOpen(side,k){var v=MX.open[side+'|'+k];if(v!==undefined)return v;return k==='op'||k==='sale';}
+function mxToggle(k){MX.open[MX.side+'|'+k]=!mxIsOpen(MX.side,k);mxRender();}
+function mxInitSel(){
+  if(!MX.y){var n=new Date();MX.y=n.getFullYear();MX.toM=n.getMonth()+1;}
+}
+function mxCols(){var a=[];for(var m=1;m<=MX.toM;m++)a.push(MX.y+'-'+String(m).padStart(2,'0'));return a;}
+function mxColLbl(k){
+  if(k==='ytd')return 'รวมปีนี้';if(k==='pre')return 'ก่อนปีนี้/ยอดยกมา';if(k==='all')return 'รวมทั้งหมด';
+  var m=String(k).match(/^(\d{4})-(\d{2})$/);return m?MTHAI[+m[2]]+' '+String(+m[1]+543).slice(-2):k;
+}
+function mxNew(){return {total:0,paid:0,out:0,over:0,n:0,rows:[]};}
+function mxAdd(c,x){c.total+=x.r.total;c.paid+=x.r.paid;c.out+=x.out;c.over+=x.over;c.n++;c.rows.push(x);}
+function mxMerge(a,b){a.total+=b.total;a.paid+=b.paid;a.out+=b.out;a.over+=b.over;a.n+=b.n||0;}
+function mxSum(cells,keys){var o={total:0,paid:0,out:0,over:0,n:0};keys.forEach(function(k){var c=cells[k];if(c)mxMerge(o,c);});return o;}
+function mxDerive(o,cols){o.ytd=mxSum(o.cells,cols);o.pre=mxSum(o.cells,['pre']);o.all=mxSum(o.cells,cols.concat(['pre']));}
+function mxPct(c){return c&&c.total>0.005?c.paid/c.total*100:null;}
+function mxColHit(col,k){if(col==='all')return true;if(col==='ytd')return k!=='pre';if(col==='pre')return k==='pre';return k===col;}
+
+function mxAgg(side){
+  var cols=mxCols(),first=MX.y+'-01',last=cols[cols.length-1],today=projTodayKey(),map=side==='exp'?dueCatMap():{};
+  var secs={},T={cells:{}},skipped=0;
+  (DUE[side]||[]).forEach(function(r){
+    if(!r.mk)return;
+    var col=r.mk<first?'pre':(r.mk<=last?r.mk:null);
+    if(!col){skipped++;return;}
+    var out=r.total-r.paid;if(Math.abs(out)<0.005)out=0;
+    var over=(r.dd<today&&out>0)?out:0;
+    var x={r:r,out:out,over:over,notYet:out-over};
+    var sk=mxSecKey(side,r),cat=dueCatOf(side,r,map);
+    var S=secs[sk]||(secs[sk]={k:sk,cats:{},cells:{}});
+    var C=S.cats[cat]||(S.cats[cat]={cat:cat,cells:{}});
+    [C.cells,S.cells,T.cells].forEach(function(o){if(!o[col])o[col]=mxNew();mxAdd(o[col],x);});
+  });
+  var list=[];
+  (MX_SEC[side]||[]).forEach(function(d){
+    var S=secs[d.k];if(!S)return;
+    S.name=d.n;mxDerive(S,cols);
+    var all=Object.keys(S.cats).map(function(k){var C=S.cats[k];mxDerive(C,cols);return C;}).sort(function(a,b){return b.all.out-a.all.out||b.all.total-a.all.total;});
+    S.allCats=all;
+    if(all.length>MX.cap+1){
+      var keep=all.slice(0,MX.cap),rest=all.slice(MX.cap),O={cat:'อื่น ๆ อีก '+rest.length+' รายการ (ยอดค้างน้อยกว่า)',cells:{}};
+      rest.forEach(function(C){Object.keys(C.cells).forEach(function(k){var c=C.cells[k],d2=O.cells[k]||(O.cells[k]=mxNew());mxMerge(d2,c);d2.rows=d2.rows.concat(c.rows);});});
+      mxDerive(O,cols);keep.push(O);S.cats=keep;
+    }else S.cats=all;
+    list.push(S);
+  });
+  mxDerive(T,cols);
+  return {cols:cols,secs:list,T:T,skipped:skipped,side:side};
+}
+
+// ---- แสดงตัวเลขในเซลล์ ----
+function mxFmt(v){
+  if(MX.unit==='M')return (v/1e6).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
+  return v.toLocaleString('th-TH',{minimumFractionDigits:0,maximumFractionDigits:0});
+}
+function mxMain(c){
+  var p=mxPct(c),v=MX.view;
+  if(v==='out')return {main:mxFmt(c.out),sub:p==null?'':p.toFixed(0)+'%'};
+  if(v==='pct')return {main:p==null?'—':p.toFixed(1)+'%',sub:mxFmt(c.out)};
+  if(v==='total')return {main:mxFmt(c.total),sub:p==null?'':p.toFixed(0)+'%'};
+  return {main:mxFmt(c.paid),sub:p==null?'':p.toFixed(0)+'%'};
+}
+function mxHasData(c){return !!c&&(c.n>0||Math.abs(c.total)>0.005||Math.abs(c.paid)>0.005);}
+function mxCell(c,click,extraCls){
+  var cls='mxc'+(extraCls?' '+extraCls:'');
+  if(!mxHasData(c))return '<td class="mxc mxe'+(extraCls?' '+extraCls:'')+'">·</td>';
+  var isRev=MX.side==='rev',pw=isRev?'รับแล้ว':'จ่ายแล้ว',ow=isRev?'ค้างรับ':'ค้างจ่าย';
+  var p=mxPct(c),m=mxMain(c),bg='',col='var(--text)';
+  if(MX.view==='out'||MX.view==='pct'){
+    if(Math.abs(c.out)<0.005)bg='rgba(76,175,125,0.07)';
+    else if(p==null)bg='rgba(212,168,67,0.10)';
+    else if(p<50)bg='rgba(224,92,92,0.17)';
+    else if(p<90)bg='rgba(212,168,67,0.13)';
+    else bg='rgba(76,175,125,0.07)';
+    if(MX.view==='out')col=c.over>0.005?'var(--red)':(c.out>0.005?'var(--gold2)':'var(--green)');
+    else col=p==null?'var(--text2)':(p<50?'var(--red)':(p<90?'var(--gold2)':'var(--green)'));
+  }else if(MX.view==='paid')col='var(--green)';
+  var tip='ครบกำหนด '+fmtFull(c.total)+' · '+pw+' '+fmtFull(c.paid)+' · '+ow+' '+fmtFull(c.out)+(c.over>0.005?' (เลยกำหนด '+fmtFull(c.over)+')':'')+(p==null?'':' · '+p.toFixed(1)+'%')+' · '+c.n+' แถว';
+  return '<td class="'+cls+'" style="'+(bg?'background:'+bg+';':'')+'" title="'+projEsc(tip)+'" onclick="'+click+'"><span style="color:'+col+';font-weight:600">'+m.main+'</span>'+(m.sub?'<span class="mxsub">'+m.sub+'</span>':'')+'</td>';
+}
+function mxRowCells(o,A,si,ci){
+  var h='';
+  A.cols.forEach(function(k){h+=mxCell(o.cells[k],"mxOpen("+si+","+ci+",'"+k+"')");});
+  h+=mxCell(o.ytd,"mxOpen("+si+","+ci+",'ytd')",'mxsep');
+  h+=mxCell(o.pre,"mxOpen("+si+","+ci+",'pre')");
+  h+=mxCell(o.all,"mxOpen("+si+","+ci+",'all')",'mxsep mxtot');
+  return h;
+}
+function mxTable(A){
+  var cur=new Date(),curK=cur.getFullYear()+'-'+String(cur.getMonth()+1).padStart(2,'0');
+  var head='<tr><th class="mxn">หมวด / กลุ่ม</th>'+A.cols.map(function(k){return '<th'+(k===curK?' style="color:var(--gold2)"':'')+'>'+mxColLbl(k)+'</th>';}).join('')+
+    '<th class="mxsep">รวมปีนี้<span class="mxsub">ม.ค.–'+MTHAI[MX.toM]+' '+String(MX.y+543).slice(-2)+'</span></th><th>ก่อนปีนี้<span class="mxsub">/ยอดยกมา</span></th><th class="mxsep">รวมทั้งหมด</th></tr>';
+  var body='';
+  A.secs.forEach(function(S,si){
+    var open=mxIsOpen(A.side,S.k);
+    body+='<tr class="mxs"><td class="mxn" style="cursor:pointer" onclick="mxToggle(\''+S.k+'\')"><span style="color:var(--muted);display:inline-block;width:16px">'+(open?'▾':'▸')+'</span>'+projEsc(S.name)+'<span class="mxsub" style="margin-left:16px">'+S.allCats.length+' รายการ'+(open?'':' · กดเพื่อขยาย')+'</span></td>'+mxRowCells(S,A,si,-1)+'</tr>';
+    if(open)S.cats.forEach(function(C,ci){
+      body+='<tr><td class="mxn" style="padding-left:30px;font-weight:400" title="'+projEsc(C.cat)+'">'+projEsc(C.cat)+'</td>'+mxRowCells(C,A,si,ci)+'</tr>';
+    });
+  });
+  body+='<tr class="mxg"><td class="mxn">รวมทั้งหมด</td>'+mxRowCells(A.T,A,-1,-1)+'</tr>';
+  return '<div class="mxwrap"><table class="mxt"><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>';
+}
+
+// ---- กดเซลล์ → รายละเอียดรายใบ (ใช้หน้าต่างเดิมของหน้าตามดิว) ----
+function mxOpen(si,ci,col){
+  var A=MX.cur;if(!A)return;
+  var secs=si<0?A.secs:[A.secs[si]];if(!secs[0])return;
+  var items=[];
+  secs.forEach(function(S){
+    var cats=ci<0?S.cats:[S.cats[ci]];
+    cats.forEach(function(C){if(!C)return;Object.keys(C.cells).forEach(function(k){if(mxColHit(col,k))items=items.concat(C.cells[k].rows);});});
+  });
+  var lab=(si<0?'ทุกกลุ่ม':secs[0].name)+((si>=0&&ci>=0&&secs[0].cats[ci])?' › '+secs[0].cats[ci].cat:'');
+  var per=col==='ytd'?'ม.ค.–'+MTHAI[MX.toM]+' '+String(MX.y+543).slice(-2):(col==='all'?'ทั้งหมด (รวมก่อนปีนี้)':mxColLbl(col));
+  DUE._ctx={rows:items,label:lab,period:per};
+  dueDetail(A.side,'ctx');
+}
+
+// ---- กราฟรายเดือน ----
+function mxDrawChart(A){
+  var cv=document.getElementById('mxChart');if(!cv||typeof Chart==='undefined'||!A.cols.length)return;
+  var isRev=A.side==='rev',pw=isRev?'รับแล้ว':'จ่ายแล้ว',M=function(v){return +(v/1e6).toFixed(3);},cum=0,gc='rgba(255,255,255,0.05)';
+  var paid=[],ny=[],ov=[],cl=[];
+  A.cols.forEach(function(k){var c=A.T.cells[k]||{paid:0,out:0,over:0};paid.push(M(c.paid));ny.push(M(c.out-c.over));ov.push(M(c.over));cum+=c.out;cl.push(M(cum));});
+  makeChart('mxChart',{type:'bar',data:{labels:A.cols.map(mxColLbl),datasets:[
+    {type:'line',label:(isRev?'ค้างรับ':'ค้างจ่าย')+'สะสมปีนี้ (ไม่รวมก่อนปี) — แกนขวา',data:cl,borderColor:'#5B8FF9',backgroundColor:'#5B8FF9',yAxisID:'y1',tension:0.25,pointRadius:3,order:0},
+    {label:pw,data:paid,backgroundColor:'#4CAF7D',stack:'s',order:2},
+    {label:'ค้าง — ยังไม่ถึงกำหนด',data:ny,backgroundColor:'#D4A843',stack:'s',order:2},
+    {label:'ค้าง — เลยกำหนด',data:ov,backgroundColor:'#E05C5C',stack:'s',order:2}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8FA3B8',boxWidth:12}}},
+      scales:{x:{stacked:true,grid:{display:false},ticks:{color:'#8FA3B8'}},
+        y:{stacked:true,grid:{color:gc},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}},title:{display:true,text:'ล้านบาท ต่อเดือน',color:'#8FA3B8'}},
+        y1:{position:'right',grid:{drawOnChartArea:false},ticks:{color:'#5B8FF9',callback:function(v){return v+'M';}},title:{display:true,text:'สะสม (ล้านบาท)',color:'#5B8FF9'}}}}});
+}
+
+// ---- ส่งออก ----
+function mxFileTag(){return MTHAI[MX.toM]+String(MX.y+543).slice(-2);}
+function mxExcel(){
+  var A=MX.cur;if(!A||typeof XLSX==='undefined')return;
+  var isRev=A.side==='rev',pw=isRev?'รับแล้ว':'จ่ายแล้ว',ow=isRev?'ค้างรับ':'ค้างจ่าย',R=function(v){return Math.round(v*100)/100;};
+  var keys=A.cols.concat(['ytd','pre','all']);
+  var get=function(o,k){return A.cols.indexOf(k)>=0?o.cells[k]:o[k];};
+  var sheets=[{n:ow,f:function(c){return R(c.out);},t:ow+'สะสมตามเดือนที่ครบกำหนด (บาท)'},{n:'ครบกำหนด',f:function(c){return R(c.total);},t:'ยอดครบกำหนด (บาท)'},{n:pw,f:function(c){return R(c.paid);},t:pw+' สะสมถึงวันที่ข้อมูล (บาท)'},
+    {n:'เปอร์เซ็นต์ชำระ',f:function(c){var p=mxPct(c);return p==null?'':Math.round(p*10)/10;},t:'% ชำระแล้ว ('+pw+' ÷ ครบกำหนด)'}];
+  var wb=XLSX.utils.book_new(),now=new Date(),dstr=now.toLocaleDateString('th-TH',{year:'numeric',month:'long',day:'numeric'});
+  sheets.forEach(function(sh){
+    var aoa=[['บริษัท รถเจาะไทย จำกัด'],[(isRev?'รายได้':'ค่าใช้จ่าย')+' — '+sh.t+' · ม.ค.–'+MTHAI[MX.toM]+' '+(MX.y+543)],['ข้อมูล ณ '+(DUE.asOf||'—')+' · พิมพ์เมื่อ '+dstr],[]];
+    aoa.push(['กลุ่ม','หมวด / กลุ่มย่อย'].concat(keys.map(mxColLbl)));
+    var line=function(g,c,o){return [g,c].concat(keys.map(function(k){var x=get(o,k);return mxHasData(x)?sh.f(x):'';}));};
+    A.secs.forEach(function(S){
+      aoa.push(line(S.name,'รวมกลุ่ม',S));
+      S.allCats.forEach(function(C){aoa.push(line(S.name,C.cat,C));});
+    });
+    aoa.push(line('รวมทั้งหมด','',A.T));
+    var ws=XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols']=[{wch:34},{wch:44}].concat(keys.map(function(){return {wch:15};}));
+    XLSX.utils.book_append_sheet(wb,ws,sh.n);
+  });
+  XLSX.writeFile(wb,'ค้างจ่ายสะสมรายเดือน_'+(isRev?'รายได้':'ค่าใช้จ่าย')+'_'+mxFileTag()+'.xlsx');
+}
+function mxPlain(c){if(!mxHasData(c))return '·';var m=mxMain(c);return m.main+(m.sub?' ('+m.sub+')':'');}
+function mxPrint(){
+  var A=MX.cur;if(!A)return;
+  var isRev=A.side==='rev',keys=A.cols.concat(['ytd','pre','all']);
+  var get=function(o,k){return A.cols.indexOf(k)>=0?o.cells[k]:o[k];};
+  var rows=[];
+  A.secs.forEach(function(S){
+    rows.push({n:'▪ '+S.name,o:S});
+    if(mxIsOpen(A.side,S.k))S.cats.forEach(function(C){rows.push({n:'    '+C.cat,o:C});});
+  });
+  rows.push({n:'รวมทั้งหมด',o:A.T});
+  var cols=[{label:'หมวด / กลุ่ม',get:function(r){return r.n;}}].concat(keys.map(function(k){return {label:mxColLbl(k),right:true,get:function(r){return mxPlain(get(r.o,k));}};}));
+  var vl={out:isRev?'ค้างรับ':'ค้างจ่าย',pct:'% ชำระแล้ว',total:'ครบกำหนด',paid:isRev?'รับแล้ว':'จ่ายแล้ว'}[MX.view];
+  var st=document.createElement('style');st.id='mxPageStyle';st.textContent='@page{size:A4 landscape;margin:8mm}';document.head.appendChild(st);
+  var done=function(){var e=document.getElementById('mxPageStyle');if(e)e.remove();window.removeEventListener('afterprint',done);};
+  window.addEventListener('afterprint',done);
+  dmSimplePrintDoc((isRev?'รายได้':'ค่าใช้จ่าย')+'ตามกำหนดชำระ รายเดือน · '+vl+' · '+(MX.unit==='M'?'ล้านบาท':'บาท')+' · ม.ค.–'+MTHAI[MX.toM]+' '+(MX.y+543),cols,rows);
+}
+
+// ---- ตัวควบคุม ----
+function mxSetSide(s){MX.side=s;mxRender();}
+function mxSetView(v){MX.view=v;mxRender();}
+function mxSetUnit(u){MX.unit=u;mxRender();}
+function mxSetMode(m){DUE.userMode=DUE.userMode||{};DUE.userMode[MX.side]=true;DUE.mode[MX.side]=m;mxRender();}
+function mxSetPeriod(){
+  var y=document.getElementById('mxY'),m=document.getElementById('mxM');
+  if(y)MX.y=+y.value;if(m)MX.toM=+m.value;
+  mxRender();
+}
+function mxPickYear(){
+  var y=document.getElementById('mxY');if(!y)return;
+  var n=new Date();MX.y=+y.value;MX.toM=(MX.y===n.getFullYear())?n.getMonth()+1:12;mxRender();
+}
+function mxModeBtns(side){
+  var eff=dueMode(side);
+  var b=function(k,label){return '<button class="recon-bank-btn '+(eff===k?'active':'')+'" onclick="mxSetMode(\''+k+'\')">'+label+'</button>';};
+  var h='<span style="font-size:12px;color:var(--muted)">จัดแถวตาม:</span>';
+  if(side==='rev'){
+    if(DUE.hasItem.rev)h+=b('item','ประเภทงาน/กลุ่มสินค้า')+b('itemname','รายการสินค้า/บริการ');
+    h+=b('acct','บัญชี SAP')+b('party','ชื่อลูกค้า');
+  }else{
+    if(G.apCatRows&&G.apCatRows.length)h+=b('q13','หมวดหมู่ (Q13) · ครอบคลุม '+Math.round(dueQ13Coverage()*100)+'%');
+    h+=b('acct','บัญชี SAP')+b('party','ชื่อเจ้าหนี้');
+  }
+  return h;
+}
+function mxEnter(){mxInitSel();dueInit();if(!DUE.loaded&&!DUE.loading)dueLoad();else mxRender();}
+
+function mxRender(){
+  var root=document.getElementById('mxRoot'),pg=document.getElementById('page10');
+  if(!root||!pg||!pg.classList.contains('active'))return;
+  mxInitSel();dueInit();
+  MX.cur=null;
+  var side=MX.side,isRev=side==='rev',pw=isRev?'รับแล้ว':'จ่ายแล้ว',ow=isRev?'ค้างรับ':'ค้างจ่าย';
+  var yrs={},now=new Date().getFullYear();yrs[now]=1;yrs[MX.y]=1;
+  ['rev','exp'].forEach(function(k){(DUE[k]||[]).forEach(function(r){if(r.mk)yrs[r.mk.slice(0,4)]=1;});});
+  var ys=Object.keys(yrs).map(Number).sort();
+  var sel=function(id,opts,v,fn){return '<select id="'+id+'" class="filter-select" onchange="'+fn+'">'+opts.map(function(o){return '<option value="'+o[0]+'"'+(+v===+o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>';};
+  var btn=function(fn,lab,on){return '<button class="recon-bank-btn '+(on?'active':'')+'" onclick="'+fn+'">'+lab+'</button>';};
+  var bar='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,0.03)">'+
+    '<span style="font-size:12px;color:var(--muted);font-weight:600">📆 ปี</span>'+sel('mxY',ys.map(function(y){return [y,y+543];}),MX.y,'mxPickYear()')+
+    '<span style="font-size:12px;color:var(--muted)">สะสมถึงเดือน</span>'+sel('mxM',[1,2,3,4,5,6,7,8,9,10,11,12].map(function(m){return [m,MTHAI[m]];}),MX.toM,'mxSetPeriod()')+
+    '<span style="width:1px;height:22px;background:var(--border);margin:0 4px"></span>'+
+    btn("mxSetSide('exp')",'💸 ค่าใช้จ่าย (เจ้าหนี้)',side==='exp')+btn("mxSetSide('rev')",'💵 รายได้ (ลูกหนี้)',side==='rev')+
+    '<button class="hbtn hbtn-muted" style="margin-left:auto" onclick="dueLoad(true)">🔄 โหลดข้อมูลใหม่</button></div>';
+  var note='',body='';
+  if(DUE.loading)note='<div class="info-box blue" style="margin-bottom:14px">⏳ กำลังโหลดข้อมูลจากชีต '+DUE_NAMES.rev+' และ '+DUE_NAMES.exp+'…</div>';
+  else if(!DUE.loaded)note='';
+  else if(!DUE.have[side]){
+    note='<div class="info-box gold"><div class="info-box-title">⚠ ยังไม่มีข้อมูลส่วนนี้</div>'+(DUE.failMsg[side]?projEsc(DUE.failMsg[side])+'<br>':'')+'ต้องมีแท็บ <b>'+DUE_NAMES[side]+'</b> ใน Google Sheets แล้วกด "โหลดข้อมูลใหม่"</div>';
+  }else{
+    if(!(DUE.userMode&&DUE.userMode.exp)&&DUE.have.exp){DUE.mode.exp=(G.apCatRows&&G.apCatRows.length&&dueQ13Coverage()>=0.5)?'q13':'acct';}
+    var A=mxAgg(side);MX.cur=A;
+    var T=A.T,pY=duePct(T.ytd.paid,T.ytd.total),pOk=T.ytd.total>0.005&&pY>=0&&pY<=100,todayK=projTodayKey(),bits=[];
+    var docs={};A.cols.forEach(function(k){((T.cells[k]||{rows:[]}).rows).forEach(function(x){docs[x.r.type+'|'+x.r.doc]=1;});});
+    var per='ม.ค.–'+MTHAI[MX.toM]+' '+String(MX.y+543).slice(-2);
+    if(DUE._asOfKey&&DUE._asOfKey<todayK)bits.push('⚠ ข้อมูลในชีตอัปเดตล่าสุด ณ <b>'+DUE.asOf+'</b> — ยอดชำระหลังวันนั้นยังไม่รวม (แต่ "เลยกำหนด" นับถึงวันนี้)');
+    else if(DUE.asOf)bits.push('ข้อมูล ณ วันที่ '+DUE.asOf);
+    bits.push('แต่ละช่อง = ใบที่ <b>ครบกำหนดในเดือนนั้น</b> · "'+pw+'" คือยอดชำระสะสมถึงวันที่ข้อมูล ไม่ใช่ยอดค้าง ณ สิ้นเดือนนั้นในอดีต · "ค้างสะสม" = ผลรวมยอดค้างวันนี้ของใบที่ครบกำหนดตั้งแต่ ม.ค. ถึงเดือนที่เลือก · ใบลดหนี้/รายการหักมัดจำเป็นยอดติดลบ จึงอาจทำให้ % เกิน 100 หรือขึ้น "—"');
+    bits.push('คอลัมน์ "ก่อนปีนี้/ยอดยกมา" = ใบที่ครบกำหนดก่อน 1 ม.ค. '+(MX.y+543)+' (แยกไว้ ไม่ปนกับเดือนของปี) · ใบยกมาจาก TRC (บัญชี 9999) แยกเป็นกลุ่มของตัวเอง ยังไม่ผ่านการตรวจสอบจากฝ่ายบัญชี');
+    if(A.skipped)bits.push('ไม่นับใบที่ครบกำหนดหลัง '+MTHAI[MX.toM]+' '+(MX.y+543)+' จำนวน '+A.skipped+' แถว (เลื่อน "สะสมถึงเดือน" เพื่อดู)');
+    note='<div class="info-box '+((DUE._asOfKey&&DUE._asOfKey<todayK)?'gold':'blue')+'" style="margin-bottom:14px;font-size:12.5px;line-height:1.7">'+bits.join('<br>')+'</div>';
+    var kp='<div class="kpi-row kpi4g">'+
+      kpi('blue','📅','rgba(91,143,249,0.18)','ครบกำหนด '+per,fmtKPI(T.ytd.total),'blue',Object.keys(docs).length+' ใบ',"mxOpen(-1,-1,'ytd')")+
+      kpi('green','✅','rgba(76,175,125,0.18)',pw,fmtKPI(T.ytd.paid),'green',(pOk?pY.toFixed(1)+'% ของยอดครบกำหนด':'—'),"mxOpen(-1,-1,'ytd')")+
+      kpi('gold','⏳','rgba(212,168,67,0.18)',ow+'สะสม '+per,fmtKPI(T.ytd.out),'gold',[T.ytd.over>0.005?'เลยกำหนดแล้ว '+fmtKPI(T.ytd.over):'',pOk?(100-pY).toFixed(1)+'% ของยอดครบกำหนด':''].filter(Boolean).join(' · ')||'—',"mxOpen(-1,-1,'ytd')")+
+      kpi('red','📦',"rgba(224,92,92,0.18)",ow+'ก่อนปี '+(MX.y+543)+' / ยอดยกมา',fmtKPI(T.pre.out),'red','รวมทั้งหมด '+fmtKPI(T.all.out),"mxOpen(-1,-1,'pre')")+'</div>';
+    var vb=function(k,lab){return btn("mxSetView('"+k+"')",lab,MX.view===k);};
+    var ctl='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px"><span style="font-size:12px;color:var(--muted)">แสดงตัวเลข:</span>'+vb('out',ow)+vb('pct','% ชำระแล้ว')+vb('total','ครบกำหนด')+vb('paid',pw)+
+      '<span style="width:1px;height:22px;background:var(--border);margin:0 4px"></span><span style="font-size:12px;color:var(--muted)">หน่วย:</span>'+btn("mxSetUnit('M')",'ล้านบาท',MX.unit==='M')+btn("mxSetUnit('B')",'บาท',MX.unit==='B')+
+      '<span style="margin-left:auto;display:flex;gap:8px"><button class="hbtn hbtn-muted" onclick="mxPrint()">🖨️ บันทึกเป็น PDF</button><button class="hbtn hbtn-green" onclick="mxExcel()">📊 บันทึกเป็น Excel (4 ชีต)</button></span></div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">'+mxModeBtns(side)+'</div>';
+    var legend='<div style="font-size:11.5px;color:var(--muted);margin:2px 0 8px">ตัวเลขในช่อง: ตัวใหญ่ = '+(MX.view==='out'?ow:MX.view==='pct'?'% ชำระแล้ว':MX.view==='total'?'ยอดครบกำหนด':pw)+' · ตัวเล็ก = '+(MX.view==='pct'?ow:'% ชำระแล้ว')+' · สีพื้น: <span style="color:var(--red)">แดง</span> ชำระ &lt;50% · <span style="color:var(--gold2)">เหลือง</span> 50–90% · <span style="color:var(--green)">เขียว</span> ≥90% · กดช่องเพื่อดูรายใบ · กดชื่อกลุ่มเพื่อขยาย/ยุบ</div>';
+    body=kp+'<div class="chart-card" style="margin-bottom:16px"><div class="chart-title">'+(isRev?'รายได้':'ค่าใช้จ่าย')+'ที่ครบกำหนดรายเดือน '+per+' <span class="chart-sub">(แท่ง = ล้านบาทต่อเดือน · เส้น = '+ow+'สะสมปีนี้)</span></div><div style="position:relative;height:280px"><canvas id="mxChart" style="max-height:none"></canvas></div></div>'+
+      '<div class="chart-card"><div class="chart-title">ตาราง '+(isRev?'รายได้':'ค่าใช้จ่าย')+'แยกกลุ่ม × เดือนที่ครบกำหนด</div>'+ctl+legend+(A.secs.length?mxTable(A):'<div style="padding:18px;text-align:center;color:var(--muted)">ไม่มีใบที่ครบกำหนดในช่วงนี้</div>')+'</div>';
+  }
+  root.innerHTML=bar+note+body;
+  if(MX.cur&&DUE.loaded&&DUE.have[side])mxDrawChart(MX.cur);
 }
 
 Chart.defaults.color='#8FA3B8';Chart.defaults.font.family='Sarabun';Chart.defaults.font.size=12;
