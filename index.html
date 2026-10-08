@@ -572,6 +572,8 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 .mxt tr.mxg td span{color:#fff !important}
 .mxt tr.mxg td .mxsub{color:#BFEDEA !important}
 .mxsub{display:block;font-size:10.5px;color:var(--muted);font-weight:400}
+.mxt .mxpp{color:#5FD3A0;font-weight:600}.mxt .mxpd{color:#F2A65A;font-weight:600}
+.mxt tr.mxg td .mxsub .mxpp{color:#A8F5CF !important}.mxt tr.mxg td .mxsub .mxpd{color:#FFD49A !important}
 .mxt .mxsep{border-left:2px solid rgba(255,255,255,.14)}
 </style>
 <div id="mxRoot"><div class="info-box blue">&#9203; กำลังเตรียมหน้ารายงาน…</div></div>
@@ -6626,7 +6628,7 @@ function mxCell(c,click,extraCls,showSub,heatMax){
     if(p<50)bg='background:rgba(224,92,92,0.26);';else if(p<90)bg='background:rgba(212,168,67,0.18);';
   }
   var sub='';
-  if(showSub){var pt=(v==='pct')?(mxTiny(c.out)?'':mxFmt(c.out)):(p==null?'':p.toFixed(0)+'%');if(pt)sub+='<span class="mxsub">'+pt+'</span>';}
+  if(showSub){var pt='';if(showSub&&c.total>0.005){var pr=Math.round(c.paid/c.total*100),orr=Math.round(c.out/c.total*100);if(pr>=0&&orr>=0&&pr+orr!==100)orr=100-pr;pt='<span class="mxpp">'+(isRev?'รับ':'ชำระ')+' '+pr+'%</span> <span class="mxpd">· ค้าง '+orr+'%</span>';}if(pt)sub+='<span class="mxsub">'+pt+'</span>';}
   var tip='ครบกำหนด '+fmtFull(c.total)+' · '+pw+' '+fmtFull(c.paid)+' · '+ow+' '+fmtFull(c.out)+(c.over>0.005?' (เลยกำหนด '+fmtFull(c.over)+')':'')+(p==null?'':' · ชำระแล้ว '+p.toFixed(1)+'%')+' · '+c.n+' แถว';
   return '<td class="'+cls+'" style="'+bg+'" title="'+projEsc(tip)+'" onclick="'+click+'"><span style="color:'+col+';font-weight:'+(m.tiny?'400':'600')+'">'+m.main+'</span>'+sub+'</td>';
 }
@@ -6816,7 +6818,7 @@ function mxRender(){
       '<span style="width:1px;height:22px;background:var(--border);margin:0 4px"></span>'+btn('mxExpandAll(true)','▾ ขยายทุกกลุ่ม',false)+btn('mxExpandAll(false)','▸ ยุบเหลือสรุปกลุ่ม',false)+btn('mxToggleCap()',MX.cap>100?'แสดงเฉพาะรายการหลัก':'แสดงครบทุกรายการ',MX.cap>100)+
       '<span style="margin-left:auto;display:flex;gap:8px"><button class="hbtn hbtn-muted" onclick="mxPrint()">🖨️ บันทึกเป็น PDF</button><button class="hbtn hbtn-green" onclick="mxExcel()">📊 บันทึกเป็น Excel (5 ชีต)</button></span></div>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">'+mxModeBtns(side)+'</div>';
-    var legend='<div style="font-size:11.5px;color:var(--muted);margin:2px 0 8px;line-height:1.7">ตัวเลขในช่อง = '+(MX.view==='out'?ow:MX.view==='over'?'ยอดเลยกำหนด (ครบกำหนดก่อนวันนี้ และยังไม่ได้'+(isRev?'รับ':'จ่าย')+')':MX.view==='pct'?'% ชำระแล้ว':MX.view==='total'?'ยอดครบกำหนด':pw)+' (หน่วย: '+mxUnitName()+') · <b>·</b> = ชำระครบ/น้อยมาก · '+(MX.view==='over'?'สีพื้นแดงยิ่งเข้มยิ่งเลยกำหนดมาก':MX.view==='out'?'สีพื้นยิ่งเข้มยิ่งค้างมาก (<span style="color:var(--red)">แดง</span> = ส่วนใหญ่เลยกำหนดแล้ว · <span style="color:var(--gold2)">เหลือง</span> = ส่วนใหญ่ยังไม่ถึงกำหนด) · ตัวเลข<span style="color:var(--blue)">สีน้ำเงิน</span> = ติดลบ (ใบลดหนี้/หักมัดจำ)':MX.view==='pct'?'พื้นแดง = ชำระ &lt;50% · พื้นเหลือง = 50–90%':'ไม่มีสีพื้น')+' · % ชำระแล้วอยู่ใต้ตัวเลขในคอลัมน์ขวา 3 ช่อง · กดช่องเพื่อดูรายใบ · กดชื่อกลุ่มเพื่อขยาย/ยุบ</div>';
+    var legend='<div style="font-size:11.5px;color:var(--muted);margin:2px 0 8px;line-height:1.7">ตัวเลขในช่อง = '+(MX.view==='out'?ow:MX.view==='over'?'ยอดเลยกำหนด (ครบกำหนดก่อนวันนี้ และยังไม่ได้'+(isRev?'รับ':'จ่าย')+')':MX.view==='pct'?'% ชำระแล้ว':MX.view==='total'?'ยอดครบกำหนด':pw)+' (หน่วย: '+mxUnitName()+') · <b>·</b> = ชำระครบ/น้อยมาก · '+(MX.view==='over'?'สีพื้นแดงยิ่งเข้มยิ่งเลยกำหนดมาก':MX.view==='out'?'สีพื้นยิ่งเข้มยิ่งค้างมาก (<span style="color:var(--red)">แดง</span> = ส่วนใหญ่เลยกำหนดแล้ว · <span style="color:var(--gold2)">เหลือง</span> = ส่วนใหญ่ยังไม่ถึงกำหนด) · ตัวเลข<span style="color:var(--blue)">สีน้ำเงิน</span> = ติดลบ (ใบลดหนี้/หักมัดจำ)':MX.view==='pct'?'พื้นแดง = ชำระ &lt;50% · พื้นเหลือง = 50–90%':'ไม่มีสีพื้น')+' · ตัวเล็กใต้ตัวเลขในคอลัมน์ขวา 3 ช่อง = ชำระแล้วกี่ % และ'+ow+'กี่ % ของยอดครบกำหนดของแถวนั้น (รวมกัน 100%) · <span style="color:#5FD3A0;font-weight:600">สีเขียว = % ชำระ</span> <span style="color:#F2A65A;font-weight:600">สีส้ม = % ค้าง</span> · กดช่องเพื่อดูรายใบ · กดชื่อกลุ่มเพื่อขยาย/ยุบ</div>';
     body=kp+'<div class="chart-card" style="margin-bottom:16px"><div class="chart-title">'+(isRev?'รายได้':'ค่าใช้จ่าย')+'ที่ครบกำหนดรายเดือน '+per+' <span class="chart-sub">(แท่ง = ล้านบาทต่อเดือน · เส้น = '+ow+'สะสมปีนี้)</span></div><div style="position:relative;height:280px"><canvas id="mxChart" style="max-height:none"></canvas></div></div>'+
       '<div class="chart-card"><div class="chart-title">ตาราง '+(isRev?'รายได้':'ค่าใช้จ่าย')+'แยกกลุ่ม × เดือนที่ครบกำหนด</div>'+ctl+legend+(A.secs.length?mxTable(A):'<div style="padding:18px;text-align:center;color:var(--muted)">ไม่มีใบที่ครบกำหนดในช่วงนี้</div>')+'</div>';
   }
