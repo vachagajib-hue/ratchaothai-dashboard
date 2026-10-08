@@ -6526,7 +6526,7 @@ function dueDetail(side,idx,view){
 //   ไม่ใช่ยอดค้าง ณ สิ้นเดือนนั้นในอดีต (Q26/Q27 ไม่มีวันที่ชำระรายครั้ง) · "ค้างสะสม" = ผลรวมยอดค้างวันนี้ของใบที่ครบกำหนดตั้งแต่ ม.ค. ถึงเดือนที่เลือก
 //   คอลัมน์ "ก่อนปีนี้/ยอดยกมา" = ใบที่ครบกำหนดก่อน 1 ม.ค. ของปีที่เลือก (รวมใบยกมา TRC บัญชี 9999 ที่ครบกำหนดเก่า) แยกไว้ไม่ปนกับเดือนของปี
 // ============================================================================
-var MX={y:null,toM:null,side:'exp',view:'out',unit:'K',cur:null,open:{},cap:15,max:1,maxCat:1,maxSec:1};
+var MX={y:null,toM:null,side:'exp',view:'out',unit:'B',cur:null,open:{},cap:15,max:1,maxCat:1,maxSec:1};
 var MX_SEC={
   exp:[{k:'op',n:'ค่าใช้จ่ายดำเนินงาน (บัญชี 5xxx)'},{k:'loan',n:'เงินยืม / เงินกู้'},{k:'tax',n:'ภาษี (ภาษีหัก ณ ที่จ่าย ฯลฯ)'},{k:'susp',n:'บัญชีพัก / รอเคลียร์'},{k:'oth',n:'อื่น ๆ (มัดจำ เงินทดรอง สินค้าคงเหลือ ฯลฯ)'},{k:'open',n:'ยอดยกมาจากระบบเดิม TRC (บัญชีพัก 9999)'}],
   rev:[{k:'sale',n:'รายได้จากการขาย / บริการ'},{k:'open',n:'ยอดยกมาจากระบบเดิม TRC (บัญชีพัก 9999)'}]
@@ -6593,12 +6593,13 @@ function mxAgg(side){
 
 // ---- แสดงตัวเลขในเซลล์ (ออกแบบให้อ่านง่าย: ช่องรายเดือนมีตัวเลขเดียว สีพื้นเข้มตามยอด · % อยู่ใต้ตัวเลขเฉพาะ 3 คอลัมน์ขวา) ----
 function mxDiv(){return MX.unit==='M'?1e6:(MX.unit==='K'?1e3:1);}
+function mxUnitName(){return {M:'ล้านบาท',K:'พันบาท',B:'บาท'}[MX.unit];}
 function mxFmt(v){
   var x=v/mxDiv();
   if(MX.unit==='M')return x.toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
   return x.toLocaleString('th-TH',{minimumFractionDigits:0,maximumFractionDigits:0});
 }
-function mxTiny(v){return Math.abs(v)/mxDiv()<(MX.unit==='M'?0.005:(MX.unit==='K'?0.5:0.005));}
+function mxTiny(v){return Math.abs(v)/mxDiv()<(MX.unit==='M'?0.005:0.5);}
 function mxValOf(c){var v=MX.view;return v==='total'?c.total:(v==='paid'?c.paid:c.out);}
 function mxMain(c){
   var p=mxPct(c);
@@ -6644,7 +6645,7 @@ function mxCalcMax(A){
 function mxTable(A){
   mxCalcMax(A);
   var cur=new Date(),curK=cur.getFullYear()+'-'+String(cur.getMonth()+1).padStart(2,'0');
-  var head='<tr><th class="mxn">หมวด / กลุ่ม</th>'+A.cols.map(function(k){return '<th'+(k===curK?' style="color:var(--gold2)"':'')+'>'+mxColLbl(k)+'</th>';}).join('')+
+  var head='<tr><th class="mxn">หมวด / กลุ่ม<span class="mxsub" style="color:var(--gold2);font-weight:600">หน่วย: '+mxUnitName()+(MX.unit==='B'?' (เต็มจำนวน)':(MX.unit==='K'?' (= ตัวเลข × 1,000 บาท)':' (= ตัวเลข × 1,000,000 บาท)'))+'</span></th>'+A.cols.map(function(k){return '<th'+(k===curK?' style="color:var(--gold2)"':'')+'>'+mxColLbl(k)+'</th>';}).join('')+
     '<th class="mxsep">รวมปีนี้<span class="mxsub">ม.ค.–'+MTHAI[MX.toM]+' '+String(MX.y+543).slice(-2)+'</span></th><th>ก่อนปีนี้<span class="mxsub">/ยอดยกมา</span></th><th class="mxsep">รวมทั้งหมด</th></tr>';
   var body='';
   A.secs.forEach(function(S,si){
@@ -6806,11 +6807,11 @@ function mxRender(){
       kpi('red','📦',"rgba(224,92,92,0.18)",ow+'ก่อนปี '+(MX.y+543)+' / ยอดยกมา',fmtKPI(T.pre.out),'red','รวมทั้งหมด '+fmtKPI(T.all.out),"mxOpen(-1,-1,'pre')")+'</div>';
     var vb=function(k,lab){return btn("mxSetView('"+k+"')",lab,MX.view===k);};
     var ctl='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px"><span style="font-size:12px;color:var(--muted)">แสดงตัวเลข:</span>'+vb('out',ow)+vb('pct','% ชำระแล้ว')+vb('total','ครบกำหนด')+vb('paid',pw)+
-      '<span style="width:1px;height:22px;background:var(--border);margin:0 4px"></span><span style="font-size:12px;color:var(--muted)">หน่วย:</span>'+btn("mxSetUnit('M')",'ล้านบาท',MX.unit==='M')+btn("mxSetUnit('K')",'พันบาท',MX.unit==='K')+btn("mxSetUnit('B')",'บาท',MX.unit==='B')+
+      '<span style="width:1px;height:22px;background:var(--border);margin:0 4px"></span><span style="font-size:12px;color:var(--muted)">หน่วย:</span>'+btn("mxSetUnit('B')",'บาท (เต็มจำนวน)',MX.unit==='B')+btn("mxSetUnit('K')",'พันบาท (÷1,000)',MX.unit==='K')+btn("mxSetUnit('M')",'ล้านบาท (÷1,000,000)',MX.unit==='M')+
       '<span style="width:1px;height:22px;background:var(--border);margin:0 4px"></span>'+btn('mxExpandAll(true)','▾ ขยายทุกกลุ่ม',false)+btn('mxExpandAll(false)','▸ ยุบเหลือสรุปกลุ่ม',false)+btn('mxToggleCap()',MX.cap>100?'แสดงเฉพาะรายการหลัก':'แสดงครบทุกรายการ',MX.cap>100)+
       '<span style="margin-left:auto;display:flex;gap:8px"><button class="hbtn hbtn-muted" onclick="mxPrint()">🖨️ บันทึกเป็น PDF</button><button class="hbtn hbtn-green" onclick="mxExcel()">📊 บันทึกเป็น Excel (4 ชีต)</button></span></div>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">'+mxModeBtns(side)+'</div>';
-    var legend='<div style="font-size:11.5px;color:var(--muted);margin:2px 0 8px;line-height:1.7">ตัวเลขในช่อง = '+(MX.view==='out'?ow:MX.view==='pct'?'% ชำระแล้ว':MX.view==='total'?'ยอดครบกำหนด':pw)+' (หน่วย'+({M:'ล้านบาท',K:'พันบาท',B:'บาท'}[MX.unit])+') · <b>·</b> = ชำระครบ/น้อยมาก · '+(MX.view==='out'?'สีพื้นยิ่งเข้มยิ่งค้างมาก (<span style="color:var(--red)">แดง</span> = ส่วนใหญ่เลยกำหนดแล้ว · <span style="color:var(--gold2)">เหลือง</span> = ส่วนใหญ่ยังไม่ถึงกำหนด) · ตัวเลข<span style="color:var(--blue)">สีน้ำเงิน</span> = ติดลบ (ใบลดหนี้/หักมัดจำ)':MX.view==='pct'?'พื้นแดง = ชำระ &lt;50% · พื้นเหลือง = 50–90%':'ไม่มีสีพื้น')+' · % ชำระแล้วอยู่ใต้ตัวเลขในคอลัมน์ขวา 3 ช่อง · กดช่องเพื่อดูรายใบ · กดชื่อกลุ่มเพื่อขยาย/ยุบ</div>';
+    var legend='<div style="font-size:11.5px;color:var(--muted);margin:2px 0 8px;line-height:1.7">ตัวเลขในช่อง = '+(MX.view==='out'?ow:MX.view==='pct'?'% ชำระแล้ว':MX.view==='total'?'ยอดครบกำหนด':pw)+' (หน่วย: '+mxUnitName()+') · <b>·</b> = ชำระครบ/น้อยมาก · '+(MX.view==='out'?'สีพื้นยิ่งเข้มยิ่งค้างมาก (<span style="color:var(--red)">แดง</span> = ส่วนใหญ่เลยกำหนดแล้ว · <span style="color:var(--gold2)">เหลือง</span> = ส่วนใหญ่ยังไม่ถึงกำหนด) · ตัวเลข<span style="color:var(--blue)">สีน้ำเงิน</span> = ติดลบ (ใบลดหนี้/หักมัดจำ)':MX.view==='pct'?'พื้นแดง = ชำระ &lt;50% · พื้นเหลือง = 50–90%':'ไม่มีสีพื้น')+' · % ชำระแล้วอยู่ใต้ตัวเลขในคอลัมน์ขวา 3 ช่อง · กดช่องเพื่อดูรายใบ · กดชื่อกลุ่มเพื่อขยาย/ยุบ</div>';
     body=kp+'<div class="chart-card" style="margin-bottom:16px"><div class="chart-title">'+(isRev?'รายได้':'ค่าใช้จ่าย')+'ที่ครบกำหนดรายเดือน '+per+' <span class="chart-sub">(แท่ง = ล้านบาทต่อเดือน · เส้น = '+ow+'สะสมปีนี้)</span></div><div style="position:relative;height:280px"><canvas id="mxChart" style="max-height:none"></canvas></div></div>'+
       '<div class="chart-card"><div class="chart-title">ตาราง '+(isRev?'รายได้':'ค่าใช้จ่าย')+'แยกกลุ่ม × เดือนที่ครบกำหนด</div>'+ctl+legend+(A.secs.length?mxTable(A):'<div style="padding:18px;text-align:center;color:var(--muted)">ไม่มีใบที่ครบกำหนดในช่วงนี้</div>')+'</div>';
   }
