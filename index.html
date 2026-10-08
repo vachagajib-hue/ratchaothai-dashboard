@@ -6249,6 +6249,7 @@ function dueAgg(side){
   return {cats:list,T:T,today:today};
 }
 function duePct(p,t){if(!t)return 0;return p/t*100;}
+function dueOutPct(o,t){if(!t)return 0;return o/t*100;}
 function dueLbl(){var R=dueRange();return R.from===R.to?mlbl(R.from):mlbl(R.from)+' — '+mlbl(R.to);}
 
 // ---- แสดงผล ----
@@ -6283,22 +6284,23 @@ function dueSideHtml(side,A){
     kpi('red','🚨','rgba(224,92,92,0.18)','เลยกำหนดแล้ว'+(isRev?'ยังไม่ได้รับ':'ยังไม่ได้จ่าย'),fmtKPI(T.over),'red',T.out>0?(T.over/T.out*100).toFixed(1)+'% ของยอดค้าง':'—',"dueDetail('"+side+"',-2)")+
     '</div>';
   var cols=[{label:grpLbl,get:function(c){return c.cat;}},{label:'ครบกำหนด',right:true,get:function(c){return fmtFull(c.total);}},{label:paidWord,right:true,get:function(c){return fmtFull(c.paid);}},
-    {label:openWord,right:true,get:function(c){return fmtFull(c.out);}},{label:'เลยกำหนด',right:true,get:function(c){return fmtFull(c.over);}},{label:'% ชำระแล้ว',right:true,get:function(c){return duePct(c.paid,c.total).toFixed(1)+'%';}},{label:'จำนวนใบ',right:true,get:function(c){return c.nDocs;}}];
+    {label:openWord,right:true,get:function(c){return fmtFull(c.out);}},{label:'เลยกำหนด',right:true,get:function(c){return fmtFull(c.over);}},{label:'% ชำระแล้ว',right:true,get:function(c){return duePct(c.paid,c.total).toFixed(1)+'%';}},{label:'% '+openWord,right:true,get:function(c){return dueOutPct(c.out,c.total).toFixed(1)+'%';}},{label:'จำนวนใบ',right:true,get:function(c){return c.nDocs;}}];
   var sumRows=A.cats.concat([{cat:'รวมทั้งหมด',total:T.total,paid:T.paid,out:T.out,over:T.over,nDocs:T.nDocs}]);
   dmRegisterSimple('dueSum_'+side,(isRev?'สรุปรายได้':'สรุปค่าใช้จ่าย')+'ตามกำหนดชำระ '+dueLbl(),cols,sumRows);
   var body=A.cats.length?A.cats.map(function(c,i){
     var p=duePct(c.paid,c.total),pw=Math.max(0,Math.min(100,p));
     return '<tr style="cursor:pointer" onclick="dueDetail(\''+side+'\','+i+')"><td>'+projEsc(c.cat)+'</td><td class="right">'+fmtFull(c.total)+'</td><td class="right green">'+fmtFull(c.paid)+'</td>'+
       '<td class="right gold">'+fmtFull(c.out)+'</td><td class="right '+(c.over>0?'red':'')+'" style="'+(c.over>0?'':'color:var(--muted)')+'">'+fmtFull(c.over)+'</td>'+
-      '<td style="min-width:120px"><div style="display:flex;align-items:center;gap:8px"><div style="flex:1;height:6px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden"><div style="width:'+pw.toFixed(1)+'%;height:100%;background:var(--green)"></div></div><span style="font-size:12px;color:var(--text2);min-width:44px;text-align:right">'+p.toFixed(1)+'%</span></div></td>'+
+      '<td style="min-width:120px"><div style="display:flex;align-items:center;gap:8px"><div style="flex:1;height:6px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden"><div style="width:'+pw.toFixed(1)+'%;height:100%;background:var(--green)"></div></div><span style="font-size:12px;color:#5FD3A0;font-weight:600;min-width:44px;text-align:right">'+p.toFixed(1)+'%</span></div></td>'+
+      '<td class="right" style="font-size:12px;color:#F2A65A;font-weight:600">'+dueOutPct(c.out,c.total).toFixed(1)+'%</td>'+
       '<td class="right" style="color:var(--muted)">'+c.nDocs+'</td></tr>';
-  }).join('')+'<tr style="font-weight:700;border-top:2px solid var(--border)"><td>รวมทั้งหมด</td><td class="right">'+fmtFull(T.total)+'</td><td class="right green">'+fmtFull(T.paid)+'</td><td class="right gold">'+fmtFull(T.out)+'</td><td class="right '+(T.over>0?'red':'')+'">'+fmtFull(T.over)+'</td><td class="right">'+pct.toFixed(1)+'%</td><td class="right">'+T.nDocs+'</td></tr>'
-    :'<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:18px">ไม่มีใบที่ครบกำหนดในช่วง '+dueLbl()+'</td></tr>';
+  }).join('')+'<tr style="font-weight:700;border-top:2px solid var(--border)"><td>รวมทั้งหมด</td><td class="right">'+fmtFull(T.total)+'</td><td class="right green">'+fmtFull(T.paid)+'</td><td class="right gold">'+fmtFull(T.out)+'</td><td class="right '+(T.over>0?'red':'')+'">'+fmtFull(T.over)+'</td><td class="right" style="color:#5FD3A0">'+pct.toFixed(1)+'%</td><td class="right" style="color:#F2A65A">'+dueOutPct(T.out,T.total).toFixed(1)+'%</td><td class="right">'+T.nDocs+'</td></tr>'
+    :'<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:18px">ไม่มีใบที่ครบกำหนดในช่วง '+dueLbl()+'</td></tr>';
   return '<div class="section-sep" style="margin-top:20px">'+title+' — '+dueLbl()+'</div>'+kp+
     '<div class="chart-card" style="margin-bottom:16px"><div class="chart-title">'+(isRev?'รายได้':'ค่าใช้จ่าย')+'แยกกลุ่ม: '+paidWord+' / ค้างยังไม่ถึงกำหนด / ค้างเลยกำหนด <span class="chart-sub">(ล้านบาท · 10 กลุ่มแรก)</span></div><canvas id="dueChart_'+side+'" style="max-height:'+(Math.max(160,Math.min(10,A.cats.length)*34+60))+'px"></canvas></div>'+
     '<div class="chart-card" style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px"><div class="chart-title" style="margin:0">ตารางแยกกลุ่ม <span class="chart-sub">(กดแถวเพื่อดูรายใบ)</span></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+dueModeBtns(side)+'</div></div>'+
     dmExportBtns('dueSum_'+side)+
-    '<div style="overflow-x:auto"><table><thead><tr><th>'+grpLbl+'</th><th style="text-align:right">ครบกำหนด</th><th style="text-align:right">'+paidWord+'</th><th style="text-align:right">'+openWord+'</th><th style="text-align:right">เลยกำหนด</th><th>% ชำระแล้ว</th><th style="text-align:right">จำนวนใบ</th></tr></thead><tbody>'+body+'</tbody></table></div></div>';
+    '<div style="overflow-x:auto"><table><thead><tr><th>'+grpLbl+'</th><th style="text-align:right">ครบกำหนด</th><th style="text-align:right">'+paidWord+'</th><th style="text-align:right">'+openWord+'</th><th style="text-align:right">เลยกำหนด</th><th>% ชำระแล้ว</th><th style="text-align:right">% '+openWord+'</th><th style="text-align:right">จำนวนใบ</th></tr></thead><tbody>'+body+'</tbody></table></div></div>';
 }
 function dueDrawChart(side,A){
   var cv=document.getElementById('dueChart_'+side);if(!cv||!A.cats.length||typeof Chart==='undefined')return;
@@ -6485,7 +6487,7 @@ function dueDetail(side,idx,view){
   dmRegisterSimple(idF,title,flatCols,rows);
   dmRegisterSimple(idP,title+' (รายใบ จัดเรียงตาม'+pw+')',flatCols,rows.slice().sort(function(a,b){return String(a.r.party).localeCompare(String(b.r.party),'th')||(a.r.dd||0)-(b.r.dd||0);}));
   dmRegisterSimple(idG,title+' (สรุปรายชื่อ'+pw+')',[{label:pw,get:function(g){return g.name;}},{label:'จำนวนใบ',right:true,get:function(g){return g.nDocs;}},{label:'ครบกำหนด',right:true,get:function(g){return fmtFull(g.total);}},
-    {label:paidWord,right:true,get:function(g){return fmtFull(g.paid);}},{label:openWord,right:true,get:function(g){return fmtFull(g.out);}},{label:'เลยกำหนด',right:true,get:function(g){return fmtFull(g.over);}},{label:'% ชำระแล้ว',right:true,get:function(g){return duePct(g.paid,g.total).toFixed(1)+'%';}}],
+    {label:paidWord,right:true,get:function(g){return fmtFull(g.paid);}},{label:openWord,right:true,get:function(g){return fmtFull(g.out);}},{label:'เลยกำหนด',right:true,get:function(g){return fmtFull(g.over);}},{label:'% ชำระแล้ว',right:true,get:function(g){return duePct(g.paid,g.total).toFixed(1)+'%';}},{label:'% '+openWord,right:true,get:function(g){return dueOutPct(g.out,g.total).toFixed(1)+'%';}}],
     groups.concat([{name:'รวมทั้งหมด',nDocs:rows.length?Object.keys(rows.reduce(function(m,x){m[x.r.type+'|'+x.r.doc]=1;return m;},{})).length:0,total:tot,paid:paid,out:out,over:over}]));
   var idxJs=(idx==='ctx')?"'ctx'":idx;
   var viewBtn=function(k,lab){return '<button class="recon-bank-btn '+(V===k?'active':'')+'" onclick="dueDetail(\''+side+'\','+idxJs+',\''+k+'\')">'+lab+'</button>';};
@@ -6501,14 +6503,14 @@ function dueDetail(side,idx,view){
   if(V==='party'){
     body='<input class="modal-search" placeholder="🔍 ค้นหาชื่อ / เลขที่เอกสาร / บัญชี / รายการ…" oninput="dueFilterGrp(this)">'+
       '<div style="font-size:11.5px;color:var(--muted);margin:-4px 0 8px">กดชื่อเพื่อขยายดูรายใบ · เรียงตามยอดค้างมากไปน้อย · ใบที่มีหลายบัญชี/รายการแสดงเป็นหลายบรรทัด (ยอดแบ่งตามสัดส่วน)</div>'+
-      '<div style="overflow-x:auto"><table id="dueDetT"><thead><tr><th>'+pw+'</th><th style="text-align:right">จำนวนใบ</th><th style="text-align:right">ครบกำหนด</th><th style="text-align:right">'+paidWord+'</th><th style="text-align:right">'+openWord+'</th><th style="text-align:right">เลยกำหนด</th><th>% ชำระแล้ว</th></tr></thead><tbody>'+
+      '<div style="overflow-x:auto"><table id="dueDetT"><thead><tr><th>'+pw+'</th><th style="text-align:right">จำนวนใบ</th><th style="text-align:right">ครบกำหนด</th><th style="text-align:right">'+paidWord+'</th><th style="text-align:right">'+openWord+'</th><th style="text-align:right">เลยกำหนด</th><th style="text-align:right">% ชำระแล้ว</th><th style="text-align:right">% '+openWord+'</th></tr></thead><tbody>'+
       groups.map(function(g,i){
         var p=duePct(g.paid,g.total);
         var inner='<table style="width:100%;margin:4px 0 8px"><thead><tr><th>ครบกำหนด</th><th>เลขที่เอกสาร</th><th>บัญชี'+(hasItem?' / รายการ':'')+'</th><th style="text-align:right">ยอดรวม</th><th style="text-align:right">'+paidWord+'</th><th style="text-align:right">'+openWord+'</th><th>สถานะ</th></tr></thead><tbody>'+
           g.rows.map(function(x){return '<tr><td style="white-space:nowrap;font-size:12px">'+dueFmtKey(x.r.dd)+'</td><td style="font-size:12px;color:var(--muted)">'+projEsc(x.r.doc)+(x.r.type==='CN'?' <span style="color:var(--gold2)">(ใบลดหนี้)</span>':'')+'</td><td style="font-size:12px;color:var(--text2)">'+projEsc(acctTxt(x))+(hasItem&&itemTxt(x)?'<br><span style="color:var(--muted)">'+projEsc(itemTxt(x))+'</span>':'')+'</td>'+
             '<td class="right">'+fmtFull(x.r.total)+'</td><td class="right green">'+fmtFull(x.r.paid)+'</td><td class="right '+(x.out>0?'gold':'')+'">'+fmtFull(x.out)+'</td><td style="font-size:12px;white-space:nowrap;color:'+statusColor(x)+'">'+st(x)+'</td></tr>';}).join('')+'</tbody></table>';
-        return '<tr id="dueH'+i+'" style="cursor:pointer" onclick="dueToggleGrp('+i+')"><td><span id="dueA'+i+'" style="color:var(--muted);display:inline-block;width:14px">▸</span> <b>'+projEsc(g.name)+'</b></td><td class="right" style="color:var(--muted)">'+g.nDocs+'</td><td class="right">'+fmtFull(g.total)+'</td><td class="right green">'+fmtFull(g.paid)+'</td><td class="right gold">'+fmtFull(g.out)+'</td><td class="right '+(g.over>0?'red':'')+'" style="'+(g.over>0?'':'color:var(--muted)')+'">'+fmtFull(g.over)+'</td><td style="font-size:12px;color:var(--text2)">'+p.toFixed(1)+'%</td></tr>'+
-          '<tr id="dueD'+i+'" data-open="0" style="display:none"><td colspan="7" style="background:rgba(255,255,255,0.025);padding:4px 12px">'+inner+'</td></tr>';
+        return '<tr id="dueH'+i+'" style="cursor:pointer" onclick="dueToggleGrp('+i+')"><td><span id="dueA'+i+'" style="color:var(--muted);display:inline-block;width:14px">▸</span> <b>'+projEsc(g.name)+'</b></td><td class="right" style="color:var(--muted)">'+g.nDocs+'</td><td class="right">'+fmtFull(g.total)+'</td><td class="right green">'+fmtFull(g.paid)+'</td><td class="right gold">'+fmtFull(g.out)+'</td><td class="right '+(g.over>0?'red':'')+'" style="'+(g.over>0?'':'color:var(--muted)')+'">'+fmtFull(g.over)+'</td><td class="right" style="font-size:12px;color:#5FD3A0;font-weight:600">'+p.toFixed(1)+'%</td><td class="right" style="font-size:12px;color:#F2A65A;font-weight:600">'+dueOutPct(g.out,g.total).toFixed(1)+'%</td></tr>'+
+          '<tr id="dueD'+i+'" data-open="0" style="display:none"><td colspan="8" style="background:rgba(255,255,255,0.025);padding:4px 12px">'+inner+'</td></tr>';
       }).join('')+'</tbody></table></div>';
   }else{
     var CAP=1500,shown=rows.slice(0,CAP);
