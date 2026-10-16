@@ -26,6 +26,23 @@ header{background:var(--navy2);border-bottom:2px solid var(--gold);padding:0 24p
 .live-dot{width:8px;height:8px;background:var(--green);border-radius:50%;animation:pulse 2s infinite;display:inline-block;margin-right:6px;}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}.live-text{font-size:12px;color:var(--muted);}
 .hbtn{padding:5px 12px;border-radius:8px;font-size:11px;font-family:'Sarabun',sans-serif;cursor:pointer;transition:all 0.2s;font-weight:600;display:inline-flex;align-items:center;gap:5px;border:1px solid;}
+.dq-chip{cursor:pointer;font-size:11.5px}
+.dq-good{background:rgba(76,175,125,.12);border-color:rgba(76,175,125,.4);color:#6FD3A0}
+.dq-busy{background:rgba(143,163,184,.1);border-color:rgba(143,163,184,.3);color:var(--muted)}
+.dq-warn{background:rgba(212,168,67,.14);border-color:rgba(212,168,67,.5);color:var(--gold2)}
+.dq-bad{background:rgba(224,92,92,.15);border-color:rgba(224,92,92,.55);color:#FF8A8A}
+.dq-bar{display:none;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:9px 24px;font-size:12.5px;line-height:1.6;border-bottom:1px solid var(--border)}
+.dq-bar.warn{background:rgba(212,168,67,.12);color:var(--gold2);border-bottom-color:rgba(212,168,67,.4)}
+.dq-bar.bad{background:rgba(224,92,92,.14);color:#FFB0B0;border-bottom-color:rgba(224,92,92,.5)}
+.dq-bar-txt{flex:1;min-width:280px}.dq-bar-txt b{color:#fff;font-weight:600}.dq-bar-btns{display:flex;gap:8px}
+.dq-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-left:7px;vertical-align:middle}
+.dq-dot.warn{background:var(--gold2)}.dq-dot.fail{background:var(--red)}
+.dq-sum{display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:6px;flex-wrap:wrap}
+.dq-tbl{width:100%;border-collapse:collapse}.dq-tbl td{padding:7px 8px;border-bottom:1px solid var(--border);vertical-align:top}
+.dq-strip{display:flex;flex-wrap:wrap;gap:3px;margin-top:5px}
+.dq-m{font-size:10px;padding:2px 5px;border-radius:4px;color:var(--text2);background:rgba(76,175,125,.16)}
+.dq-m i{font-style:normal;margin-left:4px;opacity:.8}
+.dq-m.e{background:rgba(224,92,92,.35);color:#fff}.dq-m.l{background:rgba(212,168,67,.35);color:#fff}
 .hbtn-gold{background:rgba(212,168,67,0.1);border-color:rgba(212,168,67,0.3);color:var(--gold2);}.hbtn-gold:hover{background:rgba(212,168,67,0.2);}
 .hbtn-green{background:rgba(52,168,83,0.1);border-color:rgba(52,168,83,0.35);color:#4CAF7D;text-decoration:none;}.hbtn-green:hover{background:rgba(52,168,83,0.2);}
 .hbtn-muted{background:rgba(255,255,255,0.05);border-color:var(--border);color:var(--muted);}.hbtn-muted:hover{background:rgba(255,255,255,0.1);color:var(--text);}
@@ -189,6 +206,8 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
      มาซ่อน element อื่นทั้งหมดด้วย display:none (เอาออกจากโฟลว์จริงๆ) แล้วปล่อยให้ #printArea อยู่ใน
      normal flow ธรรมดา (ไม่ position:absolute) จะได้แบ่งหน้า+ซ้ำหัวตารางตามปกติของเบราว์เซอร์ */
   body>*:not(#printArea){display:none!important;}
+  /* พื้นหลังหน้าเว็บเป็นสีกรมท่า — ถ้าไม่รีเซ็ตเป็นขาด Chrome จะพิมพ์พื้นหลังส่วนที่ว่างท้ายรายงานเป็นแถบดำ/น้ำเงินเข้ม */
+  html,body{background:#fff!important;margin:0!important;padding:0!important;height:auto!important;min-height:0!important;overflow:visible!important;}
   #printArea,#printArea *{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;}
   #printArea{display:block;width:100%;padding:16px;background:#fff;color:#222;}
   /* border-collapse:collapse ทำให้ Chrome ไม่พิมพ์หัวตาราง (thead) ซ้ำในหน้าถัดไปเวลาตารางยาวเกิน 1
@@ -196,8 +215,8 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
      ประกาศ thead/tfoot แบบ table-header-group/table-footer-group ชัดเจน เพื่อให้หัวตารางขึ้นซ้ำทุกหน้า */
   /* วาดเส้นขอบเฉพาะขวา+ล่างต่อเซลล์ แล้วให้ตัวตารางวาดขอบบน+ซ้ายเอง (border-top/border-left) แทน —
      ป้องกันเส้นตารางหนาสองเท่า/เบิ้ล ที่จะเกิดถ้าให้ทุกเซลล์วาดขอบครบ 4 ด้านตอนใช้ border-collapse:separate */
-  #printArea table{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px;margin-top:14px;border-top:1px solid #d5dbe3;border-left:1px solid #d5dbe3;}
-  #printArea th,#printArea td{border-right:1px solid #d5dbe3;border-bottom:1px solid #d5dbe3;padding:7px 9px;text-align:left;word-break:break-word;overflow-wrap:break-word;}
+  #printArea table{width:100%;border-collapse:separate;border-spacing:0;font-size:calc(12.5px*var(--ps,1));margin-top:14px;border-top:1px solid #d5dbe3;border-left:1px solid #d5dbe3;}
+  #printArea th,#printArea td{border-right:1px solid #d5dbe3;border-bottom:1px solid #d5dbe3;padding:calc(7px*var(--ps,1)) calc(9px*var(--ps,1));text-align:left;word-break:break-word;overflow-wrap:break-word;}
   /* หมายเหตุบั๊กที่แก้ตรงนี้: overflow-wrap/word-break:break-word (กฎด้านบน) ถูกออกแบบมาให้ "บังคับตัดคำ
      แม้จะตั้ง white-space:nowrap ไว้ก็ตาม" ถ้าช่องแคบเกินจะใส่ข้อความพอดี (เป็นพฤติกรรมมาตรฐานของ CSS
      ที่หลายคนไม่รู้ — นี่คือสาเหตุจริงที่ทำให้วันที่/เลขที่เอกสารยังขึ้น 2 บรรทัดอยู่ทั้งที่ตั้ง nowrap ไว้แล้ว)
@@ -207,10 +226,10 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
   #printArea thead{display:table-header-group;}
   #printArea tfoot{display:table-footer-group;}
   #printArea tr{page-break-inside:avoid;}
-  #printArea th{background:#2461B3;color:#fff;font-weight:700;text-align:center;font-size:12.5px;}
+  #printArea th{background:#2461B3;color:#fff;font-weight:700;text-align:center;font-size:calc(12.5px*var(--ps,1));}
   #printArea tbody tr:nth-child(even){background:#F5F8FC;}
   #printArea th.pr-right{text-align:center;}
-  #printArea td.pr-right{text-align:right;color:#1B4F91;font-weight:700;}
+  #printArea td.pr-right{text-align:right;color:#1B4F91;font-weight:700;white-space:nowrap;word-break:keep-all;overflow-wrap:normal;}
   #printArea .pr-sub{font-weight:800;background:#FBE1E1;color:#b91c1c;font-size:13px;}
   #printArea .pr-sub .pr-right{color:#b91c1c;}
   #printArea .pr-itemdetail{color:#2E8B57;font-size:11.5px;font-style:italic;display:block;}
@@ -256,12 +275,14 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <div><div class="company-name">บริษัท รถเจาะไทย จำกัด</div><div class="sub-name">Financial Executive Dashboard</div></div>
 </div>
 <div class="header-right">
+<button class="hbtn dq-chip dq-busy" id="dqChip" onclick="dqOpen()">⏳ กำลังตรวจข้อมูล</button>
 <div><span class="live-dot"></span><span class="live-text" id="liveText">กำลังโหลด…</span></div>
 <div class="date-badge" id="dateBadge">&#128197; —</div>
 <button class="hbtn hbtn-gold" id="apikeyHeaderBtn" onclick="openApiModal()"><span class="apikey-indicator notset" id="apikeyDot"></span><span id="apikeyBtnText">API Key</span></button>
 <a class="hbtn hbtn-green" href="https://docs.google.com/spreadsheets/d/1n5f-YtXaLaiU0PNMd8gzN_Xm5olqat5BOIUAbMOrUXw" target="_blank" rel="noopener">&#128202; Google Sheet</a>
 <button class="hbtn hbtn-muted" onclick="loadAllData()">&#128260; รีเฟรช</button>
 </div></header>
+<div class="dq-bar" id="dqBar"></div>
 <div class="tab-bar">
 <div class="tab active" onclick="switchTab(0)">&#127968; ภาพรวมผู้บริหาร</div>
 <div class="tab" onclick="switchTab(1)">&#128101; ลูกหนี้ (AR)</div>
@@ -690,13 +711,237 @@ function repairAcctCode(raw){
   return s;
 }
 function sleepMs(ms){return new Promise(function(resolve){setTimeout(resolve,ms);});}
+// ============================================================================
+// ระบบตรวจความครบถ้วนของข้อมูล (Data Quality / Completeness) — แสดงที่หน้าแรก
+// fetchSheet() ทุกครั้งจะบันทึกผลลง DQ.s[ชื่อชีต] → dqEval() ประเมินสถานะ → dqRender() วาดชิปในหัวหน้า + แถบเตือน
+// ตรวจ: (1) โหลดไม่สำเร็จ/ไม่พบแท็บ (รวมชีตเสริมที่เดิมถูกกลืนเงียบ ๆ) (2) ชีตว่าง (3) จำนวนแถวไม่ตรงกับที่ Apps Script รายงาน
+//       (4) เดือนที่ไม่มีข้อมูล/ข้อมูลน้อยผิดปกติ ในชีตรายเดือน
+// ============================================================================
+var DQ_SHEETS=[
+  {n:'Q01_CASH_RECEIPT',g:'หลัก',d:'ใบรับเงิน (รายรับ)',m:'date1'},
+  {n:'Q02_CASH_PAYMENT',g:'หลัก',d:'ใบจ่ายเงิน (รายจ่าย)',m:'date1'},
+  {n:'Q03_BANK_BALANCE',g:'หลัก',d:'ยอดธนาคาร SAP'},
+  {n:'Q04_AR_AGING',g:'หลัก',d:'ลูกหนี้ค้างรับ (AR Aging)'},
+  {n:'Q05_AP_AGING',g:'หลัก',d:'เจ้าหนี้ค้างจ่าย (AP Aging)'},
+  {n:'Q08_EXPENSE_BY_ACCOUNT',g:'หลัก',d:'ค่าใช้จ่ายตามบัญชี',m:'ym3'},
+  {n:'Q09_AR_INVOICE_ITEMS',g:'เสริม',d:'รายการสินค้าในใบขาย'},
+  {n:'Q10_AP_INVOICE_ITEMS',g:'เสริม',d:'รายการสินค้าในใบซื้อ'},
+  {n:'Q11_SAP_MONTHLY_BALANCE',g:'เสริม',d:'ยอดคงเหลือ SAP สิ้นเดือน',m:'ym3'},
+  {n:'Q12_PL_BY_ACCOUNT_MONTHLY',g:'เสริม',d:'รายได้/ค่าใช้จ่ายรายเดือนตามบัญชี',m:'ym4'},
+  {n:'Q13_AP_OUTSTANDING_BY_CATEGORY',g:'เสริม',d:'เจ้าหนี้ค้างจ่ายตามหมวด'},
+  {n:'Q14_EXPENSE_DETAIL_BY_ACCOUNT',g:'เสริม',d:'รายละเอียดค่าใช้จ่ายตามบัญชี',m:'date4'},
+  {n:'Q15_BANK_JOURNAL',g:'เสริม',d:'สมุดรายวันธนาคาร (SAP)'},
+  {n:'MANUAL_MATCH',g:'เสริม',d:'รายการจับคู่ด้วยมือ',soft:1},
+  {n:'BANK_STATEMENTS',g:'ธนาคาร',d:'Bank Statement ที่อัปโหลด',soft:1},
+  {n:'Q17_PROJECT_MASTER',g:'โครงการ',d:'รหัสโครงการ'},
+  {n:'Q18_PROJECT_CASH_RECEIPT',g:'โครงการ',d:'รับเงินตามโครงการ'},
+  {n:'Q19_PROJECT_CASH_PAYMENT',g:'โครงการ',d:'จ่ายเงินตามโครงการ'},
+  {n:'Q20_PROJECT_AR_OPEN',g:'โครงการ',d:'ลูกหนี้ค้างตามโครงการ'},
+  {n:'Q21_PROJECT_AP_OPEN',g:'โครงการ',d:'เจ้าหนี้ค้างตามโครงการ'},
+  {n:'Q26_AR_DUE_STATUS',g:'ตามดิว',d:'สถานะครบกำหนด รายได้',m:'due',zero:1},
+  {n:'Q27_AP_DUE_STATUS',g:'ตามดิว',d:'สถานะครบกำหนด ค่าใช้จ่าย',m:'due',zero:1}
+];
+// แท็บที่ใช้ชีตเหล่านี้ (ใช้ขึ้นจุดเตือนที่แท็บ)
+var DQ_TABS={0:['Q01_CASH_RECEIPT','Q02_CASH_PAYMENT','Q03_BANK_BALANCE','Q04_AR_AGING','Q05_AP_AGING','Q08_EXPENSE_BY_ACCOUNT'],
+  1:['Q04_AR_AGING','Q09_AR_INVOICE_ITEMS'],2:['Q05_AP_AGING','Q10_AP_INVOICE_ITEMS','Q13_AP_OUTSTANDING_BY_CATEGORY'],
+  3:['Q01_CASH_RECEIPT','Q02_CASH_PAYMENT','Q08_EXPENSE_BY_ACCOUNT','Q12_PL_BY_ACCOUNT_MONTHLY','Q14_EXPENSE_DETAIL_BY_ACCOUNT'],
+  4:['Q17_PROJECT_MASTER','Q18_PROJECT_CASH_RECEIPT','Q19_PROJECT_CASH_PAYMENT','Q20_PROJECT_AR_OPEN','Q21_PROJECT_AP_OPEN'],
+  5:['Q03_BANK_BALANCE','Q11_SAP_MONTHLY_BALANCE','Q15_BANK_JOURNAL','BANK_STATEMENTS','MANUAL_MATCH'],
+  7:['Q04_AR_AGING','Q05_AP_AGING'],8:['Q03_BANK_BALANCE','Q11_SAP_MONTHLY_BALANCE','Q15_BANK_JOURNAL','BANK_STATEMENTS'],
+  9:['Q26_AR_DUE_STATUS','Q27_AP_DUE_STATUS','Q13_AP_OUTSTANDING_BY_CATEGORY'],10:['Q26_AR_DUE_STATUS','Q27_AP_DUE_STATUS']};
+var DQ={s:{},inflight:0,bgDone:false,ext:{},timer:null,open:false};
+function dqCanon(name){return String(name==null?'':name).replace(/[\s ​]+/g,'_').replace(/^_+|_+$/g,'').toUpperCase();}
+function dqDef(canon){for(var i=0;i<DQ_SHEETS.length;i++)if(DQ_SHEETS[i].n===canon)return DQ_SHEETS[i];return null;}
+// แปลงค่าเซลล์เป็น 'YYYY-MM' ให้ได้หลายรูปแบบ (dd.mm.yyyy / dd/mm/yyyy / ISO / Date)
+function dqMonthOf(v){
+  if(v==null||v==='')return null;
+  if(v instanceof Date){return isNaN(v.getTime())?null:v.getFullYear()+'-'+String(v.getMonth()+1).padStart(2,'0');}
+  var s=String(v).trim(),m;
+  m=s.match(/^(\d{2})[.\/](\d{2})[.\/](\d{4})/);if(m)return m[3]+'-'+m[2];
+  m=s.match(/^(\d{4})-(\d{2})/);if(m)return m[1]+'-'+m[2];
+  return null;
+}
+function dqMonthCounts(def,cols,rows){
+  if(!def||!def.m||!rows.length)return null;
+  var ix;
+  if(def.m==='date1')ix=1;else if(def.m==='ym3')ix=3;else if(def.m==='ym4')ix=4;else if(def.m==='date4')ix=4;
+  else if(def.m==='due'){ix=cols.map(function(c){return String(c).trim().toLowerCase();}).indexOf('duedate');if(ix<0)return null;}
+  var cnt={},hit=0;
+  rows.forEach(function(r){var mk=dqMonthOf(r[ix]);if(mk){cnt[mk]=(cnt[mk]||0)+1;hit++;}});
+  // ถ้าคอลัมน์นั้นไม่ใช่วันที่/เดือน (อ่านเดือนได้น้อยกว่า 60% ของแถว) ไม่ตรวจเดือน กันเตือนเท็จ
+  if(hit<rows.length*0.6)return null;
+  return cnt;
+}
+function dqRecOk(name,cols,rows,count){
+  var c=dqCanon(name),def=dqDef(c);if(!def)return;
+  DQ.s[c]={ok:true,rows:rows.length,count:(count==null?null:+count),ts:new Date(),mon:dqMonthCounts(def,cols,rows),err:null};
+  dqSchedule();
+}
+function dqRecFail(name,err){
+  var c=dqCanon(name),def=dqDef(c);if(!def)return;
+  DQ.s[c]={ok:false,rows:0,count:null,ts:new Date(),mon:null,err:String((err&&err.message)||err||'ไม่ทราบสาเหตุ')};
+  dqSchedule();
+}
+function dqNote(name,msg){var c=dqCanon(name);if(msg)DQ.ext[c]=String(msg);else delete DQ.ext[c];dqSchedule();}
+function dqNowMK(){var n=new Date();return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0');}
+function dqMonthShift(mk,d){var p=mk.split('-'),y=+p[0],m=+p[1]-1+d;y+=Math.floor(m/12);m=((m%12)+12)%12;return y+'-'+String(m+1).padStart(2,'0');}
+// ตรวจเดือน: คืน {empty:[mk], low:[{mk,n}], med, range:[mk...], cnt}
+function dqMonthCheck(def,cnt){
+  var keys=Object.keys(cnt).sort(),cur=dqNowMK();
+  if(!keys.length)return null;
+  var start=keys[0];
+  if(def.m==='due'){var w=dqMonthShift(cur,-11);if(start<w)start=w;}   // ตามดิวมียอดค้างเก่า ตรวจเฉพาะ 12 เดือนล่าสุด
+  var end=dqMonthShift(cur,-1);                                         // ไม่ตรวจเดือนปัจจุบัน (ยังไม่จบเดือน)
+  if(start>end)return null;
+  var range=[],k=start;
+  while(k<=end&&range.length<120){range.push(k);k=dqMonthShift(k,1);}
+  var vals=range.map(function(m){return cnt[m]||0;}).filter(function(v){return v>0;}).sort(function(a,b){return a-b;});
+  var med=vals.length?(vals.length%2?vals[(vals.length-1)/2]:(vals[vals.length/2-1]+vals[vals.length/2])/2):0;
+  var empty=[],low=[];
+  range.forEach(function(m){
+    var n=cnt[m]||0;
+    if(n===0)empty.push(m);
+    else if(!def.zero&&vals.length>=3&&med>=8&&n<med*0.25)low.push({mk:m,n:n});
+  });
+  return {empty:empty,low:low,med:med,range:range,cnt:cnt};
+}
+// สถานะรายชีต: ok | warn | fail | note | idle   (note = ไม่มีข้อมูลแต่เป็นเรื่องปกติของชีตนั้น)
+function dqEval(def){
+  var e=DQ.s[def.n],r={def:def,st:'idle',msgs:[],info:'',mc:null};
+  if(!e){return r;}
+  if(!e.ok){
+    var nf=/Sheet not found/i.test(e.err);
+    if(def.soft&&nf){r.st='note';r.info='ยังไม่มีแท็บนี้ในชีต (ปกติถ้ายังไม่เคยใช้งานส่วนนี้)';return r;}
+    r.st='fail';r.msgs.push(nf?'ไม่พบแท็บชื่อนี้ในชีต':'โหลดไม่สำเร็จ: '+e.err);return r;
+  }
+  r.info=e.rows.toLocaleString('en-US')+' แถว';
+  if(e.rows===0){
+    if(def.soft){r.st='note';r.info='ยังไม่มีข้อมูล';}
+    else{r.st='warn';r.msgs.push('ชีตโหลดได้แต่ไม่มีข้อมูลเลย (0 แถว)');}
+  }
+  if(e.count!=null&&e.count!==e.rows){r.st='warn';r.msgs.push('จำนวนแถวไม่ตรง: Apps Script รายงาน '+e.count+' แต่รับมา '+e.rows);}
+  if(e.mon){
+    var mc=dqMonthCheck(def,e.mon);r.mc=mc;
+    if(mc&&mc.empty.length){r.st='warn';r.msgs.push('ไม่มีข้อมูลเดือน: '+mc.empty.map(mlbl).join(', '));}
+    if(mc&&mc.low.length){r.st='warn';r.msgs.push('ข้อมูลน้อยผิดปกติ: '+mc.low.map(function(x){return mlbl(x.mk)+' ('+x.n+' แถว เทียบปกติ ~'+Math.round(mc.med)+')';}).join(', '));}
+  }
+  var x=DQ.ext[def.n];
+  if(x){r.st='warn';r.msgs.push(x);}
+  if(r.st==='idle')r.st='ok';
+  return r;
+}
+function dqAll(){return DQ_SHEETS.map(dqEval);}
+function dqSummary(){
+  var all=dqAll(),o={all:all,ok:0,warn:[],fail:[],idle:0,idleList:[],note:0,total:all.length};
+  all.forEach(function(r){if(r.st==='ok')o.ok++;else if(r.st==='note'){o.ok++;o.note++;}else if(r.st==='warn')o.warn.push(r);else if(r.st==='fail')o.fail.push(r);else{o.idle++;o.idleList.push(r);}});
+  o.busy=DQ.inflight>0||(o.idle>0&&!DQ.bgDone);
+  return o;
+}
+function dqSchedule(){if(DQ.timer)clearTimeout(DQ.timer);DQ.timer=setTimeout(function(){DQ.timer=null;try{dqRender();}catch(e){console.error('dqRender',e);}},120);}
+function dqShort(list,max){var a=list.map(function(r){return r.def.n.split('_')[0]==='MANUAL'?'MANUAL_MATCH':(r.def.n.match(/^Q\d+/)||[r.def.n])[0];});return a.length>max?a.slice(0,max).join(', ')+' และอีก '+(a.length-max)+' ชีต':a.join(', ');}
+function dqRender(){
+  var S=dqSummary(),chip=document.getElementById('dqChip'),bar=document.getElementById('dqBar');
+  if(!chip)return;
+  var cls,txt;
+  if(S.busy&&!S.fail.length&&!S.warn.length){cls='busy';txt='⏳ กำลังตรวจข้อมูล '+(S.total-S.idle)+'/'+S.total+' ชีต';}
+  else if(S.fail.length){cls='bad';txt='⚠️ ข้อมูลไม่ครบ '+S.ok+'/'+S.total+' ชีต';}
+  else if(S.warn.length||S.idle){cls='warn';txt='⚠️ ข้อมูลอาจไม่ครบ '+S.ok+'/'+S.total+' ชีต';}
+  else{cls='good';txt='✅ ข้อมูลครบ '+S.ok+'/'+S.total+' ชีต (100%)';}
+  chip.className='hbtn dq-chip dq-'+cls;chip.textContent=txt;
+  chip.title='กดเพื่อดูสถานะการโหลดข้อมูลทุกชีต';
+  if(bar){
+    if(cls==='bad'||cls==='warn'){
+      var parts=[];
+      if(S.idle&&!S.busy)parts.push('<b>ยังไม่ได้โหลด '+S.idle+' ชีต:</b> '+projEsc(dqShort(S.idleList,6)));
+      if(S.fail.length)parts.push('<b>โหลดไม่สำเร็จ '+S.fail.length+' ชีต:</b> '+projEsc(dqShort(S.fail,6)));
+      var gaps=S.warn.filter(function(r){return r.mc&&(r.mc.empty.length||r.mc.low.length);});
+      if(gaps.length){
+        parts.push('<b>เดือนที่ข้อมูลหาย/น้อยผิดปกติ:</b> '+gaps.slice(0,4).map(function(r){
+          var ms=r.mc.empty.concat(r.mc.low.map(function(x){return x.mk;})).sort();
+          return projEsc((r.def.n.match(/^Q\d+/)||[r.def.n])[0])+' '+ms.slice(0,5).map(mlbl).join(', ')+(ms.length>5?' +'+(ms.length-5):'');
+        }).join(' · ')+(gaps.length>4?' และอีก '+(gaps.length-4)+' ชีต':''));
+      }
+      var oth=S.warn.filter(function(r){return gaps.indexOf(r)<0;});
+      if(oth.length)parts.push('<b>ควรตรวจ:</b> '+projEsc(dqShort(oth,6)));
+      bar.className='dq-bar '+(cls==='bad'?'bad':'warn');
+      bar.innerHTML='<div class="dq-bar-txt">'+(cls==='bad'?'🚨 ':'⚠️ ')+'ตัวเลขบางส่วนอาจไม่ครบ — '+parts.join(' &nbsp;|&nbsp; ')+'</div><div class="dq-bar-btns"><button class="hbtn hbtn-gold" onclick="dqOpen()">ดูรายละเอียด</button><button class="hbtn hbtn-muted" onclick="dqRetryMissing()">🔄 โหลดซ้ำเฉพาะที่ขาด</button></div>';
+      bar.style.display='flex';
+    }else{bar.style.display='none';bar.innerHTML='';}
+  }
+  // จุดเตือนที่แท็บ
+  document.querySelectorAll('.tab-bar .tab').forEach(function(t,i){
+    var old=t.querySelector('.dq-dot');if(old)old.remove();
+    var names=DQ_TABS[i];if(!names)return;
+    var worst='';
+    names.forEach(function(n){var r=S.all.filter(function(x){return x.def.n===n;})[0];if(!r)return;if(r.st==='fail')worst='fail';else if(r.st==='warn'&&worst!=='fail')worst='warn';});
+    if(worst){var d=document.createElement('span');d.className='dq-dot '+worst;d.title=worst==='fail'?'ชีตที่ใช้ในแท็บนี้โหลดไม่สำเร็จ — ตัวเลขอาจไม่ครบ':'ชีตที่ใช้ในแท็บนี้มีข้อมูลไม่ครบบางเดือน';t.appendChild(d);}
+  });
+  if(DQ.open)dqFillModal();
+}
+function dqMonthStrip(r){
+  var mc=r.mc;if(!mc)return '';
+  return '<div class="dq-strip">'+mc.range.map(function(m){
+    var n=mc.cnt[m]||0,c=n===0?'e':(mc.low.some(function(x){return x.mk===m;})?'l':'g');
+    return '<span class="dq-m '+c+'" title="'+mlbl(m)+': '+n+' แถว">'+mlbl(m)+'<i>'+n+'</i></span>';}).join('')+'</div>';
+}
+function dqFillModal(){
+  var S=dqSummary(),groups=[],gm={};
+  S.all.forEach(function(r){if(!gm[r.def.g]){gm[r.def.g]=[];groups.push(r.def.g);}gm[r.def.g].push(r);});
+  var icon={ok:'✅',note:'➖',warn:'⚠️',fail:'❌',idle:'⏳'};
+  var head='<div class="dq-sum">ครบ <b style="color:var(--green)">'+S.ok+'</b> / '+S.total+' ชีต'+(S.warn.length?' · ควรตรวจ <b style="color:var(--gold2)">'+S.warn.length+'</b>':'')+(S.fail.length?' · ไม่สำเร็จ <b style="color:var(--red)">'+S.fail.length+'</b>':'')+(S.idle?' · รอโหลด '+S.idle:'')+
+    '<span style="margin-left:auto;display:flex;gap:8px"><button class="hbtn hbtn-muted" onclick="dqRetryMissing()">🔄 โหลดซ้ำเฉพาะที่ขาด</button><button class="hbtn hbtn-gold" onclick="dqReloadAll()">🔄 โหลดใหม่ทั้งหมด</button></span></div>'+
+    '<div style="font-size:11.5px;color:var(--muted);margin:2px 0 10px">เกณฑ์เตือนเดือน: ไม่มีข้อมูลเลย หรือน้อยกว่า 25% ของค่ากลางเดือนอื่น (ไม่ตรวจเดือนปัจจุบัน · ชีตตามดิวตรวจ 12 เดือนล่าสุด เฉพาะเดือนที่ว่างเลย) — เว็บบอกได้เพียงว่า "ข้อมูลที่ได้มามีช่องว่าง" ไม่รู้ว่า SAP มีรายการเดือนนั้นจริงหรือไม่</div>';
+  var body=groups.map(function(g){
+    return '<div class="section-sep" style="margin:12px 0 6px">'+projEsc(g)+'</div><table class="dq-tbl"><tbody>'+gm[g].map(function(r){
+      var e=DQ.s[r.def.n],ts=e&&e.ts?e.ts.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'—';
+      var col=r.st==='fail'?'var(--red)':(r.st==='warn'?'var(--gold2)':(r.st==='ok'?'var(--green)':'var(--muted)'));
+      return '<tr><td style="width:28px">'+icon[r.st]+'</td><td><div style="font-weight:600">'+projEsc(r.def.n)+'</div><div style="font-size:11.5px;color:var(--muted)">'+projEsc(r.def.d)+'</div></td>'+
+        '<td style="font-size:12px;color:'+col+'">'+(r.msgs.length?r.msgs.map(projEsc).join('<br>'):projEsc(r.st==='idle'?'ยังไม่ได้โหลด':(r.st==='note'?r.info:'ปกติ')))+dqMonthStrip(r)+'</td>'+
+        '<td class="right" style="font-size:12px;color:var(--muted);white-space:nowrap">'+(r.st==='ok'||r.st==='warn'?r.info:'')+'<br>'+ts+'</td>'+
+        '<td style="width:90px"><button class="hbtn hbtn-muted" onclick="dqRetryOne(\''+r.def.n+'\')">โหลดซ้ำ</button></td></tr>';
+    }).join('')+'</tbody></table>';
+  }).join('');
+  var mb=document.getElementById('modalBody');if(mb&&DQ.open)mb.innerHTML=head+body;
+}
+function dqOpen(){DQ.open=true;openModal('📋 สถานะการโหลดข้อมูลทุกชีต','');dqFillModal();}
+function dqGroupOf(name){var d=dqDef(dqCanon(name));return d?d.g:'';}
+async function dqRetryOne(name){
+  var g=dqGroupOf(name);
+  if(g==='หลัก'||g==='เสริม')return loadAllData({force:[dqCanon(name)]});
+  if(g==='โครงการ')return loadProjectData();
+  if(g==='ธนาคาร')return loadBankFromSheets();
+  if(g==='ตามดิว'){try{mxInitSel();dueInit();}catch(e){}return dueLoad(true);}
+}
+async function dqRetryMissing(){
+  var S=dqSummary(),bad=S.fail.concat(S.warn).concat(S.idleList),groups={};
+  bad.forEach(function(r){groups[r.def.g]=(groups[r.def.g]||[]).concat([r.def.n]);});
+  var home=(groups['หลัก']||[]).concat(groups['เสริม']||[]);
+  if(home.length)await loadAllData({force:home});
+  if(groups['โครงการ'])await loadProjectData();
+  if(groups['ธนาคาร'])await loadBankFromSheets();
+  if(groups['ตามดิว']){try{mxInitSel();dueInit();}catch(e){}await dueLoad(true);}
+  if(!bad.length)dqSchedule();
+}
+function dqReloadAll(){closeModal();DQ.open=false;return loadAllData();}
+// โหลดเบื้องหลังชีตตามดิว (Q26/Q27) หลังหน้าแรกขึ้นแล้ว เพื่อให้แถบสถานะครบทุกชีตโดยไม่ต้องเปิดแท็บ
+async function dqBackground(force){
+  try{
+    for(var w=0;w<40&&typeof PROJ!=='undefined'&&PROJ.loading;w++)await sleepMs(500);   // รอโหลดโครงการเสร็จก่อน ไม่ยิงคำขอซ้อนกันมากเกินไป
+    try{mxInitSel();dueInit();}catch(e){}
+    if(force||!DUE.loaded)await dueLoad(true);
+  }catch(e){console.error('dqBackground',e);}
+  DQ.bgDone=true;dqSchedule();
+}
+
 // เชื่อมต่อ Google Apps Script บางครั้งล้มเหลวชั่วคราว (เช่น 404/timeout จากโควตา หรือเครือข่ายสะดุด)
 // ถ้าปล่อยให้ throw ทันทีตั้งแต่ครั้งแรก ชีตที่เป็น "ออปชันเสริม" (Q09-Q14, MANUAL_MATCH, Q15) จะถูก
 // catch(optionalFallback) กลืน error แล้วแสดงผลเป็น {rows:[]} เงียบๆ ทำให้ดูเหมือน "ไม่มีข้อมูล/ยังไม่มีชีต"
 // ทั้งที่จริงข้อมูลมีอยู่ แค่ดึงไม่สำเร็จรอบนั้น — จึงเพิ่ม retry อัตโนมัติก่อนจะยอมให้ throw จริง
 async function fetchSheet(name, _attempt){
   var attempt=_attempt||0;
+  if(!attempt)DQ.inflight++;
   var url=APPS_URL+'?sheet='+encodeURIComponent(name);
+  var out;
   try{
     var res=await fetch(url,{
       method:'GET',
@@ -709,17 +954,26 @@ async function fetchSheet(name, _attempt){
     var json=await res.json();
     if(json.error)throw new Error(json.error);
     var rows=json.rows||[];
-    if(!rows.length)return{cols:[],rows:[]};
-    var cols=Object.keys(rows[0]);
-    return{cols,rows:rows.map(function(r){return cols.map(function(c){return r[c];});})};
+    if(!rows.length)out={cols:[],rows:[],count:json.count};
+    else{
+      var cols=Object.keys(rows[0]);
+      out={cols,rows:rows.map(function(r){return cols.map(function(c){return r[c];});}),count:json.count};
+    }
   }catch(err){
     var MAX_RETRIES=2; // ลองรวมสูงสุด 3 ครั้ง (1 ครั้งแรก + retry 2 ครั้ง)
     // "Sheet not found" = ชื่อแท็บในชีตไม่ตรง ลองซ้ำก็ไม่หาย — แจ้ง error ทันทีไม่ต้องรอ retry
-    if(attempt>=MAX_RETRIES||/Sheet not found/i.test(String(err&&err.message||err)))throw err;
+    if(attempt>=MAX_RETRIES||/Sheet not found/i.test(String(err&&err.message||err))){
+      DQ.inflight=Math.max(0,DQ.inflight-1);
+      try{dqRecFail(name,err);}catch(e){}   // บันทึกความล้มเหลวจริง (รวมชีตเสริมที่ถูก catch(optionalFallback) กลืน) ให้แถบสถานะข้อมูลแสดง
+      throw err;
+    }
     console.warn('fetchSheet('+name+') ล้มเหลว (ครั้งที่ '+(attempt+1)+'): '+(err&&err.message||err)+' — กำลังลองใหม่…');
     await sleepMs(800*(attempt+1)); // หน่วงเพิ่มขึ้นทีละรอบ (backoff): 800ms, 1600ms
     return fetchSheet(name, attempt+1);
   }
+  DQ.inflight=Math.max(0,DQ.inflight-1);
+  try{dqRecOk(name,out.cols,out.rows,out.count);}catch(e){console.error('dqRecOk',e);}
+  return out;
 }
 function getMK(v){
   var d;
@@ -767,8 +1021,16 @@ async function fetchBatched(fns, batchSize){
   }
   return out;
 }
-async function loadAllData(){
+async function loadAllData(opts){
+  // opts.force = รายชื่อชีตที่ต้องดึงใหม่ (ชีตอื่นที่เคยโหลดสำเร็จแล้วใช้ผลเดิมจาก DQ.cache) — ใช้กับปุ่ม "โหลดซ้ำเฉพาะที่ขาด"
+  opts=(opts&&typeof opts==='object'&&Array.isArray(opts.force))?opts:{};
   var ov=document.getElementById('loadingOverlay'),st=document.getElementById('loadStatus');
+  if(!DQ.cache)DQ.cache={};
+  var HF=function(n,optional){return function(){
+    if(opts.force&&opts.force.indexOf(n)<0&&DQ.cache[n])return Promise.resolve(DQ.cache[n]);
+    var p=fetchSheet(n).then(function(r){DQ.cache[n]=r;return r;});
+    return optional?p.catch(optionalFallback):p;
+  };};
   ov.style.display='flex';ov.style.opacity='1';
   try{
     st.textContent='กำลังดึงข้อมูลทั้งหมด (ทยอยพร้อมกันเป็นชุด)…';
@@ -778,20 +1040,9 @@ async function loadAllData(){
     // เป็น {rows:[]} เงียบๆ เหมือนพฤติกรรม try/catch เดิม ไม่กระทบชีตหลัก
     var optionalFallback=function(){return {rows:[]};};
     var results=await fetchBatched([
-      function(){return fetchSheet('Q01_CASH_RECEIPT');},
-      function(){return fetchSheet('Q02_CASH_PAYMENT');},
-      function(){return fetchSheet('Q03_BANK_BALANCE');},
-      function(){return fetchSheet('Q04_AR_AGING');},
-      function(){return fetchSheet('Q05_AP_AGING');},
-      function(){return fetchSheet('Q08_EXPENSE_BY_ACCOUNT');},
-      function(){return fetchSheet('Q14_EXPENSE_DETAIL_BY_ACCOUNT').catch(optionalFallback);},
-      function(){return fetchSheet('Q09_AR_INVOICE_ITEMS').catch(optionalFallback);},
-      function(){return fetchSheet('Q10_AP_INVOICE_ITEMS').catch(optionalFallback);},
-      function(){return fetchSheet('Q11_SAP_MONTHLY_BALANCE').catch(optionalFallback);},
-      function(){return fetchSheet('Q12_PL_BY_ACCOUNT_MONTHLY').catch(optionalFallback);},
-      function(){return fetchSheet('Q13_AP_OUTSTANDING_BY_CATEGORY').catch(optionalFallback);},
-      function(){return fetchSheet('MANUAL_MATCH').catch(optionalFallback);},
-      function(){return fetchSheet('Q15_BANK_JOURNAL').catch(optionalFallback);}
+      HF('Q01_CASH_RECEIPT'),HF('Q02_CASH_PAYMENT'),HF('Q03_BANK_BALANCE'),HF('Q04_AR_AGING'),HF('Q05_AP_AGING'),HF('Q08_EXPENSE_BY_ACCOUNT'),
+      HF('Q14_EXPENSE_DETAIL_BY_ACCOUNT',1),HF('Q09_AR_INVOICE_ITEMS',1),HF('Q10_AP_INVOICE_ITEMS',1),HF('Q11_SAP_MONTHLY_BALANCE',1),
+      HF('Q12_PL_BY_ACCOUNT_MONTHLY',1),HF('Q13_AP_OUTSTANDING_BY_CATEGORY',1),HF('MANUAL_MATCH',1),HF('Q15_BANK_JOURNAL',1)
     ], 4);
     var q01=results[0],q02=results[1],q03=results[2],q04=results[3],q05=results[4],q08=results[5],
         q14=results[6],q09=results[7],q10=results[8],q11=results[9],q12=results[10],q13=results[11],qmm=results[12],q15=results[13];
@@ -1031,18 +1282,21 @@ async function loadAllData(){
     buildFilters(allMonths);
     st.textContent='\u0e2a\u0e23\u0e49\u0e32\u0e07\u0e01\u0e23\u0e32\u0e1f\u2026';st.className='loading-status ok';
     renderDashboard(G);
-    try{loadProjectData();}catch(e){console.error(e);}
+    if(!opts.force||!PROJ.loaded||(PROJ.failed&&PROJ.failed.length)){try{loadProjectData();}catch(e){console.error(e);}}
     try{plBuildFilters();renderPL();}catch(e){}
     try{renderApCat();}catch(e){}
     document.getElementById('liveText').textContent='\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e08\u0e32\u0e01 Google Sheets (Live)';
-    loadBankFromSheets();
+    if(!opts.force||!(DQ.s.BANK_STATEMENTS&&DQ.s.BANK_STATEMENTS.ok))loadBankFromSheets();
     document.getElementById('dateBadge').textContent='\ud83d\udcc5 '+today();
     setTimeout(function(){ov.style.opacity='0';setTimeout(function(){ov.style.display='none';},400);},600);
+    dqSchedule();
+    setTimeout(function(){dqBackground(!opts.force);},1500);   // โหลด Q26/Q27 เบื้องหลัง ให้แถบสถานะข้อมูลครบทุกชีต
   }catch(err){
     console.error(err);
     st.textContent='\u26a0\ufe0f \u0e40\u0e0a\u0e37\u0e48\u0e2d\u0e21\u0e15\u0e48\u0e2d\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49 \u2014 \u0e43\u0e0a\u0e49\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e2a\u0e33\u0e23\u0e2d\u0e07\u2026';
     st.className='loading-status err';
     setTimeout(function(){renderFallback();ov.style.opacity='0';setTimeout(function(){ov.style.display='none';},400);},1500);
+    DQ.bgDone=true;dqSchedule();
   }
 }
 
@@ -2001,6 +2255,80 @@ function dmExportExcel(){
   XLSX.utils.book_append_sheet(wb,ws,'รายงาน');
   XLSX.writeFile(wb, dmTitleWithBank().replace(/[\\/:*?"<>|]/g,'_')+'.xlsx');
 }
+// ===== ตั้งค่ากระดาษ PDF อัตโนมัติ (ไม่ต้องให้ผู้ใช้ปรับขนาด/แนวกระดาษในหน้าพิมพ์เอง) =====
+// 1) วัดความกว้างที่แต่ละคอลัมน์ต้องใช้จริง (ตัวเลข/วันที่/เลขที่เอกสาร ห้ามตัดบรรทัด ส่วนชื่อยาว ๆ ให้ตัดได้)
+// 2) ถ้าแนวตั้งไม่พอ สลับเป็น A4 แนวนอนให้เอง  3) ถ้าแนวนอนยังไม่พอ ย่อขนาดตัวอักษรลงให้พอดีหน้า (ไม่ต่ำกว่า 60%)
+// 4) ฝัง @page (A4 + ขอบกระดาษ + เลขหน้า) ลงไปให้เบราว์เซอร์ใช้ตอนพิมพ์/บันทึกเป็น PDF และถอดออกหลังพิมพ์เสร็จ
+function prAutoLayout(forceOrient){
+  var pa=document.getElementById('printArea'),tb=pa.querySelector('table');
+  var PW=700,LW=1030;           // ความกว้างตารางที่ใช้ได้จริง (px) ของ A4 แนวตั้ง / แนวนอน หลังหักขอบกระดาษ
+  var r={orient:forceOrient||'portrait',scale:1};
+  if(!tb)return r;
+  var host=document.createElement('div');
+  host.style.cssText='position:absolute;left:-99999px;top:0;width:4000px;visibility:hidden;font-family:Sarabun,sans-serif;font-size:12.5px';
+  var cl=tb.cloneNode(true);
+  cl.removeAttribute('style');
+  cl.style.cssText='width:auto;table-layout:auto;border-collapse:separate;border-spacing:0';
+  var cg=cl.querySelector('colgroup');if(cg)cg.remove();
+  [].forEach.call(cl.querySelectorAll('th,td'),function(c){c.style.whiteSpace='nowrap';c.style.padding='7px 9px';c.style.fontWeight='700';c.style.border='1px solid #000';});
+  host.appendChild(cl);document.body.appendChild(host);
+  var w=[],hmin=[];
+  [].forEach.call(cl.querySelectorAll('tbody tr'),function(tr,ri){
+    if(ri>400)return;
+    var simple=[].every.call(tr.cells,function(c){return c.colSpan===1;});
+    if(!simple)return;
+    [].forEach.call(tr.cells,function(c,i){w[i]=Math.max(w[i]||0,c.offsetWidth);});
+  });
+  [].forEach.call(tb.querySelectorAll('thead th'),function(th,i){
+    var longest=0;String(th.textContent||'').split(/\s+/).forEach(function(x){if(x.length>longest)longest=x.length;});
+    hmin[i]=longest*7.5+20;
+  });
+  document.body.removeChild(host);
+  var n=Math.max(w.length,hmin.length),nowrapCols={},fw=[],fixedSum=0,flexN=0,FLEXMIN=130;
+  for(var i=0;i<n;i++){
+    var bw=w[i]||0,hw=hmin[i]||0;
+    if(bw<=230){fw[i]=Math.max(bw,hw)*1.04;fixedSum+=fw[i];nowrapCols[i]=1;}   // คอลัมน์สั้น (ตัวเลข วันที่ เลขที่) ห้ามตัดบรรทัด
+    else{fw[i]=0;flexN++;}                                                       // คอลัมน์ข้อความยาว (ชื่อ/รายละเอียด) ให้ตัดบรรทัดได้
+  }
+  var need=fixedSum+FLEXMIN*flexN;
+  [].forEach.call(tb.querySelectorAll('tbody tr'),function(tr){
+    var simple=[].every.call(tr.cells,function(c){return c.colSpan===1;});
+    if(!simple)return;
+    [].forEach.call(tr.cells,function(c,i){if(nowrapCols[i])c.classList.add('pr-nowrap');});
+  });
+  if(r.orient!=='landscape'&&need>PW)r.orient='landscape';
+  var cap=r.orient==='landscape'?LW:PW;
+  if(need>cap)r.scale=Math.max(0.5,Math.floor(cap/need*100)/100);
+  // กำหนดความกว้างทุกคอลัมน์เองแบบตายตัว (เป็น % ของความกว้างหน้ากระดาษ) กันเบราว์เซอร์บีบคอลัมน์ชื่อจนเหลือตัวอักษรเดียวต่อบรรทัด
+  var sc=r.scale,fixedScaled=fixedSum*sc,flexTotal=cap-fixedScaled,ws=[];
+  for(var j=0;j<n;j++){
+    if(flexN===0)ws[j]=fw[j]/fixedSum*cap;                 // ไม่มีคอลัมน์ข้อความ: แบ่งพื้นที่ที่เหลือตามสัดส่วนความกว้างตัวเลข
+    else ws[j]=nowrapCols[j]?fw[j]*sc:flexTotal/flexN;
+  }
+  var colHtml='<colgroup>'+ws.map(function(x){return '<col style="width:'+(x/cap*100).toFixed(2)+'%">';}).join('')+'</colgroup>';
+  var oldCg=tb.querySelector('colgroup');if(oldCg)oldCg.remove();
+  tb.insertAdjacentHTML('afterbegin',colHtml);
+  tb.style.tableLayout='fixed';
+  return r;
+}
+function prApplyPage(orient){
+  var old=document.getElementById('prPageStyle');if(old)old.remove();
+  var st=document.createElement('style');st.id='prPageStyle';
+  st.textContent='@page{size:A4 '+orient+';margin:8mm 8mm 12mm 8mm;@bottom-right{content:"หน้า " counter(page) " / " counter(pages);font-family:Sarabun,sans-serif;font-size:9px;color:#64748b;}}';
+  document.head.appendChild(st);
+}
+// opts.fixedLayout=true : ใช้กับรายงานที่กำหนดสัดส่วนคอลัมน์ไว้เองแล้ว (colgroup) — ไม่วัด/ไม่ย่อ แค่ล็อกกระดาษ A4 แนวตั้ง
+// opts.orient='landscape' : บังคับแนวนอน
+function prPrint(opts){
+  opts=opts||{};
+  var info={orient:opts.orient||'portrait',scale:1};
+  if(!opts.fixedLayout){try{info=prAutoLayout(opts.orient);}catch(e){console.error('prAutoLayout',e);}}
+  prApplyPage(info.orient);
+  document.getElementById('printArea').style.setProperty('--ps',info.scale);
+  var done=function(){var e=document.getElementById('prPageStyle');if(e)e.remove();window.removeEventListener('afterprint',done);};
+  window.addEventListener('afterprint',done);
+  setTimeout(function(){window.print();},80);
+}
 function prHeaderHtml(title,metaHtml){
   return '<div class="pr-redbar">'+
       '<div class="pr-companyname">บริษัท รถเจาะไทย จำกัด</div>'+
@@ -2092,7 +2420,7 @@ function dmPrint(){
     prHeaderHtml(dmTitleWithBank()+' <span>— '+dmRangeLabel()+'</span>','จำนวน '+filtered.length+' รายการ &nbsp;·&nbsp; ยอดรวม '+fmtFull(totalAll)+' บาท &nbsp;·&nbsp; พิมพ์เมื่อ '+printTimestamp())+
     '<table style="table-layout:fixed">'+colgroupHtml+theadHtml+tbodyHtml+'</table>'+
     prSignatureHtml();
-  setTimeout(function(){window.print();},80);
+  prPrint({fixedLayout:true});
 }
 
 function dmExportBtns(id){
@@ -2123,16 +2451,16 @@ function dmSimpleExcel(title,columns,rows){
   XLSX.utils.book_append_sheet(wb,ws,'รายงาน');
   XLSX.writeFile(wb,title.replace(/[\\/:*?"<>|]/g,'_')+'.xlsx');
 }
-function dmSimplePrintDoc(title,columns,rows){
+function dmSimplePrintDoc(title,columns,rows,opts){
   // ต้องห่อแถวหัวตารางด้วย <thead> จริงๆ (ไม่ใช่แค่ <tr> ตัวแรกลอยๆ ใน <table>) เบราว์เซอร์ถึงจะรู้ว่า
   // ต้องพิมพ์หัวตารางซ้ำทุกหน้าเวลาตารางยาวเกิน 1 หน้า — ถ้าไม่ห่อ thead หัวตารางจะโผล่แค่หน้าแรกหน้าเดียว
   var theadHtml='<thead><tr>'+columns.map(function(c){return '<th'+(c.right?' class="pr-right"':'')+'>'+c.label+'</th>';}).join('')+'</tr></thead>';
-  var tbodyHtml='<tbody>'+rows.map(function(r){return '<tr>'+columns.map(function(c){return '<td'+(c.right?' class="pr-right"':'')+'>'+c.get(r)+'</td>';}).join('')+'</tr>';}).join('')+'</tbody>';
+  var tbodyHtml='<tbody>'+rows.map(function(r){var isSum=/^\s*รวมทั้งหมด/.test(String(columns[0].get(r)));return '<tr'+(isSum?' class="pr-sub"':'')+'>'+columns.map(function(c){return '<td'+(c.right?' class="pr-right"':'')+'>'+c.get(r)+'</td>';}).join('')+'</tr>';}).join('')+'</tbody>';
   document.getElementById('printArea').innerHTML=
     prHeaderHtml(title,'จำนวน '+rows.length+' รายการ &nbsp;·&nbsp; พิมพ์เมื่อ '+printTimestamp())+
     '<table>'+theadHtml+tbodyHtml+'</table>'+
     prSignatureHtml();
-  setTimeout(function(){window.print();},80);
+  prPrint(opts);
 }
 function dmSimpleExcelById(id){var d=DM_SIMPLE[id];if(d)dmSimpleExcel(d.title,d.columns,d.rows);}
 function dmSimplePrintById(id){var d=DM_SIMPLE[id];if(d)dmSimplePrintDoc(d.title,d.columns,d.rows);}
@@ -4088,7 +4416,7 @@ function projExport(kind){
     return '<tr'+(r.sub?' class="pr-sub"':'')+'>'+r.c.map(function(v,i){return '<td'+(p.heads[i].kind?' class="pr-right"':'')+'>'+projExpFmtCell(v,p.heads[i].kind)+'</td>';}).join('')+'</tr>';
   }).join('')+'</tbody>';
   document.getElementById('printArea').innerHTML=prHeaderHtml(projEsc(e.title),e.meta)+'<table>'+th+tb+'</table>'+prSignatureHtml();
-  setTimeout(function(){window.print();},80);
+  prPrint();
 }
 function projMetaLine(count,total){
   return 'จำนวน '+count.toLocaleString()+' รายการ'+(total===null||total===undefined?'':' · ยอดรวม '+fmtFull(total)+' บาท')+' · พิมพ์เมื่อ '+printTimestamp();
@@ -6158,7 +6486,7 @@ async function dueLoad(force){
     Object.keys(DUE_NAMES).forEach(function(k){
       DUE.have[k]=false;DUE[k]=[];DUE.hasItem[k]=false;
       if(!got[k])return;
-      try{DUE[k]=dueParse(got[k],k);DUE.have[k]=true;}catch(e){DUE.failMsg[k]=String((e&&e.message)||e);}
+      try{DUE[k]=dueParse(got[k],k);DUE.have[k]=true;try{dqNote(DUE_NAMES[k],'');}catch(e2){}}catch(e){DUE.failMsg[k]=String((e&&e.message)||e);try{dqNote(DUE_NAMES[k],'อ่านข้อมูลไม่ได้: '+DUE.failMsg[k]);}catch(e2){}}
     });
     DUE.asOf=DUE._asOfKey?dueFmtKey(DUE._asOfKey):'';
     DUE.loaded=true;
@@ -6738,10 +7066,7 @@ function mxPrint(){
   rows.push({n:'รวมทั้งหมด',o:A.T});
   var cols=[{label:'หมวด / กลุ่ม',get:function(r){return r.n;}}].concat(keys.map(function(k){return {label:mxColLbl(k),right:true,get:function(r){return mxPlain(get(r.o,k));}};}));
   var vl={out:isRev?'ค้างรับ':'ค้างจ่าย',over:'เลยกำหนด',pct:'% ชำระแล้ว',total:'ครบกำหนด',paid:isRev?'รับแล้ว':'จ่ายแล้ว'}[MX.view];
-  var st=document.createElement('style');st.id='mxPageStyle';st.textContent='@page{size:A4 landscape;margin:8mm}';document.head.appendChild(st);
-  var done=function(){var e=document.getElementById('mxPageStyle');if(e)e.remove();window.removeEventListener('afterprint',done);};
-  window.addEventListener('afterprint',done);
-  dmSimplePrintDoc((isRev?'รายได้':'ค่าใช้จ่าย')+'ตามกำหนดชำระ รายเดือน · '+vl+' · '+({M:'ล้านบาท',K:'พันบาท',B:'บาท'}[MX.unit])+' · ม.ค.–'+MTHAI[MX.toM]+' '+(MX.y+543),cols,rows);
+  dmSimplePrintDoc((isRev?'รายได้':'ค่าใช้จ่าย')+'ตามกำหนดชำระ รายเดือน · '+vl+' · '+({M:'ล้านบาท',K:'พันบาท',B:'บาท'}[MX.unit])+' · ม.ค.–'+MTHAI[MX.toM]+' '+(MX.y+543),cols,rows,{orient:'landscape'});
 }
 
 // ---- ตัวควบคุม ----
