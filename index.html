@@ -786,6 +786,7 @@ function dqNote(name,msg){var c=dqCanon(name);if(msg)DQ.ext[c]=String(msg);else 
 function dqNowMK(){var n=new Date();return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0');}
 function dqMonthShift(mk,d){var p=mk.split('-'),y=+p[0],m=+p[1]-1+d;y+=Math.floor(m/12);m=((m%12)+12)%12;return y+'-'+String(m+1).padStart(2,'0');}
 // ตรวจเดือน: คืน {empty:[mk], low:[{mk,n}], med, range:[mk...], cnt}
+function dqMedian(a){a=a.slice().sort(function(x,y){return x-y;});return a.length?(a.length%2?a[(a.length-1)/2]:(a[a.length/2-1]+a[a.length/2])/2):0;}
 function dqMonthCheck(def,cnt){
   var keys=Object.keys(cnt).sort(),cur=dqNowMK();
   if(!keys.length)return null;
@@ -795,15 +796,23 @@ function dqMonthCheck(def,cnt){
   if(start>end)return null;
   var range=[],k=start;
   while(k<=end&&range.length<120){range.push(k);k=dqMonthShift(k,1);}
-  var vals=range.map(function(m){return cnt[m]||0;}).filter(function(v){return v>0;}).sort(function(a,b){return a-b;});
-  var med=vals.length?(vals.length%2?vals[(vals.length-1)/2]:(vals[vals.length/2-1]+vals[vals.length/2])/2):0;
-  var empty=[],low=[];
+  var pos=function(r){return r.map(function(m){return cnt[m]||0;}).filter(function(v){return v>0;});};
+  var med=dqMedian(pos(range)),skipped=[];
+  // ข้ามช่วง "ก่อนเริ่มใช้งานจริง": เดือนแรก ๆ ที่มีแถวหลงอยู่ไม่กี่แถว (เช่น รายการเก่าก่อนขึ้นระบบ SAP) ไม่นับเป็นข้อมูลขาด
+  // เริ่มตรวจตั้งแต่เดือนแรกที่มีแถว >= 25% ของค่ากลาง (ชีตตามดิวไม่ข้าม เพราะตรวจแค่ 12 เดือนล่าสุดอยู่แล้ว)
+  if(!def.zero&&pos(range).length>=3&&med>=8){
+    var first=0;
+    while(first<range.length-1&&(cnt[range[first]]||0)<med*0.25)first++;
+    if(first>0){skipped=range.slice(0,first);range=range.slice(first);med=dqMedian(pos(range));}
+  }
+  var vals=pos(range),last=range[range.length-1],empty=[],low=[];
   range.forEach(function(m){
     var n=cnt[m]||0;
     if(n===0)empty.push(m);
-    else if(!def.zero&&vals.length>=3&&med>=8&&n<med*0.25)low.push({mk:m,n:n});
+    // เกณฑ์ปกติ < 25% ของค่ากลาง · เดือนล่าสุดที่จบแล้วเข้มกว่า (< 50%) เพราะเสี่ยงที่สุดว่าวางชีตมาไม่ครบเดือน
+    else if(!def.zero&&vals.length>=3&&med>=8&&n<med*(m===last?0.5:0.25))low.push({mk:m,n:n});
   });
-  return {empty:empty,low:low,med:med,range:range,cnt:cnt};
+  return {empty:empty,low:low,med:med,range:range,cnt:cnt,skipped:skipped};
 }
 // สถานะรายชีต: ok | warn | fail | note | idle   (note = ไม่มีข้อมูลแต่เป็นเรื่องปกติของชีตนั้น)
 function dqEval(def){
@@ -890,13 +899,13 @@ function dqFillModal(){
   var icon={ok:'✅',note:'➖',warn:'⚠️',fail:'❌',idle:'⏳'};
   var head='<div class="dq-sum">ครบ <b style="color:var(--green)">'+S.ok+'</b> / '+S.total+' ชีต'+(S.warn.length?' · ควรตรวจ <b style="color:var(--gold2)">'+S.warn.length+'</b>':'')+(S.fail.length?' · ไม่สำเร็จ <b style="color:var(--red)">'+S.fail.length+'</b>':'')+(S.idle?' · รอโหลด '+S.idle:'')+
     '<span style="margin-left:auto;display:flex;gap:8px"><button class="hbtn hbtn-muted" onclick="dqRetryMissing()">🔄 โหลดซ้ำเฉพาะที่ขาด</button><button class="hbtn hbtn-gold" onclick="dqReloadAll()">🔄 โหลดใหม่ทั้งหมด</button></span></div>'+
-    '<div style="font-size:11.5px;color:var(--muted);margin:2px 0 10px">เกณฑ์เตือนเดือน: ไม่มีข้อมูลเลย หรือน้อยกว่า 25% ของค่ากลางเดือนอื่น (ไม่ตรวจเดือนปัจจุบัน · ชีตตามดิวตรวจ 12 เดือนล่าสุด เฉพาะเดือนที่ว่างเลย) — เว็บบอกได้เพียงว่า "ข้อมูลที่ได้มามีช่องว่าง" ไม่รู้ว่า SAP มีรายการเดือนนั้นจริงหรือไม่</div>';
+    '<div style="font-size:11.5px;color:var(--muted);margin:2px 0 10px">เกณฑ์เตือนเดือน: ไม่มีข้อมูลเลย หรือน้อยกว่า 25% ของค่ากลางเดือนอื่น (เดือนล่าสุดที่จบแล้วใช้เกณฑ์ 50%) · ไม่นับเดือนแรก ๆ ที่มีแถวหลงอยู่ไม่กี่แถว · ไม่ตรวจเดือนปัจจุบัน · ชีตตามดิวตรวจ 12 เดือนล่าสุด เฉพาะเดือนที่ว่างเลย — เว็บบอกได้เพียงว่า "ข้อมูลที่ได้มามีช่องว่าง" ไม่รู้ว่า SAP มีรายการเดือนนั้นจริงหรือไม่</div>';
   var body=groups.map(function(g){
     return '<div class="section-sep" style="margin:12px 0 6px">'+projEsc(g)+'</div><table class="dq-tbl"><tbody>'+gm[g].map(function(r){
       var e=DQ.s[r.def.n],ts=e&&e.ts?e.ts.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'—';
       var col=r.st==='fail'?'var(--red)':(r.st==='warn'?'var(--gold2)':(r.st==='ok'?'var(--green)':'var(--muted)'));
       return '<tr><td style="width:28px">'+icon[r.st]+'</td><td><div style="font-weight:600">'+projEsc(r.def.n)+'</div><div style="font-size:11.5px;color:var(--muted)">'+projEsc(r.def.d)+'</div></td>'+
-        '<td style="font-size:12px;color:'+col+'">'+(r.msgs.length?r.msgs.map(projEsc).join('<br>'):projEsc(r.st==='idle'?'ยังไม่ได้โหลด':(r.st==='note'?r.info:'ปกติ')))+dqMonthStrip(r)+'</td>'+
+        '<td style="font-size:12px;color:'+col+'">'+(r.msgs.length?r.msgs.map(projEsc).join('<br>'):projEsc(r.st==='idle'?'ยังไม่ได้โหลด':(r.st==='note'?r.info:'ปกติ')))+dqMonthStrip(r)+(r.mc&&r.mc.skipped&&r.mc.skipped.length?'<div style="font-size:10.5px;color:var(--muted);margin-top:4px">ไม่นับ '+r.mc.skipped.length+' เดือนแรกที่มีแถวไม่กี่แถว (ก่อนเริ่มใช้งานจริง): '+r.mc.skipped.map(mlbl).join(", ")+'</div>':'')+'</td>'+
         '<td class="right" style="font-size:12px;color:var(--muted);white-space:nowrap">'+(r.st==='ok'||r.st==='warn'?r.info:'')+'<br>'+ts+'</td>'+
         '<td style="width:90px"><button class="hbtn hbtn-muted" onclick="dqRetryOne(\''+r.def.n+'\')">โหลดซ้ำ</button></td></tr>';
     }).join('')+'</tbody></table>';
