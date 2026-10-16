@@ -166,7 +166,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 .pdf-item{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:12px;}
 .pdf-item-name{flex:1;font-size:13px;font-weight:600;color:var(--text2);}
 .pdf-item-status{font-size:12px;font-weight:600;min-width:130px;text-align:right;}
-.pdf-item-status.pending{color:var(--muted);}.pdf-item-status.reading{color:var(--gold2);}.pdf-item-status.done{color:var(--green);}.pdf-item-status.error{color:var(--red);}
+.pdf-item-status.pending{color:var(--muted);}.pdf-item-status.reading{color:var(--gold2);}.pdf-item-status.done{color:var(--green);}.pdf-item-status.error{color:var(--red);}.pdf-item-status.note{color:var(--blue);}
 .pdf-progress-bar{height:3px;border-radius:2px;background:rgba(255,255,255,0.06);overflow:hidden;margin-top:6px;}
 .pdf-progress-fill{height:3px;background:linear-gradient(90deg,var(--gold),var(--gold2));border-radius:2px;transition:width 0.4s ease;}
 .pdf-result-card{background:var(--card);border:1px solid rgba(76,175,125,0.3);border-radius:12px;padding:16px 20px;margin-bottom:14px;}
@@ -4828,7 +4828,26 @@ function acctMatches(bankAcctNo, sapName){
 // that comma, shifting the Debit/Credit columns and losing the amounts — this is the
 // fix for that bug (พบ/แก้ ม.ค.–ก.ย. 2569, ดูรายละเอียดใน CSV_Comma_Parser_Bug_Fix_Note.md).
 // Returns an array of trimmed column values with the wrapping quotes already stripped.
-function parseCSVLine(line){
+// ตรวจตัวคั่นของไฟล์สเตทเมนท์ (เพิ่ม 16 ต.ค. 2569): ธนาคารบางแห่ง/Excel ภาษาไทยส่งออกเป็น ; หรือ Tab แทน comma
+// ถ้าไม่ตรวจ ทุกบรรทัดจะมีคอลัมน์เดียว (<3) แล้วถูกข้ามหมด ได้ 0 รายการ — ดูจากบรรทัดหัวตาราง (บรรทัดแรกที่ไม่ว่าง)
+function csvDetectDelim(raw){
+  var first=String(raw||'').replace(/^\ufeff/,'').split('\n').filter(function(l){return l.trim();})[0]||'';
+  var c={',':0,';':0,'\t':0};
+  var inQ=false;
+  for(var i=0;i<first.length;i++){var ch=first[i];if(ch==='"'){inQ=!inQ;continue;}if(!inQ&&c[ch]!==undefined)c[ch]++;}
+  var best=',';
+  if(c[';']>c[best])best=';';
+  if(c['\t']>c[best])best='\t';
+  return best;
+}
+// แยกสาเหตุที่อ่านได้ 0 รายการ: 'empty' = ไฟล์ว่าง/No Data (ไม่มีรายการเดือนนั้นจริง) | 'format' = มีข้อมูลแต่แยกคอลัมน์ไม่ได้
+function csvDiagnoseEmpty(raw){
+  var lines=String(raw||'').replace(/^\ufeff/,'').split('\n').map(function(l){return l.trim();}).filter(function(l){return l;});
+  var body=lines.slice(1).filter(function(l){return /\d/.test(l);});
+  return body.length?{kind:'format',n:body.length}:{kind:'empty',n:0};
+}
+function parseCSVLine(line,delim){
+  delim=delim||',';
   var result=[],cur='',inQuotes=false;
   for(var i=0;i<line.length;i++){
     var ch=line[i];
@@ -4841,7 +4860,7 @@ function parseCSVLine(line){
       }
     }else{
       if(ch==='"'){inQuotes=true;}
-      else if(ch===','){result.push(cur);cur='';}
+      else if(ch===delim){result.push(cur);cur='';}
       else{cur+=ch;}
     }
   }
@@ -4876,10 +4895,17 @@ async function rHandleFiles(files){
     }
     var raw=await readFileAsText(file);
     var lines=raw.trim().split('\n'),txns=[],lastBal=0;
-    lines.forEach(function(line,i){if(i===0)return;if(!line.trim())return;var cols=parseCSVLine(line);if(cols.length<3)return;var debit=parseFloat(cols[2]&&cols[2].replace(/[,\s]/g,''))||0,credit=parseFloat(cols[3]&&cols[3].replace(/[,\s]/g,''))||0,bal=parseFloat(cols[4]&&cols[4].replace(/[,\s]/g,''))||0;if(bal)lastBal=bal;txns.push({date:cols[0],desc:cols[1]||'',debit:debit,credit:credit,bal:bal});});
+    var dlm=csvDetectDelim(raw);
+    lines.forEach(function(line,i){if(i===0)return;if(!line.trim())return;var cols=parseCSVLine(line,dlm);if(cols.length<3)return;var debit=parseFloat(cols[2]&&cols[2].replace(/[,\s]/g,''))||0,credit=parseFloat(cols[3]&&cols[3].replace(/[,\s]/g,''))||0,bal=parseFloat(cols[4]&&cols[4].replace(/[,\s]/g,''))||0;if(bal)lastBal=bal;txns.push({date:cols[0],desc:cols[1]||'',debit:debit,credit:credit,bal:bal});});
     if(!txns.length){
-      el.className='upload-error';
-      el.textContent=tag+'❌ '+file.name+' — อ่านไฟล์ได้แต่ไม่พบรายการ ตรวจสอบ format CSV (แทง 1: วันที่,รายละเอียด,Debit,Credit,Balance)';
+      var dgR=csvDiagnoseEmpty(raw);
+      if(dgR.kind==='empty'){
+        el.className='upload-result';
+        el.textContent=tag+'ℹ️ '+file.name+' ('+bk+') — ไฟล์ว่าง ไม่มีรายการในช่วงนี้ (บัญชีไม่มีเคลื่อนไหว) ไม่ต้องทำอะไร ไม่ได้บันทึกลงชีต';
+      } else {
+        el.className='upload-error';
+        el.textContent=tag+'❌ '+file.name+' — พบ '+dgR.n+' บรรทัดข้อมูล แต่แยกคอลัมน์ไม่ได้ ตรวจสอบ format CSV (คอลัมน์ 1: วันที่,รายละเอียด,Debit,Credit,Balance)';
+      }
       continue;
     }
     // ใช้วิธีดึงเลขบัญชีแบบเดียวกับโซน CSV ในแท็บ "อ่าน PDF Bank" (csvSheetHandle)
@@ -6104,11 +6130,12 @@ async function csvSheetHandle(files){
 
     var raw=await readFileAsText(file);
     var lines=raw.trim().split('\n');
+    var dlm=csvDetectDelim(raw);
     var txns=[];var lastBal=0;var period='';
     lines.forEach(function(line,i){
       if(i===0)return;
       if(!line.trim())return;
-      var cols=parseCSVLine(line);
+      var cols=parseCSVLine(line,dlm);
       if(cols.length<3)return;
       var dt=cols[0]||'';
       var desc=cols[1]||'';
@@ -6124,8 +6151,14 @@ async function csvSheetHandle(files){
     if(txns.length>0)period=txns[0].date+'-'+txns[txns.length-1].date;
 
     if(!txns.length){
-      st.textContent='❌ ไม่พบรายการ — ตรวจสอบ format CSV ของไฟล์นี้';
-      st.className='pdf-item-status error';
+      var dgC=csvDiagnoseEmpty(raw);
+      if(dgC.kind==='empty'){
+        st.textContent='ℹ️ ไฟล์ว่าง — ไม่มีรายการในช่วงนี้ (ไม่ต้องทำอะไร / ไม่ได้บันทึก)';
+        st.className='pdf-item-status note';
+      } else {
+        st.textContent='❌ พบ '+dgC.n+' บรรทัดข้อมูล แต่แยกคอลัมน์ไม่ได้ — ตรวจสอบ format CSV (วันที่,รายละเอียด,Debit,Credit,Balance)';
+        st.className='pdf-item-status error';
+      }
       continue;
     }
 
