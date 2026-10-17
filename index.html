@@ -1362,7 +1362,7 @@ function bkDiffResolvedNet(kind){
   var bankTxns=bankInfo?(bankInfo.txns||[]):[];
   var bankKeys=bankInfo?bkTxnKeyList(BK_STATE.acctCode,bankTxns):[];
   var bankRows=bankTxns.map(function(t,i){
-    return {date:t.date,amt:isIn?(t.credit||0):(t.debit||0),matched:!!(bankInfo.matchFlags&&bankInfo.matchFlags[i]),hint:(bankInfo.hintFlags&&bankInfo.hintFlags[i])||null,key:bankKeys[i]};
+    return {date:t.date,amt:isIn?(t.credit||0):(t.debit||0),matched:!!(bankInfo.matchFlags&&bankInfo.matchFlags[i]),hint:(bankInfo.hintFlags&&bankInfo.hintFlags[i])||null,alert:(bankInfo.alertFlags&&bankInfo.alertFlags[i])||null,key:bankKeys[i]};
   }).filter(function(r){return Math.abs(r.amt)>0.004 && !r.matched;});
   bankRows.forEach(function(r){r.ov=manualMatchFor('bkTxn',r.key);});
   var sapNewSum=sapRows.filter(function(r){return !r.hint && !r.ov;}).reduce(function(s,r){return s+r.amt;},0);
@@ -2968,8 +2968,8 @@ function bkRender(){
   var rowsForMatch=rows.map(function(r,i){return {date:r.date,debit:r.debit,credit:r.credit,isReversed:!!revInfo.flags[i],_orig:r};});
   var sapBankMatch=bkMatchSapBank(rowsForMatch,bankTxnsMonth,foundBank?(foundBank.account.txns||[]):[],allLegs);
   BK_STATE={acctCode:acctCode,ym:ym,rows:rows,sapKeys:bkSapKeyList(acctCode,rows),defaultOpening:defaultOpening,openingKnown:openingKnown,prevYm:prevYm,q11Closing:mmByAcct[ym],revFlags:revInfo.flags,revStats:revInfo,
-    sapBankMatched:sapBankMatch.sapMatched,sapBankHint:sapBankMatch.sapHint,
-    bankDetail:foundBank?{bank:foundBank.bank,acctNo:foundBank.account.acctNo,txns:bankTxnsMonth,matchFlags:sapBankMatch.bankMatched,hintFlags:sapBankMatch.bankHint}:null};
+    sapBankMatched:sapBankMatch.sapMatched,sapBankHint:sapBankMatch.sapHint,sapRevAlert:sapBankMatch.revAlertSap,
+    bankDetail:foundBank?{bank:foundBank.bank,acctNo:foundBank.account.acctNo,txns:bankTxnsMonth,matchFlags:sapBankMatch.bankMatched,hintFlags:sapBankMatch.bankHint,alertFlags:sapBankMatch.revAlertBank}:null};
   var totalDebit=rows.reduce(function(s,r){return s+r.debit;},0);
   var totalCredit=rows.reduce(function(s,r){return s+r.credit;},0);
   // ยอดสุทธิหักคู่ "กลับรายการ" ออก (revInfo จาก bkDetectReversals) — ใช้เทียบกับยอดแบงค์ (CSV) แทน
@@ -3018,7 +3018,8 @@ function bkRender(){
     var resolvedNetOut=bkDiffResolvedNet('out');
     diffKpiEl.innerHTML =
       bkDiffKpi('⬆️','ส่วนต่างเงินเข้า (SAP สุทธิ − แบงค์)',diffIn,netDebit,bankStats?bankStats.moneyIn:0,"bkShowDiffDetail('in',"+(diffIn===null?0:diffIn)+")",resolvedNetIn)+
-      bkDiffKpi('⬇️','ส่วนต่างเงินออก (SAP สุทธิ − แบงค์)',diffOut,netCredit,bankStats?bankStats.moneyOut:0,"bkShowDiffDetail('out',"+(diffOut===null?0:diffOut)+")",resolvedNetOut);
+      bkDiffKpi('⬇️','ส่วนต่างเงินออก (SAP สุทธิ − แบงค์)',diffOut,netCredit,bankStats?bankStats.moneyOut:0,"bkShowDiffDetail('out',"+(diffOut===null?0:diffOut)+")",resolvedNetOut)+
+      (function(){var al=bkRevAlertList();if(!al.length)return '';var tot=al.reduce(function(x,a){return x+a.amt;},0);return '<div style="flex:0 0 100%;width:100%;background:rgba(224,92,92,0.14);border:1px solid var(--red);border-radius:10px;padding:10px 14px;font-size:13px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><span>&#9888;&#65039; <b style="color:var(--red)">SAP กลับรายการ/ยกเลิก แต่แบงค์ตัดเงินจริง '+al.length+' รายการ รวม '+fmtFull(tot)+' บาท</b> — ตรวจสอบว่าต้องบันทึกรายการจ่าย/รับใหม่ใน SAP หรือไม่</span><button class="hbtn" onclick="bkShowRevAlerts()">ดูรายละเอียด</button></div>';})();
   }
   bkRecalc();
 }
@@ -3217,7 +3218,48 @@ function bkMatchSapBank(sapRows,bankTxns,bankTxnsFull,sapLegsFull){
       if(i>=0&&!sapMatched[i]&&!sapHint[i])sapHint[i]={mode:m.mode,dates:[t.date]};
     });
   });
-  return {sapMatched:sapMatched,bankMatched:bankMatched,sapHint:sapHint,bankHint:bankHint};
+  // รอบแจ้งเตือน (เพิ่ม 17 ต.ค. 2569 ตามคำขอ): "SAP กลับรายการ/ยกเลิกใบจ่าย แต่แบงค์ตัดเงินจริง" — แถวกลับรายการ
+  // (isReversed + memo มีคำว่า Reverse Entry/กลับรายการ) → ต้นฉบับคือฝั่งตรงข้าม (กลับรายการเดบิต → เดิมเป็นเงินออก ↔ แบงค์เดบิต;
+  // กลับรายการเครดิต → เดิมเป็นเงินเข้า ↔ แบงค์เครดิต) ถ้าแบงค์มีรายการยอดเท่ากันในช่วง ±7 วัน ที่ "ยังไม่ถูกจับคู่ และไม่มีเบาะแสว่า
+  // SAP ออกเอกสารใหม่" แปลว่าเงินเคลื่อนไหวจริงแต่ SAP ถือว่ายกเลิก ไม่แตะยอด/การจับคู่เดิม เป็นเพียงป้ายเตือน
+  var revAlertBank=new Array(bankTxns.length).fill(null);
+  var revAlertSap=new Array(sapRows.length).fill(null);
+  (function(){
+    var used={};
+    sapRows.forEach(function(r,i){
+      if(!r.isReversed)return;
+      var o=r._orig||{};
+      if(!BK_REVERSAL_MEMO_RE.test(String(o.memo||'')))return;
+      var isDebitRev=r.debit>0&&!r.credit,isCreditRev=r.credit>0&&!r.debit;
+      if(!isDebitRev&&!isCreditRev)return;
+      var cents=Math.round((isDebitRev?r.debit:r.credit)*100),dk=dateKey(r.date||'');
+      if(!cents||!dk)return;
+      var lo=dateKeyShift(dk,-7),hi=dateKeyShift(dk,7);
+      var t0=Date.UTC(+dk.slice(0,4),+dk.slice(4,6)-1,+dk.slice(6,8));
+      var best=-1,bestGap=1e9;
+      bankTxns.forEach(function(t,j){
+        if(bankMatched[j]||bankHint[j]||used[j])return;
+        var amt=isDebitRev?((t.debit>0&&!t.credit)?t.debit:0):((t.credit>0&&!t.debit)?t.credit:0);
+        if(Math.round(amt*100)!==cents)return;
+        var bk=dateKey(t.date||'');
+        if(!bk||bk<lo||bk>hi)return;
+        var gap=Math.abs(Date.UTC(+bk.slice(0,4),+bk.slice(4,6)-1,+bk.slice(6,8))-t0);
+        if(gap<bestGap){bestGap=gap;best=j;}
+      });
+      if(best<0)return;
+      used[best]=true;
+      var docs=[o.tid||''];
+      sapRows.forEach(function(r2,i2){
+        if(i2===i||!r2.isReversed)return;
+        var same=isDebitRev?(r2.credit>0&&!r2.debit&&Math.round(r2.credit*100)===cents):(r2.debit>0&&!r2.credit&&Math.round(r2.debit*100)===cents);
+        if(same&&dateKey(r2.date||'')===dk){docs.push((r2._orig&&r2._orig.tid)||'');revAlertSap[i2]={bankDate:bankTxns[best].date,bankDesc:bankTxns[best].desc||''};}
+      });
+      var info={amt:cents/100,dir:isDebitRev?'out':'in',sapDate:r.date,docs:docs.filter(Boolean),memo:o.memo||'',bankDate:bankTxns[best].date,bankDesc:bankTxns[best].desc||''};
+      revAlertBank[best]=info;
+      revAlertSap[i]={bankDate:info.bankDate,bankDesc:info.bankDesc};
+    });
+  })();
+  return {sapMatched:sapMatched,bankMatched:bankMatched,sapHint:sapHint,bankHint:bankHint,revAlertBank:revAlertBank,revAlertSap:revAlertSap};
 }
 // เลื่อนวันที่ (รูปแบบ YYYYMMDD จาก dateKey) ไป deltaDays วัน แล้วคืนค่ากลับมาเป็น YYYYMMDD เดิม —
 // ใช้ทำกรอบหน้าต่างวันที่สำหรับค้นหาแบบ "คนละวันที่" (เทียบ string ได้ตรงเพราะความยาวเท่ากันเสมอ)
@@ -3373,6 +3415,7 @@ function bkTxnBadge(r){
     if(ov.status==='matched'){badge='<span class="badge badge-green" style="font-size:11px">✅ ยืนยันเอง'+(ov.note?' — '+ov.note:'')+'</span>';rowStyle='';}
     else{badge='<span class="badge badge-red" style="font-size:11px">❌ ยืนยันว่าไม่ตรง'+(ov.note?' — '+ov.note:'')+'</span>';rowStyle=' style="background:rgba(224,92,92,0.14)"';}
   } else if(r.matched){badge='<span style="color:var(--green);font-size:11px;white-space:nowrap">✅ พบใน SAP</span>';rowStyle='';}
+  else if(r.alert){badge='<span title="SAP กลับรายการ/ยกเลิกเอกสาร '+bkDiffEsc((r.alert.docs||[]).join(', '))+' แต่แบงค์ตัดเงินจริง" style="color:var(--red);font-size:11px;font-weight:700">⚠️ SAP กลับรายการ แต่แบงค์ตัดเงินจริง ('+bkDiffEsc(r.alert.sapDate)+')</span>';rowStyle=' style="background:rgba(224,92,92,0.2)"';}
   else if(r.hint&&bkHintIsFee(r.hint)){badge='<span title="SAP บันทึกค่าธรรมเนียมเป็นเดบิตติดลบในเอกสารรับเงิน" style="color:var(--green);font-size:11px;white-space:nowrap">✅ '+bkHintText(r.hint,'SAP')+'</span>';rowStyle='';}
   else if(r.hint){badge='<span title="'+(r.hint.mode==='combo'?'พบผลรวมหลายรายการใน SAP ตรงยอดนี้':'พบรายการยอดตรงกันใน SAP')+'" style="color:var(--gold2);font-size:11px;white-space:nowrap">🟠 พบยอดตรงกัน คนละวันที่ (SAP: '+r.hint.dates.join(', ')+')</span>';rowStyle=' style="background:rgba(212,168,67,0.14)"';}
   else{badge='<span style="color:var(--red);font-size:11px;white-space:nowrap">⚠️ ยังไม่พบใน SAP</span>';rowStyle=' style="background:rgba(224,92,92,0.14)"';}
@@ -3386,7 +3429,7 @@ function bkShowBankDetail(kind){
   var info=BK_STATE.bankDetail;
   if(!info||!info.txns.length){return;}
   var keys=bkTxnKeyList(BK_STATE.acctCode,info.txns);
-  var rows=info.txns.map(function(t,i){return {date:t.date,desc:t.desc||'',debit:t.debit||0,credit:t.credit||0,bal:t.bal,matched:!!info.matchFlags[i],hint:(info.hintFlags&&info.hintFlags[i])||null,key:keys[i]};});
+  var rows=info.txns.map(function(t,i){return {date:t.date,desc:t.desc||'',debit:t.debit||0,credit:t.credit||0,bal:t.bal,matched:!!info.matchFlags[i],hint:(info.hintFlags&&info.hintFlags[i])||null,alert:(info.alertFlags&&info.alertFlags[i])||null,key:keys[i]};});
   var filtered=kind==='in'?rows.filter(function(r){return r.credit>0;}):rows.filter(function(r){return r.debit>0;});
   filtered.sort(function(a,b){return dateKey(a.date).localeCompare(dateKey(b.date));});
   var titleKind=kind==='in'?'เงินเข้า':'เงินออก';
@@ -3402,7 +3445,7 @@ function bkShowBankDetail(kind){
     {label:'เงินเข้า',right:true,get:function(r){return fmtFull(r.credit||0);}},
     {label:'เงินออก',right:true,get:function(r){return fmtFull(r.debit||0);}},
     {label:'ยอดคงเหลือ',right:true,get:function(r){return r.bal!=null?fmtFull(r.bal):'';}},
-    {label:'พบใน SAP?',get:function(r){var ov=manualMatchFor('bkTxn',r.key);if(ov)return ov.status==='matched'?('ยืนยันเอง'+(ov.note?' — '+ov.note:'')):('ยืนยันว่าไม่ตรง'+(ov.note?' — '+ov.note:''));return r.matched?'พบ':(r.hint?bkHintText(r.hint,'SAP'):'ยังไม่พบ');}}
+    {label:'พบใน SAP?',get:function(r){var ov=manualMatchFor('bkTxn',r.key);if(ov)return ov.status==='matched'?('ยืนยันเอง'+(ov.note?' — '+ov.note:'')):('ยืนยันว่าไม่ตรง'+(ov.note?' — '+ov.note:''));return r.matched?'พบ':(r.alert?'⚠️ SAP กลับรายการ แต่แบงค์ตัดเงินจริง':(r.hint?bkHintText(r.hint,'SAP'):'ยังไม่พบ'));}}
   ],filtered);
   openModal('🏦 '+title,
     dmExportBtns('bkBankDetail')+
@@ -3443,7 +3486,7 @@ function bkShowDiffDetail(kind,expectedDiff){
   var bankTxns=bankInfo?(bankInfo.txns||[]):[];
   var bankKeys=bankInfo?bkTxnKeyList(BK_STATE.acctCode,bankTxns):[];
   var bankRows=bankTxns.map(function(t,i){
-    return {date:t.date,desc:t.desc||'',amt:isIn?(t.credit||0):(t.debit||0),matched:!!(bankInfo.matchFlags&&bankInfo.matchFlags[i]),hint:(bankInfo.hintFlags&&bankInfo.hintFlags[i])||null,key:bankKeys[i]};
+    return {date:t.date,desc:t.desc||'',amt:isIn?(t.credit||0):(t.debit||0),matched:!!(bankInfo.matchFlags&&bankInfo.matchFlags[i]),hint:(bankInfo.hintFlags&&bankInfo.hintFlags[i])||null,alert:(bankInfo.alertFlags&&bankInfo.alertFlags[i])||null,key:bankKeys[i]};
   }).filter(function(r){return Math.abs(r.amt)>0.004 && !r.matched;});
   bankRows.forEach(function(r){r.ov=manualMatchFor('bkTxn',r.key);});
   bankRows.sort(function(a,b){return dateKey(a.date).localeCompare(dateKey(b.date));});
@@ -3482,7 +3525,7 @@ function bkShowDiffDetail(kind,expectedDiff){
   function bankRowHtml(r,faded){
     var dk=dateKey(r.date);
     var isDayMatch=!faded && !r.ov && !r.hint && !!dayMatchSet[dk];
-    var shim={key:r.key,date:r.date,desc:r.desc,credit:isIn?r.amt:0,debit:isIn?0:r.amt,matched:false,hint:r.hint};
+    var shim={key:r.key,date:r.date,desc:r.desc,credit:isIn?r.amt:0,debit:isIn?0:r.amt,matched:false,hint:r.hint,alert:r.alert};
     var tb=bkTxnBadge(shim);
     var dayTag=isDayMatch?' <span style="font-size:10.5px;color:var(--blue)">&#128309; ยอดรวมวันนี้ตรงกัน (SAP)</span>':'';
     flatRows.push({side:'แบงค์',date:r.date,desc:r.desc,amt:r.amt,note:r.ov?(r.ov.status==='matched'?'ยืนยันเอง':'ยืนยันว่าไม่ตรง'):(r.hint?(bkHintIsFee(r.hint)?'ค่าธรรมเนียมหักจากยอดรับ (จับคู่แล้ว)':'พบยอดตรงกันคนละวันที่'):(isDayMatch?'ยอดรวมวันนี้ตรงกัน':'ยังไม่พบใน SAP'))});
@@ -3662,7 +3705,7 @@ function bkDiffItems(acctInfo,ym,sortedRows,revInfo){
   var m=bkMatchSapBank(rowsForMatch,bankMonth,full,allLegs);
   var sapKeys=bkSapKeyList(acctInfo.code,sortedRows);
   var bankKeys=bkTxnKeyList(acctInfo.code,bankMonth);
-  var out={inSap:[],inBank:[],outSap:[],outBank:[]};
+  var out={inSap:[],inBank:[],outSap:[],outBank:[],alerts:(m.revAlertBank||[]).filter(function(a){return !!a;})};
   sortedRows.forEach(function(r,i){
     if(revInfo.flags[i]||m.sapMatched[i])return;
     var h=m.sapHint[i]||null,ov=manualMatchFor('bkSapLeg',sapKeys[i]);
@@ -3673,18 +3716,20 @@ function bkDiffItems(acctInfo,ym,sortedRows,revInfo){
   bankMonth.forEach(function(t,j){
     if(m.bankMatched[j])return;
     var h=(m.bankHint&&m.bankHint[j])||null,ov=manualMatchFor('bkTxn',bankKeys[j]);
-    function mk(amt){return {date:t.date,doc:'',desc:t.desc||'',amt:amt,hint:(h&&!bkHintIsFee(h))?h.dates:null,fee:bkHintIsFee(h)?bkHintText(h,'SAP'):'',ov:ov};}
+    function mk(amt){return {date:t.date,doc:'',desc:t.desc||'',amt:amt,hint:(h&&!bkHintIsFee(h))?h.dates:null,fee:bkHintIsFee(h)?bkHintText(h,'SAP'):'',alert:(m.revAlertBank&&m.revAlertBank[j])||null,ov:ov};}
     if(Math.abs(t.credit||0)>0.004)out.inBank.push(mk(t.credit));
     if(Math.abs(t.debit||0)>0.004)out.outBank.push(mk(t.debit));
   });
   // รายการที่เคลียร์แล้ว (ค่าธรรมเนียมจับคู่/ยืนยันเอง) เรียงไว้ท้ายสุด
   function cleared(x){return !!x.fee||(x.ov&&x.ov.status==='matched');}
-  ['inSap','inBank','outSap','outBank'].forEach(function(k){out[k].sort(function(a,b){var ca=cleared(a)?1:0,cb=cleared(b)?1:0;if(ca!==cb)return ca-cb;return Math.abs(b.amt)-Math.abs(a.amt);});});
+  function alertRank(x){return x.alert?-1:0;}
+  ['inSap','inBank','outSap','outBank'].forEach(function(k){out[k].sort(function(a,b){var ra=alertRank(a),rb=alertRank(b);if(ra!==rb)return ra-rb;var ca=cleared(a)?1:0,cb=cleared(b)?1:0;if(ca!==cb)return ca-cb;return Math.abs(b.amt)-Math.abs(a.amt);});});
   return out;
 }
 function bkDiffSum(list){return list.reduce(function(s,x){return s+x.amt;},0);}
 function bkDiffItemTagHtml(it){
   var t='';
+  if(it.alert)t+=' <span class="bkd-tag bkd-bad">⚠️ SAP กลับรายการ แต่แบงค์ตัดเงินจริง (เอกสาร '+bkDiffEsc((it.alert.docs||[]).join(', '))+')</span>';
   if(it.fee)t+=' <span class="bkd-tag bkd-ok">✅ '+bkDiffEsc(it.fee)+'</span>';
   else if(it.hint&&it.hint.length)t+=' <span class="bkd-tag">ยอดตรงกันคนละวัน: '+bkDiffEsc(it.hint.join(', '))+'</span>';
   if(it.ov)t+=it.ov.status==='matched'?' <span class="bkd-tag bkd-ok">✅ ยืนยันเอง'+(it.ov.note?' — '+bkDiffEsc(it.ov.note):'')+'</span>':' <span class="bkd-tag bkd-bad">❌ ยืนยันว่าไม่ตรง'+(it.ov.note?' — '+bkDiffEsc(it.ov.note):'')+'</span>';
@@ -3716,6 +3761,21 @@ function bkDiffDetailHtml(r){
   if(!html)html='<div style="grid-column:1/-1;color:var(--green);font-size:12.5px">✅ ตรงกันทุกรายการ ไม่มีส่วนต่าง</div>';
   return '<div class="bkd-box">'+html+'</div>';
 }
+// แจ้งเตือน "SAP กลับรายการ/ยกเลิก แต่แบงค์ตัดเงินจริง" (เพิ่ม 17 ต.ค. 2569)
+function bkRevAlertList(){
+  var info=BK_STATE.bankDetail;
+  return ((info&&info.alertFlags)||[]).filter(function(a){return !!a;});
+}
+function bkRevAlertTableHtml(items){
+  return '<div style="overflow:auto"><table class="bkd-dt" style="width:100%"><thead><tr>'+(items[0]&&items[0].acct!==undefined?'<th>บัญชี</th>':'')+'<th>วันที่ SAP</th><th>เอกสาร SAP (ต้นฉบับ/กลับรายการ)</th><th>วันที่แบงค์</th><th>รายละเอียดแบงค์</th><th>ทิศทาง</th><th style="text-align:right">ยอด</th></tr></thead><tbody>'+
+    items.map(function(a){return '<tr>'+(a.acct!==undefined?'<td>'+bkDiffEsc(a.acct)+'</td>':'')+'<td>'+bkDiffEsc(a.sapDate)+'</td><td>'+bkDiffEsc((a.docs||[]).join(' / '))+'</td><td>'+bkDiffEsc(a.bankDate)+'</td><td>'+bkDiffEsc(a.bankDesc)+'</td><td>'+(a.dir==='out'?'เงินออก':'เงินเข้า')+'</td><td style="text-align:right;font-weight:700">'+fmtFull(a.amt)+'</td></tr>';}).join('')+'</tbody></table></div>';
+}
+function bkShowRevAlerts(){
+  var items=bkRevAlertList();
+  if(!items.length)return;
+  openModal('⚠️ SAP กลับรายการ/ยกเลิก แต่แบงค์ตัดเงินจริง — '+(BK_STATE.acctCode||'')+' ('+ymLabelThai(BK_STATE.ym)+')',
+    '<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">เอกสารฝั่ง SAP ถูกกลับรายการแล้ว (ระบบตัดคู่ออกจากยอดสุทธิ) แต่สเตทเมนท์แบงค์มีรายการยอดเท่ากันในช่วง ±7 วัน และยังไม่มีเอกสาร SAP ใหม่มารองรับ — ตรวจว่าแบงค์ตัดเงินจริงหรือถูกโอนคืน หากตัดจริงต้องบันทึกการจ่าย/รับใหม่ใน SAP (ระวังจ่ายซ้ำเจ้าหนี้)</div>'+bkRevAlertTableHtml(items));
+}
 function bkDiffToggle(tr){tr.classList.toggle('open');var n=tr.nextElementSibling;if(n)n.classList.toggle('show');}
 function bkDiffAll(open){
   document.querySelectorAll('#bkDiffTbl tr.bkd-main').forEach(function(t){t.classList.toggle('open',open);var n=t.nextElementSibling;if(n)n.classList.toggle('show',open);});
@@ -3729,6 +3789,7 @@ function bkDiffFlatRows(rowsOut){
       var dir=g[0]?'เงินเข้า':'เงินออก';
       function add(items,side,sign){items.forEach(function(it){
         var note=[];
+        if(it.alert)note.push('⚠️ SAP กลับรายการ (เอกสาร '+(it.alert.docs||[]).join(', ')+') แต่แบงค์ตัดเงินจริง');
         if(it.fee)note.push(it.fee);
         else if(it.hint&&it.hint.length)note.push('ยอดตรงกันคนละวันที่: '+it.hint.join(', '));
         if(it.ov)note.push(it.ov.status==='matched'?('ยืนยันเองว่าตรงกัน'+(it.ov.note?' — '+it.ov.note:'')):('ยืนยันว่าไม่ตรง'+(it.ov.note?' — '+it.ov.note:'')));
@@ -3825,8 +3886,9 @@ function bkFilteredDiffSummary(opts){
     var tblRows=rowsOut.map(function(r){
       var dIn=Math.abs(r.diffIn)<0.01?'<span style="color:var(--green)">✅ ตรงกัน</span>':('<span style="color:var(--gold2)">'+(r.diffIn>0?'+':'')+fmtFull(r.diffIn)+'</span>');
       var dOut=Math.abs(r.diffOut)<0.01?'<span style="color:var(--green)">✅ ตรงกัน</span>':('<span style="color:var(--gold2)">'+(r.diffOut>0?'+':'')+fmtFull(r.diffOut)+'</span>');
-      var hasDiff=Math.abs(r.diffIn)>=0.01||Math.abs(r.diffOut)>=0.01||r.nItems>0;
+      var hasDiff=Math.abs(r.diffIn)>=0.01||Math.abs(r.diffOut)>=0.01||r.nItems>0||(r.det.alerts&&r.det.alerts.length>0);
       var cnt=r.nItems?'<span class="bkd-cnt">'+r.nItems+' รายการ</span>':'';
+      if(r.det.alerts&&r.det.alerts.length)cnt+='<span class="bkd-cnt" style="background:rgba(224,92,92,.22);color:var(--red)">⚠️ '+r.det.alerts.length+' ยกเลิกแต่แบงค์ตัดจริง</span>';
       return '<tr class="bkd-main'+(hasDiff?'':' bkd-nodiff')+'"'+(hasDiff?' onclick="bkDiffToggle(this)"':'')+'><td style="font-size:12px">'+(hasDiff?'<span class="bkd-car">&#9656;</span>':'<span class="bkd-car" style="opacity:0">&#9656;</span>')+r.acctCode+' — '+bkDiffEsc(r.acctName)+cnt+'</td><td style="font-size:12px">'+ymLabelThai(r.ym)+'</td>'+
         '<td class="right" style="font-size:12px">'+fmtFull(r.netIn)+'</td><td class="right" style="font-size:12px">'+fmtFull(r.bankIn)+'</td><td class="right" style="font-size:12px">'+dIn+'</td>'+
         '<td class="right" style="font-size:12px">'+fmtFull(r.netOut)+'</td><td class="right" style="font-size:12px">'+fmtFull(r.bankOut)+'</td><td class="right" style="font-size:12px">'+dOut+'</td></tr>'+
@@ -3837,7 +3899,14 @@ function bkFilteredDiffSummary(opts){
       '<button class="hbtn hbtn-green" onclick="dmSimpleExcelById(\'bkFilteredDiffItems\')">📊 Excel รายการส่วนต่างรายตัว</button></div>'+
       '<div style="overflow:auto;max-height:62vh"><table id="bkDiffTbl" style="table-layout:fixed;width:100%;min-width:820px"><thead><tr><th>บัญชี (กดแถวเพื่อดูรายการ)</th><th>เดือน/ปี</th><th style="text-align:right">เงินเข้า SAP</th><th style="text-align:right">เงินเข้าแบงค์</th><th style="text-align:right">ส่วนต่างเข้า</th><th style="text-align:right">เงินออก SAP</th><th style="text-align:right">เงินออกแบงค์</th><th style="text-align:right">ส่วนต่างออก</th></tr></thead><tbody>'+tblRows+'</tbody></table></div>'+
       '<div style="font-size:11px;color:var(--muted);margin-top:8px">เฉพาะบัญชี/เดือนที่มีทั้งข้อมูล SAP และ CSV แบงค์ตรงกันเท่านั้น · สูตรและยอดสุทธิ (หักคู่กลับรายการ) เหมือนกล่อง "ส่วนต่าง" ในหน้าหลักทุกประการ · กดแถวเพื่อดูรายการที่ทำให้เกิดส่วนต่าง (เรียงยอดมากไปน้อย) · รายการที่ยืนยันเองว่า "ตรงกัน" ยังนับในส่วนต่างตามสูตรเดิม แต่มีป้ายกำกับไว้</div>';
-    bodyHtml=summaryHtml+tblHtml;
+    var allAlerts=[];
+    rowsOut.forEach(function(r){(r.det.alerts||[]).forEach(function(a){allAlerts.push({acct:r.acctCode+' — '+r.acctName,sapDate:a.sapDate,docs:a.docs,bankDate:a.bankDate,bankDesc:a.bankDesc,dir:a.dir,amt:a.amt});});});
+    var alertBanner='';
+    if(allAlerts.length){
+      var alertTot=allAlerts.reduce(function(x,a){return x+a.amt;},0);
+      alertBanner='<div style="background:rgba(224,92,92,0.12);border:1px solid var(--red);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12.5px"><div style="font-weight:700;color:var(--red);margin-bottom:8px">⚠️ SAP กลับรายการ/ยกเลิก แต่แบงค์ตัดเงินจริง — '+allAlerts.length+' รายการ รวม '+fmtFull(alertTot)+' บาท <span style="font-weight:400;color:var(--muted)">(ตรวจว่าแบงค์ตัดจริงหรือโอนคืน ถ้าตัดจริงต้องบันทึกจ่าย/รับใหม่ใน SAP — ระวังจ่ายซ้ำ)</span></div>'+bkRevAlertTableHtml(allAlerts)+'</div>';
+    }
+    bodyHtml=summaryHtml+alertBanner+tblHtml;
   }
   openModal('📊 '+title, dmExportBtns('bkFilteredDiff')+bodyHtml);
 }
@@ -3886,7 +3955,7 @@ function bkAllBanksUnmatchedReport(opts){
       var m=bkMatchSapBank(rowsForMatch,bankTxnsMonth,bankTxnsFull,allLegs);
       var bankKeys=bkTxnKeyList(acctInfo.code,bankTxnsMonth);
       var bankRows=bankTxnsMonth.map(function(t,i){
-        return {date:t.date,desc:t.desc||'',debit:t.debit||0,credit:t.credit||0,bal:t.bal,matched:!!m.bankMatched[i],hint:(m.bankHint&&m.bankHint[i])||null,key:bankKeys[i]};
+        return {date:t.date,desc:t.desc||'',debit:t.debit||0,credit:t.credit||0,bal:t.bal,matched:!!m.bankMatched[i],hint:(m.bankHint&&m.bankHint[i])||null,alert:(m.revAlertBank&&m.revAlertBank[i])||null,key:bankKeys[i]};
       }).filter(function(r){
         if(r.matched)return false; // เจอตรงกันอัตโนมัติแล้ว ไม่ต้องขึ้น
         if(bkHintIsFee(r.hint))return false; // ค่าธรรมเนียมหักจากยอดรับ (SAP เดบิตติดลบ) จับคู่แล้ว ไม่ต้องขึ้น
@@ -3928,7 +3997,7 @@ function bkAllBanksUnmatchedReport(opts){
         var rowsHtml=mo.rows.map(function(r){
           var b=bkTxnBadge(r);
           var ov=manualMatchFor('bkTxn',r.key);
-          var statusLabel=ov?(ov.status==='matched'?('ยืนยันเอง'+(ov.note?' — '+ov.note:'')):('ยืนยันว่าไม่ตรง'+(ov.note?' — '+ov.note:''))):(r.hint?bkHintText(r.hint,'SAP'):'ยังไม่พบใน SAP');
+          var statusLabel=ov?(ov.status==='matched'?('ยืนยันเอง'+(ov.note?' — '+ov.note:'')):('ยืนยันว่าไม่ตรง'+(ov.note?' — '+ov.note:''))):(r.alert?'⚠️ SAP กลับรายการ แต่แบงค์ตัดเงินจริง (เอกสาร '+(r.alert.docs||[]).join(', ')+')':(r.hint?bkHintText(r.hint,'SAP'):'ยังไม่พบใน SAP'));
           flatRows.push({bank:BK_TH[bankKey]||bankKey,acctNo:a.acctNo,acctName:a.acctName,ym:ymLabelThai(mo.ym),date:r.date,desc:r.desc,credit:r.credit,debit:r.debit,bal:r.bal,status:statusLabel});
           return '<tr'+b.rowStyle+'><td style="font-size:12px;color:var(--muted)">'+(r.date||'—')+'</td><td style="font-size:12px">'+(r.desc||'')+'</td><td class="right green">'+(r.credit?fmtFull(r.credit):'—')+'</td><td class="right red">'+(r.debit?fmtFull(r.debit):'—')+'</td><td class="right" style="font-weight:700">'+(r.bal!=null?fmtFull(r.bal):'—')+'</td><td>'+b.badge+'</td></tr>';
         }).join('');
@@ -4061,7 +4130,7 @@ function bkRecalc(){
   var hasBankCsv=!!BK_STATE.bankDetail;
   var runningRows=BK_STATE.rows.map(function(r,idx){
     bal=bal+r.debit-r.credit;
-    return {date:r.date,tid:r.tid,memo:r.memo,bpName:r.bpName,debit:r.debit,credit:r.credit,createdByName:r.createdByName||'',bal:bal,isReversed:!!revFlags[idx],pairId:revFlags[idx]||null,bankMatched:!!bankMatched[idx],hint:bankHint[idx]||null,key:sapKeys[idx]};
+    return {date:r.date,tid:r.tid,memo:r.memo,bpName:r.bpName,debit:r.debit,credit:r.credit,createdByName:r.createdByName||'',bal:bal,isReversed:!!revFlags[idx],pairId:revFlags[idx]||null,bankMatched:!!bankMatched[idx],hint:bankHint[idx]||null,alert:(BK_STATE.sapRevAlert||[])[idx]||null,key:sapKeys[idx]};
   });
   var hideChk=document.getElementById('bkHideReversedChk');
   var hideReversed=!!(hideChk&&hideChk.checked);
@@ -4071,6 +4140,7 @@ function bkRecalc(){
     bodyEl.innerHTML = visibleRows.length ? visibleRows.map(function(r){
       var revStyle=r.isReversed?' style="opacity:0.55"':'';
       var revBadge=r.isReversed?' <span title="คู่กลับรายการ #'+r.pairId+' — จับคู่จากวันที่+ยอดเดียวกัน เดบิต/เครดิตตรงข้าม" style="font-size:11px;color:var(--gold2);white-space:nowrap">&#128257; กลับรายการ</span>':'';
+      if(r.alert)revBadge+=' <span title="แบงค์มีรายการตัดเงินยอดนี้จริง ('+bkDiffEsc(r.alert.bankDate)+' '+bkDiffEsc(r.alert.bankDesc)+') แต่ SAP กลับรายการ/ยกเลิกแล้ว" style="font-size:11px;color:var(--red);font-weight:700;white-space:nowrap">&#9888;&#65039; แบงค์ตัดเงินจริง ('+bkDiffEsc(r.alert.bankDate)+')</span>';
       var sapB=bkSapBadge(r.key,{isReversed:r.isReversed,hasBankCsv:hasBankCsv,matched:r.bankMatched,hint:r.hint,displayLabel:((r.date||'')+' '+(r.memo||'')+' '+fmtFull(r.debit||r.credit||0))});
       var bankCell=sapB.badge;
       return '<tr'+revStyle+'><td style="font-size:12px;color:var(--muted)">'+(r.date||'—')+'</td>'+
