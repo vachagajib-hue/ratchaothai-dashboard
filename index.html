@@ -547,6 +547,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 
 <div class="page" id="page8">
 <div class="info-box blue" style="margin-bottom:16px"><div class="info-box-title">&#128176; สมุดบัญชีธนาคาร</div>เลือกบัญชีธนาคาร + เดือน/ปี เพื่อดูรายการเดินบัญชีจริงจาก SAP (Q15_BANK_JOURNAL) เรียงตามวันที่พร้อมยอดคงเหลือสะสมทีละบรรทัด — ใช้กระทบยอดกับสเตทเมนท์ธนาคารได้ง่ายกว่าหน้า "กระทบยอดธนาคาร" (เฉพาะบัญชีธนาคารจริง 1112-xx/1113-xx ไม่รวมเงินสดย่อย)</div>
+<div class="recon-section" id="bkCovSection" style="margin-bottom:16px"></div>
 <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px">
 <span style="font-size:12px;color:var(--muted);font-weight:600">เลือกบัญชี:</span>
 <select id="bkAcctSel" class="filter-select" style="min-width:300px" onchange="bkPopulateYm()"></select>
@@ -604,6 +605,10 @@ table.bkd-dt{width:100%;table-layout:auto;border:1px solid var(--border)}table.b
 .bkd-tag{font-size:10.5px;padding:1px 7px;border-radius:9px;background:rgba(240,201,107,.15);color:var(--gold2);white-space:nowrap}.bkd-tag.bkd-ok{background:rgba(76,175,125,.18);color:var(--green)}.bkd-tag.bkd-bad{background:rgba(224,92,92,.18);color:var(--red)}
 .bkd-chk{grid-column:1/-1;font-size:12px;padding:8px 10px;border:1px dashed rgba(255,255,255,.18);border-radius:8px}
 @media print{.bkd-box{display:none}}
+.cov-chips{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 12px}.cov-chip{border:1px solid var(--border);border-radius:10px;padding:8px 12px;cursor:pointer;min-width:140px}.cov-chip .n{font-size:20px;font-weight:700}.cov-chip .l{font-size:11.5px;color:var(--muted)}.cov-chip.on{outline:2px solid var(--gold)}
+.cov-ok .n,.cov-s-ok{color:var(--green)}.cov-bad .n,.cov-s-bad{color:var(--red)}.cov-warn .n,.cov-s-warn{color:var(--gold2)}.cov-mu .n,.cov-s-mu{color:var(--muted)}
+.cov-bar{height:8px;border-radius:5px;background:rgba(255,255,255,.08);overflow:hidden;display:flex;margin:6px 0 4px}.cov-bar i{display:block;height:100%}
+tr.cov-hl td{background:rgba(224,92,92,.08)}.cov-st{font-size:11.5px;font-weight:600;white-space:nowrap}
 .mxt .mxpp{color:#5FD3A0;font-weight:600}.mxt .mxpd{color:#F2A65A;font-weight:600}
 .mxt tr.mxg td .mxsub .mxpp{color:#A8F5CF !important}.mxt tr.mxg td .mxsub .mxpd{color:#FFD49A !important}
 .mxt .mxsep{border-left:2px solid rgba(255,255,255,.14)}
@@ -2897,7 +2902,67 @@ function bkAvailableYm(acctCode){
   legs.forEach(function(l){var ym=bkYmOf(l.date);if(ym)set[ym]=true;});
   return Object.keys(set).sort();
 }
+// ===== ความครบถ้วนของสเตทเมนท์แบงค์ (เพิ่ม 17 ต.ค. 2569 ตามคำขอ) — หน้า "สมุดบัญชีธนาคาร" =====
+// ต่อบัญชี+เดือน: เทียบรายการ SAP (Q15, ไม่นับคู่กลับรายการ) กับสเตทเมนท์ที่โหลดแล้ว (BANK_STATEMENTS) บอกว่าบัญชีไหน
+// "SAP มีรายการ แต่ยังไม่มีสเตทเมนท์" (สรุปส่วนต่างรวมจะข้ามบัญชีพวกนี้) — ไม่แตะตรรกะจับคู่/ยอดส่วนต่างเดิม
+var BK_COV={ym:'',f:'all'};
+function bkCovMonths(){
+  var set={};
+  bkAccounts().forEach(function(a){((G.sapAllBankLegs&&G.sapAllBankLegs[a.code])||[]).forEach(function(l){var y=bkYmOf(l.date);if(y)set[y]=true;});});
+  return Object.keys(set).sort();
+}
+function bkCovStat(acctInfo,ym){
+  var legs=((G.sapAllBankLegs&&G.sapAllBankLegs[acctInfo.code])||[]).filter(function(l){return bkYmOf(l.date)===ym;}).slice();
+  legs.sort(function(a,b){var ka=dateKey(a.date),kb=dateKey(b.date);if(ka!==kb)return ka<kb?-1:1;return (parseInt(a.tid,10)||0)-(parseInt(b.tid,10)||0);});
+  var rev=bkDetectReversals(legs),n=0,inn=0,out=0;
+  legs.forEach(function(r,i){if(rev.flags[i])return;n++;inn+=r.debit||0;out+=r.credit||0;});
+  var found=bkFindBankAccount(acctInfo.name||'');
+  var ymC=ym.replace('-','');
+  var bankN=found?(found.account.txns||[]).filter(function(t){return dateKey(t.date||'').slice(0,6)===ymC;}).length:0;
+  var st,hint;
+  if(bankN>0&&n>0){st='ok';hint='ไม่ต้องทำอะไร — ตรวจส่วนต่างตามปกติ';}
+  else if(bankN>0&&n===0){st='warn';hint='แบงค์มี '+bankN+' รายการ แต่ SAP ไม่มีรายการเดือนนี้ — ตรวจว่า SAP บันทึกครบหรือไม่';}
+  else if(found&&n>0){st='warn';hint='มีไฟล์ของบัญชีนี้แต่ไม่มีรายการเดือนนี้ — โหลดสเตทเมนท์เดือนนี้ หรือตรวจกับแบงค์ (SAP มี '+n+' รายการ)';}
+  else if(!found&&n>0){st='bad';hint='โหลดสเตทเมนท์เดือนนี้ (CSV/PDF) — ถ้าแบงค์ส่งไฟล์ว่าง ให้ตรวจกับ SAP ว่ารายการถูกต้อง';}
+  else{st='mu';hint='ไม่ต้องทำอะไร';}
+  return {code:acctInfo.code,name:acctInfo.name,st:st,n:n,inn:inn,out:out,bankN:bankN,hasFile:!!found,hint:hint};
+}
+function bkCovLabel(st,hasFile,bankN,n){
+  if(st==='ok')return '✅ มีสเตทเมนท์ครบ';
+  if(st==='bad')return '❌ ไม่มีสเตทเมนท์';
+  if(st==='warn')return bankN>0?'⚠️ SAP ไม่มีรายการ':'ℹ️ ไม่มีรายการเดือนนี้ในไฟล์';
+  return '➖ ไม่มีรายการทั้งสองฝั่ง';
+}
+function bkCovSetM(ym){BK_COV.ym=ym;BK_COV.f='all';bkCovRender();}
+function bkCovSetF(f){BK_COV.f=f;bkCovRender();}
+function bkCovRender(){
+  var el=document.getElementById('bkCovSection');
+  if(!el)return;
+  var months=bkCovMonths();
+  if(!months.length){el.innerHTML='<div class="recon-section-title">🗂️ ความครบถ้วนของสเตทเมนท์แบงค์</div><div style="font-size:12px;color:var(--muted)">— ยังไม่มีข้อมูล SAP (Q15) —</div>';return;}
+  if(months.indexOf(BK_COV.ym)<0)BK_COV.ym=months[months.length-1];
+  var ym=BK_COV.ym;
+  var rows=bkAccounts().map(function(a){return bkCovStat(a,ym);});
+  var cnt={ok:0,warn:0,bad:0,mu:0};
+  rows.forEach(function(r){cnt[r.st]++;});
+  var tot=rows.length||1;
+  var mBtns=months.slice(-6).map(function(m){return '<button class="hbtn'+(m===ym?' hbtn-gold':'')+'" onclick="bkCovSetM(\''+m+'\')">'+ymLabelThai(m)+'</button>';}).join(' ');
+  var chips=[['all','ทั้งหมด',rows.length,'cov-mu'],['ok','✅ ครบ',cnt.ok,'cov-ok'],['bad','❌ ไม่มีสเตทเมนท์',cnt.bad,'cov-bad'],['warn','⚠️ ต้องตรวจ',cnt.warn,'cov-warn'],['mu','➖ ไม่ต้องทำ',cnt.mu,'cov-mu']];
+  var chipHtml=chips.map(function(c){return '<div class="cov-chip '+c[3]+(BK_COV.f===c[0]?' on':'')+'" onclick="bkCovSetF(\''+c[0]+'\')"><div class="n">'+c[2]+'</div><div class="l">'+c[1]+'</div></div>';}).join('');
+  var order={bad:0,warn:1,ok:2,mu:3};
+  var show=rows.filter(function(r){return BK_COV.f==='all'||r.st===BK_COV.f;}).sort(function(a,b){return order[a.st]-order[b.st]||a.code.localeCompare(b.code);});
+  var body=show.map(function(r){
+    return '<tr'+(r.st==='bad'||(r.st==='warn'&&r.n>0)?' class="cov-hl"':'')+'><td style="font-size:12px">'+bkDiffEsc(r.code+' — '+(r.name||''))+'</td><td class="cov-st cov-s-'+r.st+'">'+bkCovLabel(r.st,r.hasFile,r.bankN,r.n)+'</td><td class="right" style="font-size:12px">'+r.n+'</td><td class="right" style="font-size:12px">'+(r.inn?fmtFull(r.inn):'—')+'</td><td class="right" style="font-size:12px">'+(r.out?fmtFull(r.out):'—')+'</td><td class="right" style="font-size:12px">'+(r.bankN||'—')+'</td><td style="font-size:12px">'+bkDiffEsc(r.hint)+'</td></tr>';
+  }).join('')||'<tr><td colspan="7" style="color:var(--muted);padding:14px">— ไม่มีรายการ —</td></tr>';
+  el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><div class="recon-section-title" style="margin-bottom:0">🗂️ ความครบถ้วนของสเตทเมนท์แบงค์</div><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'+mBtns+' <button class="hbtn" onclick="bkCovRender()" title="คำนวณใหม่">&#8635;</button></div></div>'+
+    '<div style="font-size:12.5px;margin-top:10px">มีสเตทเมนท์ครบ <b>'+cnt.ok+'</b> จาก '+rows.length+' บัญชี'+(cnt.bad?' · <b style="color:var(--red)">ขาด '+cnt.bad+' บัญชีที่ SAP มีรายการ</b>':'')+(cnt.warn?' · <b style="color:var(--gold2)">ต้องตรวจ '+cnt.warn+' บัญชี</b>':'')+'</div>'+
+    '<div class="cov-bar"><i style="width:'+cnt.ok/tot*100+'%;background:var(--green)"></i><i style="width:'+cnt.warn/tot*100+'%;background:var(--gold2)"></i><i style="width:'+cnt.bad/tot*100+'%;background:var(--red)"></i><i style="width:'+cnt.mu/tot*100+'%;background:#4a5d73"></i></div>'+
+    '<div class="cov-chips">'+chipHtml+'</div>'+
+    '<div style="overflow:auto;max-height:420px"><table><thead><tr><th>บัญชี (SAP)</th><th>สถานะสเตทเมนท์</th><th style="text-align:right">รายการ SAP</th><th style="text-align:right">เงินเข้า SAP</th><th style="text-align:right">เงินออก SAP</th><th style="text-align:right">รายการแบงค์</th><th>สิ่งที่ต้องทำ</th></tr></thead><tbody>'+body+'</tbody></table></div>'+
+    '<div style="font-size:11px;color:var(--muted);margin-top:8px">คำนวณจากรายการ SAP (Q15 ไม่นับคู่กลับรายการ) ของบัญชีนั้นในเดือนที่เลือก เทียบกับสเตทเมนท์ที่โหลดจากชีต BANK_STATEMENTS · เฉพาะบัญชีธนาคาร 1112-xx / 1113-xx</div>';
+}
 function bkPopulate(){
+  try{bkCovRender();}catch(e){console.error(e);}
   var accts=bkAccounts();
   var accSel=document.getElementById('bkAcctSel');
   if(!accSel)return;
@@ -3812,6 +3877,7 @@ function bkFilteredDiffSummary(opts){
   var accts=bkAccounts().filter(function(a){return selSet[a.code];});
   var rowsOut=[]; // ต่อบัญชี+เดือนที่มีข้อมูลจริง — สำหรับตารางรายละเอียด + export
   var grandNetIn=0,grandBankIn=0,grandNetOut=0,grandBankOut=0,anyData=false;
+  var skippedNoBank=[]; // บัญชี+เดือนที่ SAP มีรายการแต่ยังไม่มีสเตทเมนท์ (ถูกข้ามในตาราง)
   accts.forEach(function(acctInfo){
     var allLegs=(G.sapAllBankLegs&&G.sapAllBankLegs[acctInfo.code])||[];
     yms.forEach(function(ym){
@@ -3828,7 +3894,11 @@ function bkFilteredDiffSummary(opts){
       var netDebit=totalDebit-revInfo.debitTotal;
       var netCredit=totalCredit-revInfo.creditTotal;
       var bankStats=bkBankSideStats(acctInfo.name||'',ym);
-      if(!bankStats||!bankStats.hasMonthData)return; // ไม่มี CSV เดือนนี้ — ข้าม (เหมือนกล่อง KPI เดิมที่ขึ้น "—")
+      if(!bankStats||!bankStats.hasMonthData){ // ไม่มี CSV เดือนนี้ — ข้าม (เหมือนกล่อง KPI เดิมที่ขึ้น "—") แต่จดไว้แจ้งเตือนว่าบัญชีนี้ SAP มีรายการ
+        var nSk=0;rows.forEach(function(r,i2){if(!revInfo.flags[i2])nSk++;});
+        if(nSk>0)skippedNoBank.push({acctCode:acctInfo.code,acctName:acctInfo.name,ym:ym,n:nSk,inn:netDebit,out:netCredit});
+        return;
+      }
       anyData=true;
       var diffIn=netDebit-bankStats.moneyIn;
       var diffOut=netCredit-bankStats.moneyOut;
@@ -3865,9 +3935,17 @@ function bkFilteredDiffSummary(opts){
     {label:'ผลต่าง (SAP+ / แบงค์−)',right:true,get:function(r){return fmtFull(r.eff);}},
     {label:'หมายเหตุ',get:function(r){return r.note;}}
   ],flatRows);
+  var skipBanner='';
+  if(skippedNoBank.length){
+    var skAcct={};skippedNoBank.forEach(function(x){skAcct[x.acctCode]=true;});
+    var skIn=skippedNoBank.reduce(function(t,x){return t+x.inn;},0),skOut=skippedNoBank.reduce(function(t,x){return t+x.out;},0);
+    skipBanner='<div style="background:rgba(212,168,67,0.12);border:1px solid var(--gold);border-radius:10px;padding:10px 14px;font-size:12.5px;margin-bottom:14px"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><span>⚠️ <b>มี '+Object.keys(skAcct).length+' บัญชี ('+skippedNoBank.length+' บัญชี-เดือน) ที่ SAP มีรายการ แต่ยังไม่มีสเตทเมนท์ — ไม่ได้รวมในตารางด้านล่าง</b> (SAP สุทธิ เงินเข้า '+fmtFull(skIn)+' · เงินออก '+fmtFull(skOut)+')</span><button class="hbtn" onclick="var d=document.getElementById(\'bkSkipList\');d.style.display=d.style.display===\'none\'?\'block\':\'none\'">ดูรายชื่อบัญชี</button></div>'+
+      '<div id="bkSkipList" style="display:none;margin-top:10px;overflow:auto;max-height:240px"><table class="bkd-dt" style="width:100%"><thead><tr><th>บัญชี</th><th>เดือน/ปี</th><th style="text-align:right">รายการ SAP</th><th style="text-align:right">เงินเข้า SAP สุทธิ</th><th style="text-align:right">เงินออก SAP สุทธิ</th></tr></thead><tbody>'+
+      skippedNoBank.map(function(x){return '<tr><td>'+bkDiffEsc(x.acctCode+' — '+(x.acctName||''))+'</td><td>'+ymLabelThai(x.ym)+'</td><td style="text-align:right">'+x.n+'</td><td style="text-align:right">'+fmtFull(x.inn)+'</td><td style="text-align:right">'+fmtFull(x.out)+'</td></tr>';}).join('')+'</tbody></table><div style="font-size:11px;color:var(--muted);margin-top:6px">โหลดสเตทเมนท์ที่ขาดที่เมนู "กระทบยอดธนาคาร" / "อ่าน PDF Bank" หรือดูสถานะทุกบัญชีที่ส่วน "ความครบถ้วนของสเตทเมนท์แบงค์" ด้านบนของหน้านี้</div></div></div>';
+  }
   var bodyHtml;
   if(!anyData){
-    bodyHtml='<div style="text-align:center;color:var(--muted);padding:28px 16px">⚠️ ไม่พบข้อมูลที่มีทั้ง SAP และ CSV แบงค์ตรงกันในบัญชี/เดือนที่เลือก</div>';
+    bodyHtml=skipBanner+'<div style="text-align:center;color:var(--muted);padding:28px 16px">⚠️ ไม่พบข้อมูลที่มีทั้ง SAP และ CSV แบงค์ตรงกันในบัญชี/เดือนที่เลือก</div>';
   } else {
     var diffInBadge=Math.abs(grandDiffIn)<0.01?'<span style="color:var(--green);font-weight:700">✅ ตรงกัน</span>':('<span style="color:var(--gold2);font-weight:700">'+(grandDiffIn>0?'+':'')+fmtFull(grandDiffIn)+'</span>');
     var diffOutBadge=Math.abs(grandDiffOut)<0.01?'<span style="color:var(--green);font-weight:700">✅ ตรงกัน</span>':('<span style="color:var(--gold2);font-weight:700">'+(grandDiffOut>0?'+':'')+fmtFull(grandDiffOut)+'</span>');
@@ -3906,7 +3984,7 @@ function bkFilteredDiffSummary(opts){
       var alertTot=allAlerts.reduce(function(x,a){return x+a.amt;},0);
       alertBanner='<div style="background:rgba(224,92,92,0.12);border:1px solid var(--red);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12.5px"><div style="font-weight:700;color:var(--red);margin-bottom:8px">⚠️ SAP กลับรายการ/ยกเลิก แต่แบงค์ตัดเงินจริง — '+allAlerts.length+' รายการ รวม '+fmtFull(alertTot)+' บาท <span style="font-weight:400;color:var(--muted)">(ตรวจว่าแบงค์ตัดจริงหรือโอนคืน ถ้าตัดจริงต้องบันทึกจ่าย/รับใหม่ใน SAP — ระวังจ่ายซ้ำ)</span></div>'+bkRevAlertTableHtml(allAlerts)+'</div>';
     }
-    bodyHtml=summaryHtml+alertBanner+tblHtml;
+    bodyHtml=summaryHtml+skipBanner+alertBanner+tblHtml;
   }
   openModal('📊 '+title, dmExportBtns('bkFilteredDiff')+bodyHtml);
 }
