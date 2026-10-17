@@ -1351,16 +1351,25 @@ function bkItemCat(it){
   return 'new';
 }
 function bkBreakFromItems(sapItems,bankItems){
-  var b={okNet:0,okN:0,dateNet:0,dateN:0,dateSap:0,badNet:0,badN:0};
+  var b={okNet:0,okN:0,dateNet:0,dateN:0,dateSap:0,badNet:0,badN:0,absNet:0,absN:0};
+  var newS=0,newB=0,newSn=0,newBn=0,rS=0,rB=0;
   function add(list,sign){list.forEach(function(it){
     var c=bkItemCat(it);
-    if(c==='ok'){b.okNet+=sign*it.amt;b.okN++;}
-    else if(c==='date'){b.dateNet+=sign*it.amt;b.dateN++;if(sign>0)b.dateSap+=Math.abs(it.amt);}
+    if(c==='ok'){b.okNet+=sign*it.amt;b.okN++;if(sign>0)rS+=it.amt;else rB+=it.amt;}
+    else if(c==='date'){b.dateNet+=sign*it.amt;b.dateN++;if(sign>0){b.dateSap+=Math.abs(it.amt);rS+=it.amt;}else rB+=it.amt;}
     else if(c==='bad'){b.badNet+=sign*it.amt;b.badN++;}
+    else{if(sign>0){newS+=it.amt;newSn++;}else{newB+=it.amt;newBn++;}}
   });}
   add(sapItems,1);add(bankItems,-1);
+  // ผู้ใช้ยืนยันเอง "ฝั่งเดียว" (เช่น ยืนยันฝั่งแบงค์ว่า "บันทึกใน SAP แล้ว") รายการคู่ของอีกฝั่งที่ยังไม่ได้ยืนยัน
+  // ถือว่าเคลียร์แล้วในวงเงินส่วนเกินที่ยืนยันไว้ (ไม่เกินยอดที่ยังไม่ได้ตรวจของอีกฝั่ง) — กันไม่ให้ยอดตามสูตร 0 กลายเป็นส่วนต่างหลักปลอม
+  var D=rS-rB;
+  if(D<-0.004&&newS>0.004){var a1=Math.min(newS,-D);b.absNet+=a1;if(a1>=newS-0.01)b.absN+=newSn;}
+  else if(D>0.004&&newB>0.004){var a2=Math.min(newB,D);b.absNet-=a2;if(a2>=newB-0.01)b.absN+=newBn;}
   return b;
 }
+function bkClearedNet(br){return br.okNet+br.absNet;}
+function bkRemOf(diff,br){return br?(diff-bkClearedNet(br)-br.dateNet):diff;}
 // แยกหมวดของบัญชี+เดือนที่เลือกอยู่ (ใช้ BK_STATE เหมือน bkDiffResolvedNet) — ใช้กับการ์ด KPI ส่วนต่าง
 function bkDiffBreak(kind){
   if(!BK_STATE.acctCode||!BK_STATE.ym)return null;
@@ -1390,7 +1399,7 @@ function bkDiffBreak(kind){
 function bkBreakBadgeHtml(br){
   if(!br)return '';
   var s='';
-  if(br.okN>0)s+='<div style="margin-top:5px;font-size:10.5px;font-weight:700;color:var(--green)">✅ ตรวจ/จับคู่แล้ว '+br.okN+' รายการ (ผลต่าง '+(br.okNet>0?'+':'')+fmtFull(br.okNet)+') — ไม่นับในตัวเลขหลัก</div>';
+  if(br.okN>0)s+='<div style="margin-top:5px;font-size:10.5px;font-weight:700;color:var(--green)">✅ ตรวจ/จับคู่แล้ว '+(br.okN+br.absN)+' รายการ (ผลต่าง '+(bkClearedNet(br)>0?'+':'')+fmtFull(bkClearedNet(br))+') — ไม่นับในตัวเลขหลัก</div>';
   if(br.dateN>0)s+='<div style="margin-top:5px;font-size:10.5px;font-weight:700;color:var(--gold2)">🟡 รอแก้วันที่ใน SAP '+br.dateN+' รายการ (ยอดตรงแต่คนละวัน ฝั่ง SAP '+fmtFull(br.dateSap)+')</div>';
   if(br.badN>0)s+='<div style="margin-top:5px;font-size:10.5px;font-weight:700;color:var(--red)">❌ ยืนยันว่าไม่ตรง '+br.badN+' รายการ — ยังนับในตัวเลขหลัก</div>';
   return s;
@@ -1398,7 +1407,7 @@ function bkBreakBadgeHtml(br){
 // การ์ด KPI "ส่วนต่าง" — ตัวเลขหลัก = "ต้องตรวจสอบจริง" (หักรายการที่ตรวจ/จับคู่แล้วและรอแก้วันที่ออก) สูตรเดิมยังแสดงในบรรทัดเล็ก
 // diff=null = ยังไม่มี CSV ของแบงค์เดือนนี้ ให้ขึ้น "—"
 function bkDiffKpi(icon,label,diff,sapVal,bankVal,fn,resolvedNet,br){
-  var rem=diff===null?null:(br?(diff-br.okNet-br.dateNet):diff);
+  var rem=diff===null?null:bkRemOf(diff,br);
   var isZero0=diff!==null&&Math.abs(diff)<0.01;
   var isZero=rem!==null&&Math.abs(rem)<0.01;
   var acc=diff===null?'blue':(isZero?'green':'gold');
@@ -3876,8 +3885,8 @@ function bkDiffDirHtml(isIn,sapItems,bankItems,diff){
   var chk='SAP ไม่มีในแบงค์ <b>'+fmtFull(sSum)+'</b> − แบงค์ไม่มีใน SAP <b>'+fmtFull(bSum)+'</b> = <b>'+fmtFull(listed)+'</b> ';
   chk+=Math.abs(res)<0.01?'<b style="color:var(--green)">✅ ตรงกับส่วนต่างตามสูตร</b>':'<span style="color:var(--gold2)">⚠️ ผลต่างที่อธิบายไม่ได้ <b>'+fmtFull(res)+'</b> (เช่น ยอดปัดเศษ/บรรทัดที่ SAP บันทึกเดบิตและเครดิตในบรรทัดเดียว) — ตรวจสอบเอง</span>';
   var brD=bkBreakFromItems(sapItems,bankItems);
-  var remD=diff-brD.okNet-brD.dateNet;
-  chk+='<div style="margin-top:6px;font-size:12px">แยกหมวด: <span style="color:var(--green)">\u2705 \u0e15\u0e23\u0e27\u0e08/\u0e08\u0e31\u0e1a\u0e04\u0e39\u0e48\u0e41\u0e25\u0e49\u0e27 '+fmtFull(brD.okNet)+' ('+brD.okN+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23)</span> &middot; <span style="color:var(--gold2)">\ud83d\udfe1 \u0e23\u0e2d\u0e41\u0e01\u0e49\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48 '+fmtFull(brD.dateNet)+' ('+brD.dateN+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23)</span> &middot; <b>'+(Math.abs(remD)<0.01?'<span style="color:var(--green)">\u2705 \u0e15\u0e49\u0e2d\u0e07\u0e15\u0e23\u0e27\u0e08\u0e2a\u0e2d\u0e1a\u0e08\u0e23\u0e34\u0e07 0.00</span>':'<span style="color:var(--gold2)">\u0e15\u0e49\u0e2d\u0e07\u0e15\u0e23\u0e27\u0e08\u0e2a\u0e2d\u0e1a\u0e08\u0e23\u0e34\u0e07 '+fmtFull(remD)+'</span>')+'</b></div>';
+  var remD=bkRemOf(diff,brD);
+  chk+='<div style="margin-top:6px;font-size:12px">แยกหมวด: <span style="color:var(--green)">\u2705 \u0e15\u0e23\u0e27\u0e08/\u0e08\u0e31\u0e1a\u0e04\u0e39\u0e48\u0e41\u0e25\u0e49\u0e27 '+fmtFull(bkClearedNet(brD))+' ('+(brD.okN+brD.absN)+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23)</span> &middot; <span style="color:var(--gold2)">\ud83d\udfe1 \u0e23\u0e2d\u0e41\u0e01\u0e49\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48 '+fmtFull(brD.dateNet)+' ('+brD.dateN+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23)</span> &middot; <b>'+(Math.abs(remD)<0.01?'<span style="color:var(--green)">\u2705 \u0e15\u0e49\u0e2d\u0e07\u0e15\u0e23\u0e27\u0e08\u0e2a\u0e2d\u0e1a\u0e08\u0e23\u0e34\u0e07 0.00</span>':'<span style="color:var(--gold2)">\u0e15\u0e49\u0e2d\u0e07\u0e15\u0e23\u0e27\u0e08\u0e2a\u0e2d\u0e1a\u0e08\u0e23\u0e34\u0e07 '+fmtFull(remD)+'</span>')+'</b></div>';
   return '<div><div class="bkd-h">'+dirLbl+' — SAP มี แต่แบงค์ไม่พบ <span>('+sapItems.length+' รายการ · รวม '+fmtFull(sSum)+')</span></div>'+bkDiffTblHtml(sapItems,true)+'</div>'+
     '<div><div class="bkd-h">'+dirLbl+' — แบงค์มี แต่ SAP ไม่พบ <span>('+bankItems.length+' รายการ · รวม '+fmtFull(bSum)+')</span></div>'+bkDiffTblHtml(bankItems,false)+'</div>'+
     '<div class="bkd-chk">'+chk+'</div>';
@@ -3970,8 +3979,8 @@ function bkFilteredDiffSummary(opts){
       grandNetOut+=netCredit;grandBankOut+=bankStats.moneyOut;
       var det=bkDiffItems(acctInfo,ym,sortedRows,revInfo);
       var brI=bkBreakFromItems(det.inSap,det.inBank),brO=bkBreakFromItems(det.outSap,det.outBank);
-      var remIn=diffIn-brI.okNet-brI.dateNet,remOut=diffOut-brO.okNet-brO.dateNet;
-      gOk.okIn+=brI.okNet;gOk.okOut+=brO.okNet;gOk.okN+=brI.okN+brO.okN;gOk.dateN+=brI.dateN+brO.dateN;gOk.dateIn+=brI.dateNet;gOk.dateOut+=brO.dateNet;gOk.badN+=brI.badN+brO.badN;
+      var remIn=bkRemOf(diffIn,brI),remOut=bkRemOf(diffOut,brO);
+      gOk.okIn+=bkClearedNet(brI);gOk.okOut+=bkClearedNet(brO);gOk.okN+=brI.okN+brO.okN+brI.absN+brO.absN;gOk.dateN+=brI.dateN+brO.dateN;gOk.dateIn+=brI.dateNet;gOk.dateOut+=brO.dateNet;gOk.badN+=brI.badN+brO.badN;
       rowsOut.push({acctCode:acctInfo.code,acctName:acctInfo.name,ym:ym,netIn:netDebit,bankIn:bankStats.moneyIn,diffIn:diffIn,remIn:remIn,brIn:brI,netOut:netCredit,bankOut:bankStats.moneyOut,diffOut:diffOut,remOut:remOut,brOut:brO,det:det,nItems:det.inSap.length+det.inBank.length+det.outSap.length+det.outBank.length});
     });
   });
