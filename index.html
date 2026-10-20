@@ -3806,15 +3806,24 @@ function bkFiltSetAll(cls,val){
 }
 // เปิด popup ให้ติ๊กเลือกได้หลายบัญชี + หลายเดือน/ปีพร้อมกัน ก่อนสร้างรายงาน "ยังไม่พบใน SAP"
 // (ค่าเริ่มต้น: ติ๊กบัญชีทั้งหมด, ติ๊กเฉพาะเดือน/ปีที่กำลังดูอยู่ในตาราง — ตามที่ตกลงกับผู้ใช้)
-function bkOpenReportFilter(){
+// จำตัวกรองล่าสุดที่เลือกไว้ — ปุ่ม "← กลับ" ในหน้ารายงานใช้เปิดตัวกรองกลับมาพร้อมติ๊กเดิม (ไม่ต้องเลือกใหม่)
+var BK_FILT_LAST=null;
+function bkFiltBackBtnHtml(opts){
+  if(!(opts&&opts.accounts&&opts.yms))return '';
+  return '<div style="margin-bottom:10px"><button class="hbtn hbtn-muted" onclick="bkOpenReportFilter(BK_FILT_LAST)">← กลับไปเลือกบัญชี/เดือน</button></div>';
+}
+function bkOpenReportFilter(preset){
+  if(!(preset&&preset.accounts&&preset.yms))preset=null;
+  var presetA={},presetY={};
+  if(preset){preset.accounts.forEach(function(c){presetA[c]=1;});preset.yms.forEach(function(y){presetY[y]=1;});}
   var accts=bkAccounts();
   var yms=bkAllAvailableYm();
   var curYm=document.getElementById('bkYmSel')?document.getElementById('bkYmSel').value:'';
   var acctHtml=accts.map(function(a){
-    return '<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer"><input type="checkbox" class="bkFiltAcct" value="'+a.code+'" checked> '+a.code+' — '+a.name+'</label>';
+    return '<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer"><input type="checkbox" class="bkFiltAcct" value="'+a.code+'"'+((!preset||presetA[a.code])?' checked':'')+'> '+a.code+' — '+a.name+'</label>';
   }).join('');
   var ymHtml=yms.map(function(ym){
-    var chk=(ym===curYm)?' checked':'';
+    var chk=preset?(presetY[ym]?' checked':''):((ym===curYm)?' checked':'');
     return '<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer"><input type="checkbox" class="bkFiltYm" value="'+ym+'"'+chk+'> '+ymLabelThai(ym)+'</label>';
   }).join('');
   var html=
@@ -3980,6 +3989,7 @@ function bkDiffFlatRows(rowsOut){
   return flat;
 }
 function bkFilteredDiffSummary(opts){
+  if(opts&&opts.accounts&&opts.yms)BK_FILT_LAST={accounts:opts.accounts.slice(),yms:opts.yms.slice()};
   var yms=opts.yms.slice().sort();
   var selSet={};
   opts.accounts.forEach(function(c){selSet[c]=true;});
@@ -4114,7 +4124,7 @@ function bkFilteredDiffSummary(opts){
     }
     bodyHtml=summaryHtml+skipBanner+alertBanner+tblHtml;
   }
-  openModal('📊 '+title, dmExportBtns('bkFilteredDiff')+bodyHtml);
+  openModal('📊 '+title, bkFiltBackBtnHtml(opts)+dmExportBtns('bkFilteredDiff')+bodyHtml);
 }
 // รายงานรวม "รายการยังไม่พบใน SAP" ของ *ทุกธนาคาร* — ปุ่มหลัก (ไม่ส่ง opts) = พฤติกรรมเดิม
 // (ทุกบัญชี + เดือน/ปีเดียวที่กำลังดูอยู่ในตาราง) ส่วน opts={accounts:[...],yms:[...]} มาจาก popup
@@ -4122,6 +4132,7 @@ function bkFilteredDiffSummary(opts){
 // ตรรกะจับคู่ชุดเดียวกับ bkRender/bkMatchSapBank ทุกประการ ไม่มี logic จับคู่ใหม่
 function bkAllBanksUnmatchedReport(opts){
   var multiMode=!!(opts&&opts.accounts&&opts.yms);
+  if(multiMode)BK_FILT_LAST={accounts:opts.accounts.slice(),yms:opts.yms.slice()};
   var yms;
   if(multiMode){
     yms=opts.yms.slice().sort();
@@ -4238,7 +4249,7 @@ function bkAllBanksUnmatchedReport(opts){
     bodyHtml='<div style="font-size:12px;color:var(--muted);margin:6px 0 12px">รวมทั้งหมด <b style="color:var(--text)">'+grandCount+' รายการ</b> &nbsp;·&nbsp; เงินเข้ารวม <b style="color:var(--green)">'+fmtFull(grandIn)+'</b> &nbsp;·&nbsp; เงินออกรวม <b style="color:var(--red)">'+fmtFull(grandOut)+'</b><br>แถวสีแดง = มีในสเตทเมนท์ธนาคารแล้ว แต่ยังหาบันทึกที่ตรงกัน (วันที่+ยอดเท่ากัน) ใน SAP ไม่พบ · แถวสีส้ม = พบยอดตรงกันใน SAP แล้ว แต่บันทึกคนละวันที่ (น่าจะแค่วันที่เอกสารกับวันที่แบงค์ตัดจริงไม่ตรงกัน ไม่ใช่รายการขาดหาย) · เฉพาะบัญชีและเดือนที่มีทั้งข้อมูล SAP และ CSV เท่านั้น</div>'+
       sectionsHtml;
   }
-  openModal('📋 '+title, dmExportBtns('bkAllBanksUnmatched')+bodyHtml);
+  openModal('📋 '+title, bkFiltBackBtnHtml(opts)+dmExportBtns('bkAllBanksUnmatched')+bodyHtml);
 }
 // ตรวจจับ "คู่กลับรายการ" อัตโนมัติ — จับคู่บรรทัดที่วันที่เดียวกัน ยอดเท่ากัน
 // เดบิต/เครดิตตรงข้ามกัน (เช่น บันทึกผิดแล้วกลับรายการในวันเดียวกัน) เพื่อไม่ให้ยอด
