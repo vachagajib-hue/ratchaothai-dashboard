@@ -1882,6 +1882,28 @@ async function saveManualMatchToSheet(side,docNo,status,note){
     return{success:false,error:data.error||'Apps Script returned no error detail'};
   }catch(err){return{success:false,error:err.message||String(err)};}
 }
+// รีเฟรชการ์ด KPI + ตารางรายการเดินบัญชีหลังกด "ยืนยันเอง" (เดิมหน้าต่างรายละเอียดเปิดซ้ำอย่างเดียว ต้องสลับเดือนถึงจะเห็นผล)
+// เก็บยอดยกมาที่ผู้ใช้พิมพ์เอง + ตำแหน่งเลื่อนของตารางไว้ เพราะ bkRender สร้างช่องยอดยกมาใหม่เป็นค่าเริ่มต้น
+function bkRefreshAfterConfirm(){
+  try{
+    if(!BK_STATE||!BK_STATE.acctCode)return;
+    var inp=document.getElementById('bkOpeningInput');
+    var op=inp?inp.value:null;
+    var body=document.getElementById('bkLedgerBody'),sc=null,scTop=0,el=body;
+    while(el&&el!==document.body){
+      try{var oy=getComputedStyle(el).overflowY;if(/(auto|scroll)/.test(oy)&&el.scrollHeight>el.clientHeight+1){sc=el;break;}}catch(e){}
+      el=el.parentElement;
+    }
+    if(sc)scTop=sc.scrollTop;
+    bkRender();
+    if(op!==null){
+      var inp2=document.getElementById('bkOpeningInput');
+      if(inp2&&inp2.value!==op){inp2.value=op;bkRecalc();}
+    }
+    var body2=document.getElementById('bkLedgerBody');
+    if(sc&&body2){var el2=body2;while(el2&&el2!==document.body){try{var oy2=getComputedStyle(el2).overflowY;if(/(auto|scroll)/.test(oy2)&&el2.scrollHeight>el2.clientHeight+1){el2.scrollTop=scTop;break;}}catch(e){}el2=el2.parentElement;}}
+  }catch(e){console.error('bkRefreshAfterConfirm',e);}
+}
 async function mmSave(){
   var p=MANUAL_MATCH_PENDING;if(!p)return;
   var note=(document.getElementById('mmNote')||{}).value||'';
@@ -1895,6 +1917,9 @@ async function mmSave(){
     if(msgEl){msgEl.style.color='var(--green)';msgEl.textContent='✅ บันทึกแล้ว';}
     setTimeout(function(){
       mmCloseDialog();
+      // bkRender→bkRecalc เขียนทับ BK_DETAIL_REOPEN ต้องจดค่าไว้ก่อน แล้วคืนค่าหลังรีเฟรช
+      var _R=BK_DETAIL_REOPEN;
+      if((p.side==='bkTxn'||p.side==='bkSapLeg')&&_R){bkRefreshAfterConfirm();BK_DETAIL_REOPEN=_R;}
       if((p.side==='reconRec'||p.side==='reconPay')&&RP_DETAIL_REOPEN){
         try{showRpDetail(RP_DETAIL_REOPEN.code,RP_DETAIL_REOPEN.side);}catch(e){}
       } else if(p.side==='bkTxn'&&BK_DETAIL_REOPEN){
@@ -1908,7 +1933,8 @@ async function mmSave(){
         // ทันที) ถ้ายืนยันจากตารางรายการเดินบัญชีหลัก (type='ledger') แค่รีเฟรชตารางเฉยๆ พอ
         try{
           if(BK_DETAIL_REOPEN.type==='diff')bkShowDiffDetail(BK_DETAIL_REOPEN.kind,BK_DETAIL_REOPEN.expectedDiff);
-          else bkRecalc();
+          else if(BK_DETAIL_REOPEN.type==='detail')bkShowBankDetail(BK_DETAIL_REOPEN.kind);
+          else if(BK_DETAIL_REOPEN.type==='all')bkAllBanksUnmatchedReport(BK_DETAIL_REOPEN.opts||null);
         }catch(e){}
       } else {
         try{dmRender();}catch(e){}
@@ -3629,20 +3655,26 @@ function bkShowDiffDetail(kind,expectedDiff){
   // แยก "รายการใหม่ ยังไม่มีเบาะแส" ออกจาก "รายการที่ตรวจสอบ/ยืนยัน/มีเบาะแสแล้ว" (มี hint หรือ
   // ยืนยันเองแล้ว ทั้งฝั่ง SAP ผ่าน bkSapLeg และฝั่งแบงค์ผ่าน bkTxn) — เพื่อโชว์ "ยอดที่ยังต้องตามหาจริง"
   // แยกให้เห็นชัด ยอดรวมเต็ม (sapSum/bankSum) ยังคงไว้เหมือนเดิมสำหรับเช็คยอดกับการ์ด KPI ด้านล่างสุด
-  var sapNew=sapRows.filter(function(r){return !r.hint && !r.ov;});
-  var sapResolved=sapRows.filter(function(r){return !!r.hint || !!r.ov;});
-  var bankNew=bankRows.filter(function(r){return !r.ov && !r.hint;});
-  var bankResolved=bankRows.filter(function(r){return !!r.ov || !!r.hint;});
-  var sapNewSum=sapNew.reduce(function(s,r){return s+r.amt;},0);
-  var bankNewSum=bankNew.reduce(function(s,r){return s+r.amt;},0);
-  var needsCheckNet=sapNewSum-bankNewSum;
+  // เกณฑ์เดียวกับการ์ด KPI (bkItemCat/bkBreakFromItems): ok=ตรวจ/จับคู่แล้ว, date=รอแก้วันที่, bad=ยืนยันว่าไม่ตรง, new=ยังไม่ตรวจ
+  // "ต้องตรวจสอบจริง" = new + bad (เดิมหน้าต่างนี้ถือว่า bad เป็นรายการที่เคลียร์แล้ว ทำให้ตัวเลขขัดกับการ์ด KPI)
+  function rowCat(r){return bkItemCat({amt:r.amt,ov:r.ov,fee:!!(r.hint&&bkHintIsFee(r.hint)),hint:(r.hint&&!bkHintIsFee(r.hint))?(r.hint.dates||['x']):null});}
+  var sapNewStrict=sapRows.filter(function(r){return !r.hint && !r.ov;});   // ใช้กับ "ยืนยันทั้งวัน" เท่านั้น
+  var bankNewStrict=bankRows.filter(function(r){return !r.ov && !r.hint;});
+  var sapNew=sapRows.filter(function(r){var c=rowCat(r);return c==='new'||c==='bad';});
+  var sapResolved=sapRows.filter(function(r){var c=rowCat(r);return c==='ok'||c==='date';});
+  var bankNew=bankRows.filter(function(r){var c=rowCat(r);return c==='new'||c==='bad';});
+  var bankResolved=bankRows.filter(function(r){var c=rowCat(r);return c==='ok'||c==='date';});
+  var brM=bkBreakFromItems(
+    sapRows.map(function(r){return {amt:r.amt,ov:r.ov,fee:!!(r.hint&&bkHintIsFee(r.hint)),hint:(r.hint&&!bkHintIsFee(r.hint))?(r.hint.dates||['x']):null};}),
+    bankRows.map(function(r){return {amt:r.amt,ov:r.ov,fee:!!(r.hint&&bkHintIsFee(r.hint)),hint:(r.hint&&!bkHintIsFee(r.hint))?(r.hint.dates||['x']):null};}));
+  var needsCheckNet=bkRemOf(diff,brM);
   // ยอดรวมวันเดียวกัน — ถ้าผลรวมของรายการที่ "ยังไม่มีเบาะแส" ในวันเดียวกันของฝั่ง SAP กับฝั่งแบงค์ตรงกัน
   // พอดี (คลาดเคลื่อนไม่เกิน 0.02 บาท) มักหมายถึงกรณีจ่าย/รับเป็นก้อนเดียวฝั่งแบงค์ แต่ฝั่ง SAP บันทึกแยก
   // เป็นหลายเอกสาร (หรือกลับกัน) — ธงนี้ช่วยลดภาระตรวจทีละรายการ พร้อมปุ่มยืนยันทั้งวันทีเดียว (เพิ่ม
   // 19 ก.ย. 2569 ตามคำขอ ไม่ต้องแก้ backend — ใช้ saveManualMatch เดิมกับทั้ง bkSapLeg และ bkTxn)
   var sapByDate={},bankByDate={},dateLabel={};
-  sapNew.forEach(function(r){var dk=dateKey(r.date);sapByDate[dk]=(sapByDate[dk]||0)+r.amt;dateLabel[dk]=r.date;});
-  bankNew.forEach(function(r){var dk=dateKey(r.date);bankByDate[dk]=(bankByDate[dk]||0)+r.amt;dateLabel[dk]=dateLabel[dk]||r.date;});
+  sapNewStrict.forEach(function(r){var dk=dateKey(r.date);sapByDate[dk]=(sapByDate[dk]||0)+r.amt;dateLabel[dk]=r.date;});
+  bankNewStrict.forEach(function(r){var dk=dateKey(r.date);bankByDate[dk]=(bankByDate[dk]||0)+r.amt;dateLabel[dk]=dateLabel[dk]||r.date;});
   var dayMatchDates=Object.keys(sapByDate).filter(function(dk){
     return bankByDate.hasOwnProperty(dk) && sapByDate[dk]>0.004 && Math.abs(sapByDate[dk]-bankByDate[dk])<0.02;
   }).sort();
@@ -3688,14 +3720,18 @@ function bkShowDiffDetail(kind,expectedDiff){
       }).join('')+
       '</div>';
   }
+  var remAbs0=Math.abs(needsCheckNet)<0.01;
+  var headHtml='<div style="background:rgba(212,168,67,0.12);border:1px solid var(--gold);border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:16px">&#128269; <b>ยอดที่ยังต้องตรวจสอบจริง</b> (ตัดรายการที่ตรวจ/จับคู่แล้ว และรอแก้วันที่ออก): '+
+    (remAbs0?'<b style="color:var(--green)">&#9989; 0.00</b>':'<b style="color:var(--gold2)">'+fmtFull(needsCheckNet)+'</b>')+
+    '<div style="margin-top:6px;font-size:12px;color:var(--muted)">ส่วนต่างตามสูตร '+fmtFull(diff)+' = <span style="color:var(--green)">ตรวจ/จับคู่แล้ว '+fmtFull(bkClearedNet(brM))+'</span> + <span style="color:var(--gold2)">รอแก้วันที่ '+fmtFull(brM.dateNet)+'</span> + ต้องตรวจสอบจริง '+fmtFull(needsCheckNet)+'</div></div>';
   var html=
     '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">แสดงเฉพาะรายการที่ยัง "ไม่พบอีกฝั่ง" ตามเกณฑ์จับคู่วันที่+ยอดตรงเป๊ะ ซึ่งรวมกันแล้วเท่ากับส่วนต่างบนการ์ด KPI พอดี — รายการที่มีป้าย &#128992;/&#9989;/&#10060; กำกับ (ตรวจสอบ/ยืนยันแล้ว) จะถูกจางลงและแยกไว้ด้านล่างของแต่ละตาราง ไม่ต้องตามซ้ำ &middot; กดที่สถานะของแต่ละรายการ (ทั้งฝั่ง SAP และฝั่งแบงค์) เพื่อยืนยัน/บันทึกผลตรวจสอบเองได้ทันที</div>'+
     dayMatchHtml+
-    '<div style="background:rgba(212,168,67,0.12);border:1px solid var(--gold);border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:16px">&#128269; <b>ยอดที่ยังต้องตรวจสอบจริง</b> (ตัดรายการที่ยืนยัน/มีเบาะแสแล้วออก): SAP '+fmtFull(sapNewSum)+' &minus; แบงค์ '+fmtFull(bankNewSum)+' = <b style="color:var(--gold2)">'+fmtFull(needsCheckNet)+'</b></div>'+
-    '<div style="font-size:12.5px;font-weight:700;color:var(--text2);margin:10px 0 6px">&#128215; ฝั่ง SAP ที่ยังไม่พบในแบงค์ <span style="font-weight:400;color:var(--muted)">('+sapRows.length+' รายการ &middot; ใหม่ '+sapNew.length+')</span></div>'+
+    headHtml+
+    '<div style="font-size:12.5px;font-weight:700;color:var(--text2);margin:10px 0 6px">&#128215; ฝั่ง SAP ที่ยังไม่พบในแบงค์ <span style="font-weight:400;color:var(--muted)">('+sapRows.length+' รายการ &middot; ต้องตรวจ '+sapNew.length+')</span></div>'+
     '<div style="overflow:auto;max-height:260px"><table style="width:100%;table-layout:fixed"><colgroup><col style="width:90px"><col><col style="width:130px"></colgroup><thead><tr><th>วันที่</th><th>รายละเอียด (SAP)</th><th style="text-align:right">จำนวนเงิน</th></tr></thead><tbody>'+(sapRowsHtml||noRowsTpl)+'</tbody></table></div>'+
     '<div style="text-align:right;font-size:12.5px;font-weight:700;padding:6px 8px;border-top:1px solid var(--border);margin-bottom:16px">รวม SAP ที่ยังไม่พบในแบงค์ (ทั้งหมด): '+fmtFull(sapSum)+'</div>'+
-    '<div style="font-size:12.5px;font-weight:700;color:var(--text2);margin:10px 0 6px">&#127974; ฝั่งแบงค์ที่ยังไม่พบใน SAP <span style="font-weight:400;color:var(--muted)">('+bankRows.length+' รายการ &middot; ใหม่ '+bankNew.length+')</span></div>'+
+    '<div style="font-size:12.5px;font-weight:700;color:var(--text2);margin:10px 0 6px">&#127974; ฝั่งแบงค์ที่ยังไม่พบใน SAP <span style="font-weight:400;color:var(--muted)">('+bankRows.length+' รายการ &middot; ต้องตรวจ '+bankNew.length+')</span></div>'+
     '<div style="overflow:auto;max-height:260px"><table style="width:100%;table-layout:fixed"><colgroup><col style="width:90px"><col><col style="width:130px"></colgroup><thead><tr><th>วันที่</th><th>รายละเอียด (แบงค์)</th><th style="text-align:right">จำนวนเงิน</th></tr></thead><tbody>'+(bankRowsHtml||noRowsTpl)+'</tbody></table></div>'+
     '<div style="text-align:right;font-size:12.5px;font-weight:700;padding:6px 8px;border-top:1px solid var(--border);margin-bottom:16px">รวมแบงค์ที่ยังไม่พบใน SAP (ทั้งหมด): '+fmtFull(bankSum)+'</div>'+
     '<div style="background:'+checksumBg+';border:1px solid '+checksumBorder+';border-radius:10px;padding:10px 14px;font-size:13px">เช็คยอดเต็ม: '+fmtFull(sapSum)+' &minus; '+fmtFull(bankSum)+' = <b>'+fmtFull(diff)+'</b> — '+checksumNote+'</div>';
@@ -3743,6 +3779,7 @@ async function bkBulkConfirmDayMatch(kind,dk,expectedDiff,btnId){
       if(btn){btn.disabled=false;btn.textContent='บันทึกไม่สำเร็จ '+failed.length+' รายการ — กดลองใหม่';}
       return;
     }
+    bkRefreshAfterConfirm();
     BK_DETAIL_REOPEN={type:'diff',kind:kind,expectedDiff:expectedDiff};
     bkShowDiffDetail(kind,expectedDiff);
   }catch(e){
