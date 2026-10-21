@@ -4299,14 +4299,14 @@ var INC_CSS='<style id="incStyle">'+
  '.incp tr.inc-sum td{background:#FBE1E1;color:#b91c1c;font-weight:800}'+
  '.incp .inc-monthbar{background:#b91c1c;color:#fff;font-weight:800;padding:6px 10px;margin:10px 0 4px;font-size:13.5px;display:flex;justify-content:space-between}'+
  '.incp .inc-acctbar{background:#334155;color:#fff;font-weight:700;padding:5px 9px;margin:12px 0 5px;display:flex;justify-content:space-between;font-size:12px}'+
- '.incp .inc-set{margin-bottom:8px}.incp .inc-note{font-size:11px;color:#555;margin:4px 0}'+
+ '.incp .inc-printonly{display:none}.incp .inc-set{margin-bottom:8px}.incp .inc-note{font-size:11px;color:#555;margin:4px 0}'+
  '.incp .inc-warn{font-size:11.5px;color:#92400e;background:#FEF3C7;border:1px solid #F59E0B;border-radius:4px;padding:5px 9px;margin:6px 0}'+
  '.incp .inc-okbox{font-size:12.5px;color:#15803d;background:#ECFDF3;border:1px solid #15803d;border-radius:4px;padding:8px 10px;font-weight:700}'+
  '.incp .inc-hint{font-size:10.5px;color:#92400e;margin-top:2px}'+
  '.incp .inc-pill{display:inline-block;padding:0 7px;border-radius:9px;font-size:10.5px;font-weight:700;color:#fff;background:#15803d}.incp .inc-pill.bad{background:#b91c1c}.incp .inc-pill.bad.warn{background:#b45309}.incp .inc-pill.done{background:#1d4ed8}.incp .inc-pill.none{background:#64748b}'+
  '@media print{#printArea .incp .inc-acct{page-break-inside:avoid;break-inside:avoid}#printArea .incp .inc-acct.inc-long{page-break-inside:auto;break-inside:auto}#printArea .incp .inc-acctbar,#printArea .incp .inc-monthbar,#printArea .incp .inc-h,#printArea .incp .inc-note{page-break-after:avoid;break-after:avoid}#printArea .incp{font-size:12px}#printArea .incp table.inc-t{margin:6px 0;border-collapse:collapse;border:none}'+
  '#printArea .incp table.inc-t th,#printArea .incp table.inc-t td{padding:4px 7px;font-size:11.5px;text-align:left}#printArea .incp table.inc-t th{text-align:center}'+
- '#printArea .incp table.inc-t td.inc-r{text-align:right}#printArea .incp table.inc-t td.inc-c{text-align:center}#printArea .incp .inc-noprint{display:none}#printArea .incp .inc-amtrow{display:flex;justify-content:space-between;gap:8px}'+
+ '#printArea .incp table.inc-t td.inc-r{text-align:right}#printArea .incp table.inc-t td.inc-c{text-align:center}#printArea .incp .inc-noprint{display:none}#printArea .incp .inc-printonly{display:block}#printArea .incp .inc-cmp{display:none}#printArea .incp .inc-secno{display:none}#printArea .incp table.inc-det col:nth-child(1){width:10%!important}#printArea .incp table.inc-det col:nth-child(2){width:12%!important}#printArea .incp table.inc-det col:nth-child(3){width:26%!important}#printArea .incp table.inc-det col:nth-child(4){width:28%!important}#printArea .incp table.inc-det col:nth-child(5){width:12%!important}#printArea .incp table.inc-det col:nth-child(6){width:12%!important}#printArea .incp table.inc-det col:nth-child(7){display:none}#printArea .incp .inc-amtrow{display:flex;justify-content:space-between;gap:8px}'+
  '#printArea .incp tbody tr:nth-child(even){background:transparent}#printArea .incp tr{page-break-inside:avoid}#printArea .incp .inc-set{page-break-inside:avoid}}'+
  '</style>';
 
@@ -4338,7 +4338,7 @@ function incBuildOnly(opts){
   });});
   function statePill(b){return b.state==='ok'?'<span class="inc-pill">ตรง</span>':(b.state==='done'?'<span class="inc-pill done">ตรวจแล้ว</span>':(b.state==='bad'?'<span class="inc-pill bad">ตรวจ</span>':'<span class="inc-pill none">ไม่มีสเตทเมนท์</span>'));}
   var h=[];
-  h.push('<h3 class="inc-h">1. สรุปเงินรับตามเอกสาร Incoming Payment แยกเดือน และแยกบัญชี</h3>');
+  h.push('<div class="inc-sec1 inc-noprint"><h3 class="inc-h">1. สรุปเงินรับตามเอกสาร Incoming Payment แยกเดือน และแยกบัญชี</h3>');
   if(!blocks.length){
     h.push('<div class="inc-note">ไม่พบเอกสาร Incoming Payment ในบัญชี/เดือนที่เลือก</div>');
   }else{
@@ -4363,17 +4363,19 @@ function incBuildOnly(opts){
       missing.map(function(m){var d=m.dg;return '<tr><td>'+incEsc(incAcctNo(m.acct))+' · '+ymLabelThai(m.ym)+'</td><td style="text-align:right">'+f2(m.amt)+'</td><td style="text-align:right">'+d.code+'</td><td style="text-align:right">'+d.month+'</td><td style="text-align:right">'+d.badDate+'</td><td style="text-align:right">'+d.variant+'</td><td style="text-align:right">'+d.byName+'</td></tr>';}).join('')+
       '</table><div style="margin-top:6px">แถว Q01 ทั้งหมดที่โหลด: '+missing[0].dg.total+' แถว · ถ้าคอลัมน์ "แถว Q01 ของบัญชีนี้" เป็น 0 = แดชบอร์ดไม่ได้รับแถวของบัญชีนี้เลย (ตรวจชีต Q01 / รีโหลดหน้า) · ถ้ามีแถวแต่ "ในเดือนนี้" เป็น 0 = วันที่ในชีตผิดเดือน/อ่านไม่ได้</div></div>');
   }
+  h.push('</div>');
+  if(!blocks.length)h.push('<div class="inc-note inc-printonly">ไม่พบเอกสาร Incoming Payment ในบัญชี/เดือนที่เลือก</div>');
   // 2) รายละเอียด
   var colg='<colgroup><col style="width:8%"><col style="width:10%"><col style="width:22%"><col style="width:22%"><col style="width:10%"><col style="width:12%"><col style="width:16%"></colgroup>';
   months.forEach(function(ym){
     var bs=blocks.filter(function(b){return b.ym===ym;});if(!bs.length)return;
     var mt=bs.reduce(function(a,b){return a+b.tot;},0);
-    h.push('<div class="inc-month"><div class="inc-monthbar"><span>2. รายละเอียดเดือน '+ymLabelThai(ym)+' — รวม '+bs.length+' บัญชี</span><span>'+f2(mt)+'</span></div>');
+    h.push('<div class="inc-month"><div class="inc-monthbar"><span><span class="inc-secno">2. </span>รายละเอียดเดือน '+ymLabelThai(ym)+' — รวม '+bs.length+' บัญชี</span><span>'+f2(mt)+'</span></div>');
     h.push('<div class="inc-note">เรียงตามวันที่และเลขที่เอกสาร</div>');
     bs.forEach(function(b){
       var ap=incAcctParts(b.acct);
       h.push('<div class="inc-acct'+(b.n>15?' inc-long':'')+'"><div class="inc-acctbar"><span>บัญชี '+b.acct.code+' — '+incEsc(ap.nm)+(ap.no?' '+incEsc(ap.no):'')+'</span><span>'+b.n+' เอกสาร · รวม '+f2(b.tot)+'</span></div>');
-      h.push('<table class="inc-t">'+colg+'<thead><tr><th>วันที่</th><th>เลขที่เอกสาร</th><th>รหัส / ชื่อลูกค้า</th><th>รายละเอียด / หมายเหตุ</th><th>ผู้บันทึก</th><th>จำนวนเงิน</th><th>เทียบแบงค์</th></tr></thead><tbody>');
+      h.push('<table class="inc-t inc-det">'+colg+'<thead><tr><th>วันที่</th><th>เลขที่เอกสาร</th><th>รหัส / ชื่อลูกค้า</th><th>รายละเอียด / หมายเหตุ</th><th>ผู้บันทึก</th><th>จำนวนเงิน</th><th class="inc-cmp">เทียบแบงค์</th></tr></thead><tbody>');
       b.rows.forEach(function(x){
         var d=x.d,det=[d.detail,d.remarks].filter(Boolean).join(' · '),cell,txt;
         if(x.st==='ok'){cell='<span class="inc-pill">ตรง</span>';txt='ตรง';}
@@ -4381,10 +4383,10 @@ function incBuildOnly(opts){
         else if(x.st==='nf'){cell='<span class="inc-pill bad">ไม่พบในสเตทเมนท์</span>'+(d.hint?'<div class="inc-hint">'+incEsc(d.hint)+'</div>':'');txt='ไม่พบในสเตทเมนท์'+(d.hint?' · '+d.hint:'');}
         else{cell='<span class="inc-pill none">ยังไม่มีสเตทเมนท์</span>';txt='ยังไม่มีสเตทเมนท์ให้เทียบ';}
         if(x.st!=='ok'&&x.mark&&x.mark.state!=='none'){cell+='<div style="margin-top:3px">'+incMarkHtml(x.mark)+'</div>';txt+=' · '+incMarkTxt(x.mark);}
-        h.push('<tr><td class="inc-c">'+incDmyTh(d.date)+'</td><td class="inc-nw">'+incEsc(d.docNo)+'</td><td>'+(d.custCode?incEsc(d.custCode)+' — ':'')+incEsc(d.cust)+'</td><td>'+incEsc(det)+'</td><td class="inc-c">'+incEsc(d.by)+'</td><td class="inc-r">'+f2(d.amt)+'</td><td class="inc-c" style="white-space:normal">'+cell+'</td></tr>');
+        h.push('<tr><td class="inc-c">'+incDmyTh(d.date)+'</td><td class="inc-nw">'+incEsc(d.docNo)+'</td><td>'+(d.custCode?incEsc(d.custCode)+' — ':'')+incEsc(d.cust)+'</td><td>'+incEsc(det)+'</td><td class="inc-c">'+incEsc(d.by)+'</td><td class="inc-r">'+f2(d.amt)+'</td><td class="inc-c inc-cmp" style="white-space:normal">'+cell+'</td></tr>');
         flat.push({month:ymLabelThai(ym),acct:b.acct.code+' — '+b.acct.name,date:incDmyTh(d.date),docNo:d.docNo,custCode:d.custCode||'',cust:d.cust||'',detail:det,by:d.by||'',amt:f2(d.amt),status:txt});
       });
-      h.push('<tr class="inc-sum"><td colspan="5" style="text-align:right">รวมบัญชี '+incEsc(incAcctNo(b.acct))+'</td><td class="inc-r">'+f2(b.tot)+'</td><td></td></tr></tbody></table></div>');
+      h.push('<tr class="inc-sum"><td colspan="5" style="text-align:right">รวมบัญชี '+incEsc(incAcctNo(b.acct))+'</td><td class="inc-r">'+f2(b.tot)+'</td><td class="inc-cmp"></td></tr></tbody></table></div>');
     });
     h.push('</div>');
   });
@@ -4407,8 +4409,7 @@ function incShow(opts){
 function incPrint(){
   if(!INC_RES)return;
   var o=INC_RES;
-  var meta='บัญชี '+o.accts.length+' บัญชี &nbsp;·&nbsp; เดือน '+o.months.map(ymLabelThai).join(', ')+' &nbsp;·&nbsp; พิมพ์เมื่อ '+printTimestamp();
-  document.getElementById('printArea').innerHTML=prHeaderHtml('รายงานเงินรับเข้าบัญชีธนาคารจริง เฉพาะเอกสาร Incoming Payment (SAP)',meta)+'<div class="incp">'+o.html+'</div>'+prSignatureHtml(['ผู้ตรวจสอบ Bank','ผู้จัดเก็บเอกสาร']);
+  document.getElementById('printArea').innerHTML=prHeaderHtml('รายงานเงินรับเข้าบัญชีธนาคารจริง เฉพาะเอกสาร Incoming Payment (SAP)','')+'<div class="incp">'+o.html+'</div>'+prSignatureHtml(['ผู้ตรวจสอบ Bank','ผู้จัดเก็บเอกสาร']);
   prPrint({orient:'landscape',fixedLayout:true});
 }
 
