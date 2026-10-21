@@ -3865,11 +3865,31 @@ function incAcctParts(acct){var nm=String((acct&&acct.name)||'').trim(),m=nm.mat
 function incAcctNo(acct){var p=incAcctParts(acct);return p.no||(acct&&acct.code)||'';}
 function incAcctNoByCode(code){var a=bkAccounts().filter(function(x){return x.code===code;})[0];return a?incAcctNo(a):code;}
 function incAcctCell(acct){var p=incAcctParts(acct);return acct.code+' — '+incEsc(p.nm)+(p.no?'<br>'+incEsc(p.no):'');}
+// ทำให้ทนรหัสบัญชี/วันที่ที่อ่านจากชีตผิดรูปแบบเล็กน้อย: อักขระซ่อน (zero-width/NBSP), ขีดคนละชนิด, วันที่เป็น Date/ISO/เลขลำดับของ Sheets
+function incNormCode(v){return String(v==null?'':v).replace(/[\u200B-\u200D\uFEFF\u00A0]/g,'').replace(/[\u2010-\u2015\u2212]/g,'-').trim();}
+function incDocDate(v){
+  var d=toSlashDMY(v);if(d)return d;
+  if(typeof v==='number'&&v>32000&&v<73000){var u=new Date(Math.round((v-25569)*86400000));return String(u.getUTCDate()).padStart(2,'0')+'/'+String(u.getUTCMonth()+1).padStart(2,'0')+'/'+u.getUTCFullYear();}
+  var t=String(v==null?'':v);
+  if(/^\d{4}-\d{2}-\d{2}T/.test(t)){var dt=new Date(t);if(!isNaN(dt.getTime()))return toSlashDMY(dt);}
+  var m1=t.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);if(m1)return m1[3].padStart(2,'0')+'/'+m1[2].padStart(2,'0')+'/'+m1[1];
+  var m2=t.trim().match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);if(m2)return m2[1].padStart(2,'0')+'/'+m2[2].padStart(2,'0')+'/'+m2[3];
+  return '';
+}
+function incQ01Diag(acct,ym){
+  var all=G.recRows||[],num=incAcctParts(acct).no.replace(/\D/g,''),o={total:all.length,code:0,month:0,badDate:0,variant:0,byName:0};
+  all.forEach(function(r){
+    var raw=String(r.bankCode||''),m=incNormCode(raw)===acct.code;
+    if(m){o.code++;var d=incDocDate(r.date);if(!d)o.badDate++;else if(bkYmOf(d)===ym)o.month++;if(raw.trim()!==acct.code)o.variant++;}
+    else if(num&&String(r.bankName||'').replace(/\D/g,'').indexOf(num)>=0)o.byName++;
+  });
+  return o;
+}
 function incStmtTxns(acct){var f=bkFindBankAccount(acct.name||'');return f?(f.account.txns||[]):null;}
 function incMonths(){
   var set={};
   bkAllAvailableYm().forEach(function(y){set[y]=1;});
-  (G.recRows||[]).forEach(function(r){if(/^111[23]-/.test(String(r.bankCode||'').trim())){var y=bkYmOf(toSlashDMY(r.date));if(y)set[y]=1;}});
+  (G.recRows||[]).forEach(function(r){if(/^111[23]-/.test(incNormCode(r.bankCode))){var y=bkYmOf(incDocDate(r.date));if(y)set[y]=1;}});
   bkAccounts().forEach(function(a){var t=incStmtTxns(a);if(t)t.forEach(function(x){var y=bkYmOf(x.date);if(y)set[y]=1;});});
   return Object.keys(set).sort();
 }
@@ -3940,8 +3960,8 @@ function incGlLabel(l){
 }
 function incMatch(acct,ym){
   var txns=incStmtTxns(acct);
-  var docs=(G.recRows||[]).filter(function(r){return String(r.bankCode||'').trim()===acct.code;}).map(function(r){
-    return {date:toSlashDMY(r.date),docNo:String(r.docNo||''),custCode:r.custCode||'',cust:r.custName||'',amt:r.amt||0,
+  var docs=(G.recRows||[]).filter(function(r){return incNormCode(r.bankCode)===acct.code;}).map(function(r){
+    return {date:incDocDate(r.date),docNo:String(r.docNo||''),custCode:r.custCode||'',cust:r.custName||'',amt:r.amt||0,
       detail:[r.itemDetail,r.itemDetails2].filter(Boolean).join(' · '),remarks:r.remarks||'',by:r.docCreator||'',src:'inc'};
   }).filter(function(d){return bkYmOf(d.date)===ym&&Math.abs(d.amt)>0.004;});
   docs.sort(function(a,b){var ka=dateKey(a.date),kb=dateKey(b.date);return ka!==kb?(ka<kb?-1:1):(a.docNo<b.docNo?-1:1);});
@@ -4306,7 +4326,7 @@ function incBuildOnly(opts){
       r.mism.forEach(function(m){m.docs.forEach(function(d){rows.push({d:d,st:'mism',m:m,mark:m.mark});});});
       r.exDocs.forEach(function(d){rows.push({d:d,st:'nf',mark:d.mark});});
     }
-    if(!rows.length){if(r.hasStmt&&r.stmtAll>0.004)missing.push({ym:ym,acct:a,amt:r.stmtAll});return;}
+    if(!rows.length){if(r.hasStmt&&r.stmtAll>0.004)missing.push({ym:ym,acct:a,amt:r.stmtAll,dg:incQ01Diag(a,ym)});return;}
     rows.forEach(function(x){if(x.st==='nostmt')x.mark=incMark(a,[x.d],[]);});
     rows.sort(function(x,y){var ka=dateKey(x.d.date),kb=dateKey(y.d.date);if(ka!==kb)return ka<kb?-1:1;var na=String(x.d.docNo),nb=String(y.d.docNo);return na<nb?-1:(na>nb?1:0);});
     var b={ym:ym,acct:a,rows:rows,tot:0,ok:0,n:rows.length,nOk:0};
@@ -4338,7 +4358,11 @@ function incBuildOnly(opts){
     if(months.length>1)h.push('<tr class="inc-sum"><td colspan="2" style="text-align:right">รวมทั้งหมด</td><td class="inc-c">'+g.n+'</td><td class="inc-r">'+f2(g.tot)+'</td><td class="inc-r">'+f2(g.ok)+'</td><td class="inc-r">'+f2(g.bad)+'</td><td></td></tr>');
     h.push('</tbody></table>');
   }
-  if(missing.length)h.push('<div class="inc-warn inc-noprint">⚠ บัญชี/เดือนที่มีเงินเข้าตามสเตทเมนท์ แต่ไม่พบเอกสาร Incoming ในข้อมูลที่โหลด (ไม่แสดงในรายงาน): '+missing.map(function(m){return incAcctNo(m.acct)+' '+ymLabelThai(m.ym)+' ('+f2(m.amt)+')';}).join(' · ')+' — ถ้าใน SAP มีเอกสารอยู่ ให้รีโหลดหน้าแดชบอร์ด/ตรวจชีต Q01</div>');
+  if(missing.length){
+    h.push('<div class="inc-warn inc-noprint"><b>⚠ ไม่พบเอกสาร Incoming ของบัญชี/เดือนต่อไปนี้ ทั้งที่มีเงินเข้าตามสเตทเมนท์</b> (ไม่แสดงในรายงาน) — ตรวจข้อมูล Q01 ที่แดชบอร์ดโหลดมา:<table style="width:100%;border-collapse:collapse;margin-top:6px;font-size:11.5px"><tr style="text-align:left"><th>บัญชี / เดือน</th><th style="text-align:right">เงินเข้าตามสเตทเมนท์</th><th style="text-align:right">แถว Q01 ของบัญชีนี้ (ทุกเดือน)</th><th style="text-align:right">ในเดือนนี้</th><th style="text-align:right">อ่านวันที่ไม่ได้</th><th style="text-align:right">รหัสมีอักขระแปลก</th><th style="text-align:right">พบเลขบัญชีในชื่อ แต่รหัสไม่ตรง</th></tr>'+
+      missing.map(function(m){var d=m.dg;return '<tr><td>'+incEsc(incAcctNo(m.acct))+' · '+ymLabelThai(m.ym)+'</td><td style="text-align:right">'+f2(m.amt)+'</td><td style="text-align:right">'+d.code+'</td><td style="text-align:right">'+d.month+'</td><td style="text-align:right">'+d.badDate+'</td><td style="text-align:right">'+d.variant+'</td><td style="text-align:right">'+d.byName+'</td></tr>';}).join('')+
+      '</table><div style="margin-top:6px">แถว Q01 ทั้งหมดที่โหลด: '+missing[0].dg.total+' แถว · ถ้าคอลัมน์ "แถว Q01 ของบัญชีนี้" เป็น 0 = แดชบอร์ดไม่ได้รับแถวของบัญชีนี้เลย (ตรวจชีต Q01 / รีโหลดหน้า) · ถ้ามีแถวแต่ "ในเดือนนี้" เป็น 0 = วันที่ในชีตผิดเดือน/อ่านไม่ได้</div></div>');
+  }
   // 2) รายละเอียด
   var colg='<colgroup><col style="width:8%"><col style="width:10%"><col style="width:22%"><col style="width:22%"><col style="width:10%"><col style="width:12%"><col style="width:16%"></colgroup>';
   months.forEach(function(ym){
