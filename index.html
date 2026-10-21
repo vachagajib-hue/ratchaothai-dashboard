@@ -3855,6 +3855,7 @@ function bkOpenReportFilter(preset){
 // กฎ: วันที่ต้องตรงเป๊ะ + ยอดตรงเป๊ะ (ตามกฎธุรกิจเดิม ไม่ผ่อนวันที่) — รอบ 1: 1 ต่อ 1, รอบ 2: สเตทเมนท์ 1 บรรทัด = Incoming หลายใบ (วันเดียวกัน),
 // รอบ 3: Incoming 1 ใบ = สเตทเมนท์หลายบรรทัด (วันเดียวกัน) — ที่จับคู่ได้เป็น "ชุด" ที่เหลือขึ้นหัวข้อ "รายการที่ต้องตรวจสอบ" (ไม่ซ่อน)
 // ไม่แตะตรรกะกระทบยอดเดิมเลย (อ่านอย่างเดียวจาก G.recRows + RBANK_DATA)
+var INC_KW=[];
 var INC_LAST=null,INC_RES=null,INC_MODE='inc'; // 'inc' = เฉพาะเอกสาร Incoming (ค่าเริ่มต้น) · 'all' = รวม GL/JE (Q15)
 function incEsc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function incDmyTh(d){var m=String(d||'').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);return m?(m[1]+'/'+m[2]+'/'+(parseInt(m[3],10)+543)):String(d||'—');}
@@ -3971,6 +3972,15 @@ function incMatch(acct,ym){
       var combo=bkComboSubsetSum(idx.map(function(li){return {idx:li,cents:Math.round(lines[li].amt*100)};}),Math.round(d.amt*100),12);
       if(combo&&combo.length>=2){iU[di]=true;combo.forEach(function(li){lU[li]=true;});res.sets.push({date:d.date,lines:combo.slice().sort(function(a,b){return a-b;}).map(function(li){return lines[li];}),docs:[d]});}
     });
+    // รอบ 4: หลายบรรทัดสเตทเมนท์ ↔ หลายเอกสาร ในวันเดียวกัน — ยอดรวมของวันนั้นตรงกันเป๊ะ (เช่น แบงค์ 2 บรรทัด / Incoming 4 ใบ)
+    var dayG={};
+    items.forEach(function(d,di){if(iU[di])return;var k=dateKey(d.date);(dayG[k]=dayG[k]||{di:[],li:[]}).di.push(di);});
+    lines.forEach(function(l,li){if(lU[li])return;var k=dateKey(l.date);if(dayG[k])dayG[k].li.push(li);});
+    Object.keys(dayG).forEach(function(k){
+      var g=dayG[k];if(!g.di.length||!g.li.length)return;
+      var sd=g.di.reduce(function(a,di){return a+items[di].amt;},0),sl=g.li.reduce(function(a,li){return a+lines[li].amt;},0);
+      if(Math.abs(sd-sl)<0.01){g.di.forEach(function(di){iU[di]=true;});g.li.forEach(function(li){lU[li]=true;});res.sets.push({date:lines[g.li[0]].date,lines:g.li.map(function(li){return lines[li];}),docs:g.di.map(function(di){return items[di];})});}
+    });
   }
   var dU=docs.map(function(){return false;}),gU=gl.map(function(){return false;});
   rounds(docs,dU);                                   // ชั้น 1: เอกสาร Incoming (Q01)
@@ -3978,6 +3988,7 @@ function incMatch(acct,ym){
   lines.forEach(function(l,li){
     if(lU[li])return;
     var m=incFindTransfer(acct,l);
+    if(!m&&INC_KW.length){var dl=String(l.desc||'').toLowerCase();var kw=INC_KW.find(function(w){return dl.indexOf(w)>=0;});if(kw)m={code:'—',via:'ตามคำที่ระบุ: '+kw};}
     if(m){lU[li]=true;res.xfer.push({date:l.date,desc:l.desc,amt:l.amt,from:m.code,via:m.via});}
   });
   var lU0=lU.slice();                                // สถานะก่อนจับกับ GL (Incoming + โอนระหว่างบัญชี)
@@ -3996,6 +4007,7 @@ function incMatch(acct,ym){
     var g=byD[k];if(!g.docs.length||!g.lines.length)return;
     g.di.forEach(function(di){dU[di]=true;});g.li.forEach(function(li){lU[li]=true;mU[li]=true;});
     var sd=incSumAmt(g.docs,'amt'),sl=incSumAmt(g.lines,'amt');
+    if(Math.abs(sd-sl)<0.01){res.sets.push({date:g.lines[0].date,lines:g.lines,docs:g.docs});return;}
     res.mism.push({date:g.lines[0].date,docs:g.docs,lines:g.lines,docAmt:sd,lineAmt:sl,diff:sd-sl});
   });
   res.mism.sort(function(a,b){var ka=dateKey(a.date),kb=dateKey(b.date);return ka<kb?-1:(ka>kb?1:0);});
@@ -4031,6 +4043,7 @@ function bkOpenIncomingFilter(preset){
       '<div style="max-height:280px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px">'+(ymHtml||'<span style="color:var(--muted);font-size:12px">— ไม่มีข้อมูล —</span>')+'</div></div>'+
     '</div>'+
     '<div style="margin-top:14px;font-size:12.5px"><b>รูปแบบรายงาน:</b> <label style="margin-left:8px;cursor:pointer"><input type="radio" name="incMode" value="inc"'+((!preset||preset.mode!=='all')?' checked':'')+'> เฉพาะเอกสาร Incoming (แนะนำ)</label> <label style="margin-left:12px;cursor:pointer"><input type="radio" name="incMode" value="all"'+((preset&&preset.mode==='all')?' checked':'')+'> รวมบันทึกตรงผ่าน GL/JE (Q15) ด้วย</label></div>'+
+    '<div style="margin-top:10px;font-size:12.5px"><b>ตัดรายการเงินเข้าที่คำอธิบายในสเตทเมนท์มีคำว่า</b> (ไม่บังคับ คั่นด้วยจุลภาค เช่น BSL LEASING, ข้ามเขต) <input id="incKw" type="text" value="'+incEsc(preset&&preset.kw?preset.kw:'')+'" placeholder="ไม่ตัดตามคำ" style="width:100%;margin-top:4px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:transparent;color:inherit;font-size:12.5px"><div style="font-size:11px;color:var(--muted);margin-top:3px">ใช้กับรายการที่ไม่มีเอกสาร Incoming เท่านั้น — รายการที่ตัดจะแสดงในหมายเหตุท้ายรายงาน</div></div>'+
     '<div style="margin-top:12px;text-align:right"><button class="hbtn hbtn-gold" onclick="incRun()">&#128203; สร้างรายงาน</button></div>';
   openModal('📥 รายงานเงินรับเข้าบัญชีจริง (Incoming + GL/JE) — เลือกบัญชี/เดือน',html);
 }
@@ -4038,18 +4051,20 @@ function incRun(){
   var codes=[].slice.call(document.querySelectorAll('.incAcct:checked')).map(function(e){return e.value;});
   var yms=[].slice.call(document.querySelectorAll('.incYm:checked')).map(function(e){return e.value;}).sort();
   if(!codes.length||!yms.length){alert('กรุณาเลือกอย่างน้อย 1 บัญชี และ 1 เดือน/ปี');return;}
-  var mEl=document.querySelector('input[name=incMode]:checked');INC_LAST={accounts:codes,yms:yms,mode:mEl?mEl.value:'inc'};
+  var mEl=document.querySelector('input[name=incMode]:checked');var kwEl=document.getElementById('incKw');INC_LAST={accounts:codes,yms:yms,mode:mEl?mEl.value:'inc',kw:kwEl?kwEl.value:''};
   incShow(INC_LAST);
 }
 function incBuild(opts){
-  INC_XUSED={};INC_MODE=opts.mode==='all'?'all':'inc';
+  INC_XUSED={};INC_MODE=opts.mode==='all'?'all':'inc';INC_KW=String(opts.kw||'').split(',').map(function(w){return w.trim().toLowerCase();}).filter(Boolean);
   var sel={};opts.accounts.forEach(function(c){sel[c]=1;});
   var accts=bkAccounts().filter(function(a){return sel[a.code];});
-  var months=opts.yms.slice().sort(),res=[],noStmt=[],empty=[],flat=[];
+  var months=opts.yms.slice().sort(),res=[],resAll=[],noStmt=[],empty=[],flat=[];
   months.forEach(function(ym){accts.forEach(function(a){
     var r=incMatch(a,ym);
     if(!r.hasStmt){ if(r.nDocs>0)noStmt.push(r); else empty.push({acct:a,ym:ym}); return; }
-    if(!r.nLines&&!r.nDocs&&!(r.xfer&&r.xfer.length)){empty.push({acct:a,ym:ym});return;}
+    resAll.push(r);
+    // บัญชี/เดือนที่ไม่เหลืออะไรเลยหลังตัดโอนระหว่างบัญชี (ไม่มีเงินเข้า ไม่มี Incoming) ไม่ต้องแสดง
+    if(!r.sets.length&&!r.exLines.length&&!r.exDocs.length&&!r.mism.length&&r.stmtTotal<0.005){empty.push({acct:a,ym:ym});return;}
     res.push(r);
   });});
   var f2=fmtFull;
@@ -4096,37 +4111,36 @@ function incBuild(opts){
     h.push('</tbody></table>');
   }
   if(noStmt.length)h.push('<div class="inc-warn">ข้ามบัญชี/เดือนที่ยังไม่มีสเตทเมนท์ (มีรายการเงินเข้าใน SAP แต่ไม่มีสเตทเมนท์ให้ยืนยัน): '+noStmt.map(function(r){return r.acct.code+' '+ymLabelThai(r.ym)+' ('+r.nDocs+' รายการ, '+f2(r.docTotal)+')';}).join(' · ')+'</div>');
-  if(empty.length)h.push('<div class="inc-note">ไม่มีรายการเงินรับในบัญชี/เดือนต่อไปนี้ จึงไม่แสดง: '+empty.map(function(e){return e.acct.code+' '+ymLabelThai(e.ym);}).join(' · ')+'</div>');
+  if(empty.length)h.push('<div class="inc-note">ไม่แสดง '+empty.length+' บัญชี/เดือนที่ไม่มีรายการเงินรับเข้า</div>');
   // 2) รายละเอียดรายเดือน
-  var colg='<colgroup><col style="width:11%"><col style="width:9%"><col style="width:25%"><col style="width:29%"><col style="width:8%"><col style="width:18%"></colgroup>';
+  var colg='<colgroup><col style="width:9%"><col style="width:12%"><col style="width:25%"><col style="width:28%"><col style="width:9%"><col style="width:17%"></colgroup>';
   var exAll=[];
   months.forEach(function(ym){
     var rows=res.filter(function(r){return r.ym===ym;});if(!rows.length)return;
+    var rowsS=rows.filter(function(r){return r.sets.length>0;}),anyS=rowsS.length>0;
     var tS=rows.reduce(function(a,r){return a+(INC_MODE==='all'?r.stmtTotal:incSetsAmt(r));},0);
-    h.push('<div class="inc-month"><div class="inc-monthbar"><span>2. รายละเอียดเดือน '+ymLabelThai(ym)+' — รวม '+rows.length+' บัญชี</span><span>'+f2(tS)+'</span></div>');
-    h.push('<div class="inc-note">'+(INC_MODE==='all'?'แยกเป็นชุดตามรายการเงินเข้าในสเตทเมนท์ และเอกสาร SAP ที่ตรงกับแต่ละชุด (ผ่านเอกสาร Incoming หรือบันทึกตรงผ่าน GL/JE)':'แยกเป็นชุดตามรายการเงินเข้าในสเตทเมนท์ และเอกสาร Incoming Payment ที่ตรงกับแต่ละชุด (วันที่ตรง ยอดตรง)')+'</div>');
+    if(anyS)h.push('<div class="inc-month"><div class="inc-monthbar"><span>2. รายละเอียดเดือน '+ymLabelThai(ym)+' — รวม '+rowsS.length+' บัญชี</span><span>'+f2(tS)+'</span></div>');
+    if(anyS)h.push('<div class="inc-note">'+(INC_MODE==='all'?'เรียงตามวันที่และเลขที่เอกสาร — เอกสาร SAP ที่ตรงกับรายการเงินเข้าในสเตทเมนท์ (ผ่านเอกสาร Incoming หรือบันทึกตรงผ่าน GL/JE)':'เรียงตามวันที่และเลขที่เอกสาร — เฉพาะเอกสาร Incoming ที่ตรงกับรายการเงินเข้าในสเตทเมนท์ (วันที่ตรง ยอดตรง)')+'</div>');
     rows.forEach(function(r){
-      h.push('<div class="inc-acctbar"><span>บัญชี '+r.acct.code+' — '+incEsc(r.acct.name)+'</span><span>'+r.sets.length+' ชุด · '+incSumAmt(r.sets.map(function(s){return {n:s.docs.length};}),'n')+' รายการ SAP · รวม '+f2(INC_MODE==='all'?r.stmtTotal:incSetsAmt(r))+'</span></div>');
-      if(!r.sets.length)h.push('<div class="inc-note">— ไม่มีชุดที่จับคู่ได้ —</div>');
-      r.sets.forEach(function(s,i){
-        var sd=incSumAmt(s.docs,'amt'),sl=incSumAmt(s.lines,'amt');
-        var desc=s.lines.map(function(l){return incEsc(l.desc);}).join(' + ');
-        h.push('<div class="inc-set"><table class="inc-t">'+colg+(i===0?'<thead><tr><th>เลขที่เอกสาร SAP</th><th>วันที่บันทึก</th><th>รหัส / ชื่อลูกค้า / คู่ค้า</th><th>รายละเอียด / หมายเหตุ</th><th>ผู้บันทึก</th><th>จำนวนเงิน</th></tr></thead>':'')+'<tbody>');
-        h.push('<tr class="inc-sethead"><td colspan="2">ชุดที่ '+(i+1)+' &nbsp; '+incDmyTh(s.date)+'</td><td colspan="3">สเตทเมนท์: '+desc+(s.lines.length>1?' ('+s.lines.length+' บรรทัด)':'')+' &nbsp;·&nbsp; '+s.docs.length+' รายการ SAP ('+incSrcTxt(s.docs)+')</td><td class="inc-r">'+f2(sl)+'</td></tr>');
-        s.docs.forEach(function(d){
-          var det=[d.detail,d.remarks].filter(Boolean).join(' · ');
-          h.push('<tr><td class="inc-nw">'+incEsc(d.docNo)+(d.src==='gl'?'<div class="inc-hint" style="color:#6d28d9">GL/JE · '+incEsc(d.glType||'')+'</div>':'')+'</td><td class="inc-c">'+incDmyTh(d.date)+'</td><td>'+(d.custCode?incEsc(d.custCode)+' — ':'')+incEsc(d.cust)+'</td><td>'+incEsc(det)+'</td><td class="inc-c">'+incEsc(d.by)+'</td><td class="inc-r">'+f2(d.amt)+'</td></tr>');
-          flat.push({month:ymLabelThai(ym),acct:r.acct.code+' — '+r.acct.name,set:'ชุดที่ '+(i+1),stmtDate:incDmyTh(s.date),stmtDesc:s.lines.map(function(l){return l.desc;}).join(' + '),stmtAmt:f2(sl),src:d.src==='gl'?'GL/JE':'Incoming',docNo:d.docNo,docDate:incDmyTh(d.date),cust:(d.custCode?d.custCode+' — ':'')+d.cust,detail:det,by:d.by,amt:f2(d.amt),status:'ตรงกัน'});
+      if(r.sets.length)h.push('<div class="inc-acctbar"><span>บัญชี '+r.acct.code+' — '+incEsc(r.acct.name)+'</span><span>'+incSumAmt(r.sets.map(function(s){return {n:s.docs.length};}),'n')+' เอกสาร · รวม '+f2(INC_MODE==='all'?r.stmtTotal:incSetsAmt(r))+'</span></div>');
+      var rowsD=[];r.sets.forEach(function(st,si){st.docs.forEach(function(d){rowsD.push({d:d,si:si,st:st});});});
+      rowsD.sort(function(x,y){var ka=dateKey(x.d.date),kb=dateKey(y.d.date);if(ka!==kb)return ka<kb?-1:1;var na=String(x.d.docNo),nb=String(y.d.docNo);return na<nb?-1:(na>nb?1:0);});
+      if(rowsD.length){
+        h.push('<table class="inc-t">'+colg+'<thead><tr><th>วันที่</th><th>เลขที่เอกสาร</th><th>รหัส / ชื่อลูกค้า</th><th>รายละเอียด / หมายเหตุ</th><th>ผู้บันทึก</th><th>จำนวนเงิน</th></tr></thead><tbody>');
+        rowsD.forEach(function(x){
+          var d=x.d,st=x.st,det=[d.detail,d.remarks].filter(Boolean).join(' · ');
+          h.push('<tr><td class="inc-c">'+incDmyTh(d.date)+'</td><td class="inc-nw">'+incEsc(d.docNo)+(d.src==='gl'?'<div class="inc-hint" style="color:#6d28d9">GL/JE · '+incEsc(d.glType||'')+'</div>':'')+'</td><td>'+(d.custCode?incEsc(d.custCode)+' — ':'')+incEsc(d.cust)+'</td><td>'+incEsc(det)+'</td><td class="inc-c">'+incEsc(d.by)+'</td><td class="inc-r">'+f2(d.amt)+'</td></tr>');
+          flat.push({month:ymLabelThai(ym),acct:r.acct.code+' — '+r.acct.name,set:'ชุดที่ '+(x.si+1),stmtDate:incDmyTh(st.date),stmtDesc:st.lines.map(function(l){return l.desc;}).join(' + '),stmtAmt:f2(incSumAmt(st.lines,'amt')),src:d.src==='gl'?'GL/JE':'Incoming',docNo:d.docNo,docDate:incDmyTh(d.date),cust:(d.custCode?d.custCode+' — ':'')+d.cust,detail:det,by:d.by,amt:f2(d.amt),status:'ตรงกัน'});
         });
-        h.push('<tr class="inc-setsub"><td colspan="5" style="text-align:right">รวม SAP ชุดที่ '+(i+1)+' &nbsp; '+pill(Math.abs(sd-sl)<0.01,Math.abs(sd-sl)<0.01?'ตรงกับสเตทเมนท์':'ต่างกัน')+'</td><td class="inc-r">'+f2(sd)+'</td></tr></tbody></table></div>');
-      });
+        h.push('</tbody></table>');
+      }
       r.exLines.forEach(function(l){exAll.push({ym:ym,acct:r.acct,type:'line',sap:l.sap||null,date:l.date,desc:l.desc,doc:'—',amt:l.amt,hint:l.hint||''});});
       r.exDocs.forEach(function(d){exAll.push({ym:ym,acct:r.acct,type:d.src==='gl'?'gl':'doc',src:d.src,date:d.date,desc:(d.custCode?d.custCode+' — ':'')+d.cust+(d.src==='gl'&&d.detail?(d.cust?' · ':'')+d.detail:''),doc:d.docNo,amt:d.amt,hint:d.hint||''});});
     });
-    h.push('<table class="inc-t">'+colg+'<tbody><tr class="inc-sum"><td colspan="5" style="text-align:right">รวมเงินรับเข้าเดือน '+ymLabelThai(ym)+' ทุกบัญชี ('+incSumAmt(rows.map(function(r){return {n:r.sets.length};}),'n')+' ชุด · '+incSumAmt(rows.map(function(r){return {n:r.sets.reduce(function(s,x){return s+x.docs.length;},0)};}),'n')+' รายการ SAP)</td><td class="inc-r">'+f2(tS)+'</td></tr></tbody></table></div>');
+    if(anyS)h.push('</div>');
   });
   // หมายเหตุท้ายรายงาน: โอนระหว่างบัญชีที่ตัดออก
-  var xf=[];res.forEach(function(r){(r.xfer||[]).forEach(function(x){xf.push({ym:r.ym,acct:r.acct,x:x});});});
+  var xf=[];resAll.forEach(function(r){(r.xfer||[]).forEach(function(x){xf.push({ym:r.ym,acct:r.acct,x:x});});});
   var xfSum=0;
   // 3) Incoming ที่ยอดไม่ตรงกับแบงค์ (อาจบันทึกผิด)
   var mmAll=[];res.forEach(function(r){r.mism.forEach(function(m){mmAll.push({ym:r.ym,acct:r.acct,m:m});});});
@@ -4170,7 +4184,7 @@ function incBuild(opts){
   h.push('</div>');
   if(xf.length){
     xf.forEach(function(e){xfSum+=e.x.amt;});
-    h.push('<div class="inc-note" style="margin-top:12px"><b>หมายเหตุ:</b> ตัดรายการ "โอนระหว่างบัญชีของบริษัท" ออกจากรายงานแล้ว '+xf.length+' รายการ รวม '+f2(xfSum)+' (เงินเข้าบัญชีนี้ มีเงินออกยอดเท่ากัน วันเดียวกัน ในอีกบัญชีของบริษัท) — ไม่นับรวมในยอดเงินเข้าตามสเตทเมนท์ด้านบน</div>');
+    h.push('<div class="inc-note" style="margin-top:12px"><b>หมายเหตุ:</b> ตัดรายการ "โอนระหว่างบัญชีของบริษัท" และรายการที่ตรงคำที่ระบุ ออกจากรายงานแล้ว '+xf.length+' รายการ รวม '+f2(xfSum)+' (โอนระหว่างบัญชี = มีเงินออกยอดเท่ากัน วันเดียวกัน ในอีกบัญชีของบริษัท) — ไม่นับรวมในยอดเงินเข้าตามสเตทเมนท์ด้านบน</div>');
     h.push('<table class="inc-t"><colgroup><col style="width:8%"><col style="width:11%"><col style="width:10%"><col style="width:27%"><col style="width:11%"><col style="width:12%"><col style="width:21%"></colgroup><thead><tr><th>เดือน</th><th>บัญชีที่รับเข้า</th><th>วันที่</th><th>รายการในสเตทเมนท์</th><th>บัญชีต้นทาง</th><th>จำนวนเงิน</th><th>ตรวจจาก</th></tr></thead><tbody>'+
       xf.map(function(e){return '<tr><td class="inc-c">'+ymLabelThai(e.ym)+'</td><td class="inc-c">'+e.acct.code+'</td><td class="inc-c">'+incDmyTh(e.x.date)+'</td><td>'+incEsc(e.x.desc)+'</td><td class="inc-c">'+e.x.from+'</td><td class="inc-r">'+f2(e.x.amt)+'</td><td>'+e.x.via+'</td></tr>';}).join('')+'</tbody></table>');
   }
