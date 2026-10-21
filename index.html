@@ -4395,7 +4395,7 @@ function incBuildOnly(opts){
 function incShow(opts){
   var out=incBuildOnly(opts);INC_RES=out;
   if(!document.getElementById('incStyle'))document.head.insertAdjacentHTML('beforeend',INC_CSS);
-  dmRegisterSimple('incomingReport','รายงานเงินรับเข้าบัญชีธนาคารจริง เฉพาะเอกสาร Incoming Payment (SAP)',[
+  dmRegisterSimple('incomingReport','รายงานเงินรับเข้าบัญชีธนาคาร เฉพาะเอกสาร Incoming Payment (SAP)',[
     {label:'เดือน',get:function(r){return r.month;}},{label:'บัญชี',get:function(r){return r.acct;}},{label:'วันที่',get:function(r){return r.date;}},
     {label:'เลขที่เอกสาร SAP',get:function(r){return r.docNo;}},{label:'รหัสลูกค้า',get:function(r){return r.custCode;}},{label:'ชื่อลูกค้า',get:function(r){return r.cust;}},
     {label:'รายละเอียด/หมายเหตุ',get:function(r){return r.detail;}},{label:'ผู้บันทึก',get:function(r){return r.by;}},{label:'จำนวนเงิน',right:true,get:function(r){return r.amt;}},{label:'เทียบแบงค์',get:function(r){return r.status;}}
@@ -4409,7 +4409,7 @@ function incShow(opts){
 function incPrint(){
   if(!INC_RES)return;
   var o=INC_RES;
-  document.getElementById('printArea').innerHTML=prHeaderHtml('รายงานเงินรับเข้าบัญชีธนาคารจริง เฉพาะเอกสาร Incoming Payment (SAP)','')+'<div class="incp">'+o.html+'</div>'+prSignatureHtml(['ผู้ตรวจสอบ Bank','ผู้จัดเก็บเอกสาร']);
+  document.getElementById('printArea').innerHTML=prHeaderHtml('รายงานเงินรับเข้าบัญชีธนาคาร เฉพาะเอกสาร Incoming Payment (SAP)','')+'<div class="incp">'+o.html+'</div>'+prSignatureHtml(['ผู้ตรวจสอบ Bank','ผู้จัดเก็บเอกสาร']);
   prPrint({orient:'landscape',fixedLayout:true});
 }
 
