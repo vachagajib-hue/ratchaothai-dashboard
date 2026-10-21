@@ -3865,6 +3865,28 @@ function incMonths(){
   return Object.keys(set).sort();
 }
 function incSumAmt(list,f){return list.reduce(function(s,x){return s+(x[f]||0);},0);}
+var INC_XUSED={};
+// หาเงินออกคู่กันในอีกบัญชีของบริษัท (วันเดียวกัน ยอดเท่ากันเป๊ะ) — 1) สเตทเมนท์ฝั่งเงินออกของบัญชีอื่น 2) รายการบัญชี SAP (Q15) ฝั่งเครดิตของบัญชีอื่น; ใช้คู่ละ 1 ครั้ง
+function incFindTransfer(acct,l){
+  var k=dateKey(l.date),cents=Math.round(l.amt*100),others=bkAccounts().filter(function(a){return a.code!==acct.code;}),i,j;
+  for(i=0;i<others.length;i++){
+    var t=incStmtTxns(others[i]);if(!t)continue;
+    for(j=0;j<t.length;j++){
+      var id='S|'+others[i].code+'|'+j;
+      if(INC_XUSED[id])continue;
+      if((t[j].debit||0)>0.004&&dateKey(t[j].date)===k&&Math.round(t[j].debit*100)===cents){INC_XUSED[id]=1;return {code:others[i].code,via:'สเตทเมนท์'};}
+    }
+  }
+  for(i=0;i<others.length;i++){
+    var legs=(G.sapAllBankLegs&&G.sapAllBankLegs[others[i].code])||[];
+    for(j=0;j<legs.length;j++){
+      var id2='Q|'+others[i].code+'|'+j;
+      if(INC_XUSED[id2])continue;
+      if((legs[j].credit||0)>0.004&&dateKey(legs[j].date)===k&&Math.round(legs[j].credit*100)===cents){INC_XUSED[id2]=1;return {code:others[i].code,via:'รายการบัญชี SAP'};}
+    }
+  }
+  return null;
+}
 function incMatch(acct,ym){
   var txns=incStmtTxns(acct);
   var docs=(G.recRows||[]).filter(function(r){return String(r.bankCode||'').trim()===acct.code;}).map(function(r){
@@ -3904,6 +3926,14 @@ function incMatch(acct,ym){
     if(combo&&combo.length>=2){dU[di]=true;combo.forEach(function(li){lU[li]=true;});res.sets.push({date:d.date,lines:combo.slice().sort(function(a,b){return a-b;}).map(function(li){return lines[li];}),docs:[d]});}
   });
   res.sets.sort(function(a,b){var ka=dateKey(a.date),kb=dateKey(b.date);return ka!==kb?(ka<kb?-1:1):0;});
+  // ตัด "โอนระหว่างบัญชีของบริษัทเอง" ออก: บรรทัดเงินเข้าที่ยังไม่มี Incoming และมีเงินออกยอดเท่ากัน วันเดียวกัน ในอีกบัญชีของบริษัท
+  res.xfer=[];
+  lines.forEach(function(l,li){
+    if(lU[li])return;
+    var m=incFindTransfer(acct,l);
+    if(m){lU[li]=true;res.xfer.push({date:l.date,desc:l.desc,amt:l.amt,from:m.code,via:m.via});}
+  });
+  res.stmtTotal=res.stmtTotal-incSumAmt(res.xfer,'amt');res.nLines=res.nLines-res.xfer.length;
   res.exDocs=docs.filter(function(d,i){return !dU[i];});
   res.exLines=lines.filter(function(l,i){return !lU[i];});
   // คำใบ้: ยอดตรงแต่คนละวัน (ตามกฎ วันที่ต้องตรงเป๊ะ — ต้องไปแก้วันที่ใน SAP ให้ตรงสเตทเมนท์)
@@ -3943,13 +3973,14 @@ function incRun(){
   incShow(INC_LAST);
 }
 function incBuild(opts){
+  INC_XUSED={};
   var sel={};opts.accounts.forEach(function(c){sel[c]=1;});
   var accts=bkAccounts().filter(function(a){return sel[a.code];});
   var months=opts.yms.slice().sort(),res=[],noStmt=[],empty=[],flat=[];
   months.forEach(function(ym){accts.forEach(function(a){
     var r=incMatch(a,ym);
     if(!r.hasStmt){ if(r.nDocs>0)noStmt.push(r); else empty.push({acct:a,ym:ym}); return; }
-    if(!r.nLines&&!r.nDocs){empty.push({acct:a,ym:ym});return;}
+    if(!r.nLines&&!r.nDocs&&!(r.xfer&&r.xfer.length)){empty.push({acct:a,ym:ym});return;}
     res.push(r);
   });});
   var f2=fmtFull;
@@ -4005,13 +4036,16 @@ function incBuild(opts){
     });
     h.push('<table class="inc-t">'+colg+'<tbody><tr class="inc-sum"><td colspan="5" style="text-align:right">รวมเงินรับเข้าเดือน '+ymLabelThai(ym)+' ทุกบัญชี ('+incSumAmt(rows.map(function(r){return {n:r.sets.length};}),'n')+' ชุด · '+incSumAmt(rows.map(function(r){return {n:r.sets.reduce(function(s,x){return s+x.docs.length;},0)};}),'n')+' เอกสาร Incoming)</td><td class="inc-r">'+f2(tS)+'</td></tr></tbody></table></div>');
   });
+  // หมายเหตุท้ายรายงาน: โอนระหว่างบัญชีที่ตัดออก
+  var xf=[];res.forEach(function(r){(r.xfer||[]).forEach(function(x){xf.push({ym:r.ym,acct:r.acct,x:x});});});
+  var xfSum=0;
   // 3) รายการที่ต้องตรวจสอบ
   h.push('<div class="inc-month"><h3 class="inc-h">3. รายการที่ต้องตรวจสอบ</h3>');
   var exFlat=exAll.slice();
   noStmt.forEach(function(r){r.exDocs.forEach(function(d){exFlat.push({ym:r.ym,acct:r.acct,type:'nostmt',date:d.date,desc:(d.custCode?d.custCode+' — ':'')+d.cust,doc:d.docNo,amt:d.amt,hint:'ไม่มีสเตทเมนท์ของเดือนนี้'});});});
   if(!exFlat.length){h.push('<div class="inc-okbox">ไม่มีรายการค้างตรวจสอบ — เงินเข้าตามสเตทเมนท์ทุกรายการมีเอกสาร Incoming ตรงกัน และเอกสาร Incoming ทุกใบพบในสเตทเมนท์</div>');}
   else{
-    h.push('<div class="inc-note">รายการเงินเข้าที่ไม่ใช่เงินรับจากลูกค้า (เช่น โอนระหว่างบัญชี ดอกเบี้ยรับ เงินกู้) จะปรากฏที่นี่ด้วย เพราะไม่มีเอกสาร Incoming · ยอดตรงแต่คนละวัน ให้แก้วันที่เอกสารใน SAP ให้ตรงกับสเตทเมนท์</div>');
+    h.push('<div class="inc-note">รายการเงินเข้าที่ไม่ใช่เงินรับจากลูกค้า (เช่น ดอกเบี้ยรับ เงินกู้) จะปรากฏที่นี่ด้วย เพราะไม่มีเอกสาร Incoming (โอนระหว่างบัญชีของบริษัทที่จับคู่ได้ถูกตัดออกแล้ว ดูหมายเหตุท้ายรายงาน) · ยอดตรงแต่คนละวัน ให้แก้วันที่เอกสารใน SAP ให้ตรงกับสเตทเมนท์</div>');
     h.push('<table class="inc-t"><colgroup><col style="width:8%"><col style="width:12%"><col style="width:18%"><col style="width:9%"><col style="width:29%"><col style="width:12%"><col style="width:12%"></colgroup><thead><tr><th>เดือน</th><th>บัญชี</th><th>ประเภท</th><th>วันที่</th><th>รายละเอียด / หมายเหตุ</th><th>เลขที่ Incoming</th><th>จำนวนเงิน</th></tr></thead><tbody>');
     var net=0;
     exFlat.forEach(function(e){
@@ -4023,6 +4057,12 @@ function incBuild(opts){
     h.push('<tr class="inc-sum"><td colspan="6" style="text-align:right">ผลต่างรวมรายการที่ต้องตรวจสอบ (Incoming − สเตทเมนท์ ไม่รวมบัญชีที่ไม่มีสเตทเมนท์)</td><td class="inc-r">'+f2(net)+'</td></tr></tbody></table>');
   }
   h.push('</div>');
+  if(xf.length){
+    xf.forEach(function(e){xfSum+=e.x.amt;});
+    h.push('<div class="inc-note" style="margin-top:12px"><b>หมายเหตุ:</b> ตัดรายการ "โอนระหว่างบัญชีของบริษัท" ออกจากรายงานแล้ว '+xf.length+' รายการ รวม '+f2(xfSum)+' (เงินเข้าบัญชีนี้ มีเงินออกยอดเท่ากัน วันเดียวกัน ในอีกบัญชีของบริษัท) — ไม่นับรวมในยอดเงินเข้าตามสเตทเมนท์ด้านบน</div>');
+    h.push('<table class="inc-t"><colgroup><col style="width:9%"><col style="width:14%"><col style="width:10%"><col style="width:33%"><col style="width:14%"><col style="width:12%"><col style="width:8%"></colgroup><thead><tr><th>เดือน</th><th>บัญชีที่รับเข้า</th><th>วันที่</th><th>รายการในสเตทเมนท์</th><th>บัญชีต้นทาง</th><th>จำนวนเงิน</th><th>ตรวจจาก</th></tr></thead><tbody>'+
+      xf.map(function(e){return '<tr><td class="inc-c">'+ymLabelThai(e.ym)+'</td><td class="inc-c">'+e.acct.code+'</td><td class="inc-c">'+incDmyTh(e.x.date)+'</td><td>'+incEsc(e.x.desc)+'</td><td class="inc-c">'+e.x.from+'</td><td class="inc-r">'+f2(e.x.amt)+'</td><td class="inc-c">'+e.x.via+'</td></tr>';}).join('')+'</tbody></table>');
+  }
   return {html:h.join(''),flat:flat,months:months,accts:accts,res:res};
 }
 var INC_CSS='<style id="incStyle">'+
