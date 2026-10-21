@@ -554,7 +554,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <span style="font-size:12px;color:var(--muted);font-weight:600;margin-left:8px">เดือน/ปี:</span>
 <select id="bkYmSel" class="filter-select" onchange="bkRender()"></select>
 <button class="hbtn" onclick="bkOpenReportFilter()">&#128269; ตัวกรองรายงาน (หลายบัญชี/หลายเดือน)</button>
-<button class="hbtn hbtn-gold" onclick="bkOpenIncomingFilter()">&#128229; รายงานเงินรับเข้าจริง (Incoming + GL/JE)</button>
+<button class="hbtn hbtn-gold" onclick="bkOpenIncomingFilter()">&#128229; รายงานเงินรับเข้าจริง (เฉพาะ Incoming)</button>
 <button class="hbtn hbtn-gold" style="margin-left:auto" onclick="bkAllBanksUnmatchedReport()">&#128203; รายงานยังไม่พบใน SAP (ทุกธนาคาร)</button>
 </div>
 <div class="kpi-row" id="bkKpiRow"></div>
@@ -4077,18 +4077,16 @@ function bkOpenIncomingFilter(preset){
     return '<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer"><input type="checkbox" class="incYm" value="'+y+'"'+chk+'> '+ymLabelThai(y)+'</label>';
   }).join('');
   var html=
-    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">เลือกได้ 1 หรือหลายบัญชี และ 1 หรือหลายเดือน — รายงานรวมทุกบัญชีที่เลือกไว้ในแต่ละเดือน แยกเป็นตอนรายเดือน (ขึ้นหน้าใหม่) · จับคู่รายการเงินเข้าตามสเตทเมนท์กับเอกสาร Incoming ใน SAP (Q01) ด้วยวันที่และยอดที่ตรงเป๊ะ</div>'+
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">เลือกได้ 1 หรือหลายบัญชี และ 1 หรือหลายเดือน — รายงานแสดงเฉพาะเอกสาร Incoming Payment ที่บันทึกใน SAP (Q01) ของบัญชี/เดือนที่เลือก (ใช้เป็นใบปะหน้าชุดเอกสาร) · มีคอลัมน์เทียบแบงค์ตามสเตทเมนท์ด้วยวันที่และยอดที่ตรงเป๊ะ (ถ้าอัปโหลดสเตทเมนท์ไว้)</div>'+
     '<div style="display:flex;gap:20px;flex-wrap:wrap">'+
       '<div style="min-width:260px;flex:1"><div style="font-weight:700;font-size:13px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">บัญชีธนาคาร<span style="font-size:11px;font-weight:400"><a href="javascript:void(0)" onclick="bkFiltSetAll(\'incAcct\',true)" style="color:var(--blue)">เลือกทั้งหมด</a> · <a href="javascript:void(0)" onclick="bkFiltSetAll(\'incAcct\',false)" style="color:var(--muted)">ไม่เลือกเลย</a></span></div>'+
       '<div style="max-height:280px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px">'+(acctHtml||'<span style="color:var(--muted);font-size:12px">— ไม่มีบัญชี —</span>')+'</div></div>'+
       '<div style="min-width:180px;flex:1"><div style="font-weight:700;font-size:13px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">เดือน/ปี<span style="font-size:11px;font-weight:400"><a href="javascript:void(0)" onclick="bkFiltSetAll(\'incYm\',true)" style="color:var(--blue)">เลือกทั้งหมด</a> · <a href="javascript:void(0)" onclick="bkFiltSetAll(\'incYm\',false)" style="color:var(--muted)">ไม่เลือกเลย</a></span></div>'+
       '<div style="max-height:280px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px">'+(ymHtml||'<span style="color:var(--muted);font-size:12px">— ไม่มีข้อมูล —</span>')+'</div></div>'+
     '</div>'+
-    '<div style="margin-top:14px;font-size:12.5px"><b>รูปแบบรายงาน:</b> <label style="margin-left:8px;cursor:pointer"><input type="radio" name="incMode" value="inc"'+((!preset||preset.mode!=='all')?' checked':'')+'> เฉพาะเอกสาร Incoming (แนะนำ)</label> <label style="margin-left:12px;cursor:pointer"><input type="radio" name="incMode" value="all"'+((preset&&preset.mode==='all')?' checked':'')+'> รวมบันทึกตรงผ่าน GL/JE (Q15) ด้วย</label></div>'+
-    '<div style="margin-top:10px;font-size:12.5px"><b>ตัดรายการเงินเข้าที่คำอธิบายในสเตทเมนท์มีคำว่า</b> (ไม่บังคับ คั่นด้วยจุลภาค เช่น BSL LEASING, ข้ามเขต) <input id="incKw" type="text" value="'+incEsc(preset&&preset.kw?preset.kw:'')+'" placeholder="ไม่ตัดตามคำ" style="width:100%;margin-top:4px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:transparent;color:inherit;font-size:12.5px"><div style="font-size:11px;color:var(--muted);margin-top:3px">ใช้กับรายการที่ไม่มีเอกสาร Incoming เท่านั้น — รายการที่ตัดจะแสดงในหมายเหตุท้ายรายงาน</div></div>'+
-    '<div style="margin-top:10px;font-size:12.5px"><label style="cursor:pointer"><input type="checkbox" id="incSelfRev"'+((!preset||preset.selfRev!==false)?' checked':'')+'> หักลบรายการที่เงินเข้าและเงินออก ยอดเท่ากัน วันเดียวกัน ในสเตทเมนท์บัญชีเดียวกัน (กรณีธนาคารบันทึกผิดเอง)</label></div>'+
+    '<div style="margin-top:10px;font-size:12.5px"><label style="cursor:pointer"><input type="checkbox" id="incSelfRev"'+((!preset||preset.selfRev!==false)?' checked':'')+'> หักลบรายการเงินเข้า-เงินออกที่ยอดเท่ากันวันเดียวกันในสเตทเมนท์บัญชีเดียวกัน ก่อนเทียบกับเอกสาร Incoming (กรณีธนาคารบันทึกผิดเอง)</label></div>'+
     '<div style="margin-top:12px;text-align:right"><button class="hbtn hbtn-gold" onclick="incRun()">&#128203; สร้างรายงาน</button></div>';
-  openModal('📥 รายงานเงินรับเข้าบัญชีจริง (Incoming + GL/JE) — เลือกบัญชี/เดือน',html);
+  openModal('📥 รายงานเงินรับเข้าจริง (เฉพาะ Incoming) — เลือกบัญชี/เดือน',html);
 }
 function incRun(){
   var codes=[].slice.call(document.querySelectorAll('.incAcct:checked')).map(function(e){return e.value;});
@@ -4167,7 +4165,7 @@ function incBuild(opts){
     if(anyS)h.push('<div class="inc-note">'+(INC_MODE==='all'?'เรียงตามวันที่และเลขที่เอกสาร — เอกสาร SAP ที่ตรงกับรายการเงินเข้าในสเตทเมนท์ (ผ่านเอกสาร Incoming หรือบันทึกตรงผ่าน GL/JE)':'เรียงตามวันที่และเลขที่เอกสาร — เฉพาะเอกสาร Incoming ที่ตรงกับรายการเงินเข้าในสเตทเมนท์ (วันที่ตรง ยอดตรง)')+'</div>');
     var acctSeq=0;
     rows.forEach(function(r){
-      if(r.sets.length)h.push('<div class="inc-acctbar'+(acctSeq++>0?' inc-newpg':'')+'"><span>บัญชี '+r.acct.code+' — '+incEsc(r.acct.name)+'</span><span>'+incSumAmt(r.sets.map(function(s){return {n:s.docs.length};}),'n')+' เอกสาร · รวม '+f2(INC_MODE==='all'?r.stmtTotal:incSetsAmt(r))+'</span></div>');
+      if(r.sets.length)h.push('<div class="inc-acct'+(incSumAmt(r.sets.map(function(s){return {n:s.docs.length};}),'n')>15?' inc-long':'')+'"><div class="inc-acctbar"><span>บัญชี '+r.acct.code+' — '+incEsc(r.acct.name)+'</span><span>'+incSumAmt(r.sets.map(function(s){return {n:s.docs.length};}),'n')+' เอกสาร · รวม '+f2(INC_MODE==='all'?r.stmtTotal:incSetsAmt(r))+'</span></div>');
       var rowsD=[];r.sets.forEach(function(st,si){st.docs.forEach(function(d){rowsD.push({d:d,si:si,st:st});});});
       rowsD.sort(function(x,y){var ka=dateKey(x.d.date),kb=dateKey(y.d.date);if(ka!==kb)return ka<kb?-1:1;var na=String(x.d.docNo),nb=String(y.d.docNo);return na<nb?-1:(na>nb?1:0);});
       if(rowsD.length){
@@ -4177,7 +4175,7 @@ function incBuild(opts){
           h.push('<tr><td class="inc-c">'+incDmyTh(d.date)+'</td><td class="inc-nw">'+incEsc(d.docNo)+(d.src==='gl'?'<div class="inc-hint" style="color:#6d28d9">GL/JE · '+incEsc(d.glType||'')+'</div>':'')+'</td><td>'+(d.custCode?incEsc(d.custCode)+' — ':'')+incEsc(d.cust)+'</td><td>'+incEsc(det)+'</td><td class="inc-c">'+incEsc(d.by)+'</td><td class="inc-r">'+f2(d.amt)+'</td></tr>');
           flat.push({month:ymLabelThai(ym),acct:r.acct.code+' — '+r.acct.name,set:'ชุดที่ '+(x.si+1),stmtDate:incDmyTh(st.date),stmtDesc:st.lines.map(function(l){return l.desc;}).join(' + '),stmtAmt:f2(incSumAmt(st.lines,'amt')),src:d.src==='gl'?'GL/JE':'Incoming',docNo:d.docNo,docDate:incDmyTh(d.date),cust:(d.custCode?d.custCode+' — ':'')+d.cust,detail:det,by:d.by,amt:f2(d.amt),status:'ตรงกัน'});
         });
-        h.push('</tbody></table>');
+        h.push('</tbody></table></div>');
       }
       r.exLines.forEach(function(l){exAll.push({ym:ym,acct:r.acct,type:'line',mark:l.mark,sap:l.sap||null,date:l.date,desc:l.desc,doc:'—',amt:l.amt,hint:l.hint||''});});
       r.exDocs.forEach(function(d){exAll.push({ym:ym,acct:r.acct,type:d.src==='gl'?'gl':'doc',mark:d.mark,src:d.src,date:d.date,desc:(d.custCode?d.custCode+' — ':'')+d.cust+(d.src==='gl'&&d.detail?(d.cust?' · ':'')+d.detail:''),doc:d.docNo,amt:d.amt,hint:d.hint||''});});
@@ -4286,22 +4284,98 @@ var INC_CSS='<style id="incStyle">'+
  '.incp .inc-okbox{font-size:12.5px;color:#15803d;background:#ECFDF3;border:1px solid #15803d;border-radius:4px;padding:8px 10px;font-weight:700}'+
  '.incp .inc-hint{font-size:10.5px;color:#92400e;margin-top:2px}'+
  '.incp .inc-pill{display:inline-block;padding:0 7px;border-radius:9px;font-size:10.5px;font-weight:700;color:#fff;background:#15803d}.incp .inc-pill.bad{background:#b91c1c}.incp .inc-pill.bad.warn{background:#b45309}.incp .inc-pill.done{background:#1d4ed8}.incp .inc-pill.none{background:#64748b}'+
- '@media print{#printArea .incp .inc-newpg{page-break-before:always;break-before:page;margin-top:0}#printArea .incp .inc-acctbar{page-break-after:avoid;break-after:avoid}#printArea .incp{font-size:12px}#printArea .incp .inc-month{page-break-before:always}#printArea .incp table.inc-t{margin:6px 0;border-collapse:collapse;border:none}'+
+ '@media print{#printArea .incp .inc-acct{page-break-inside:avoid;break-inside:avoid}#printArea .incp .inc-acct.inc-long{page-break-inside:auto;break-inside:auto}#printArea .incp .inc-acctbar,#printArea .incp .inc-monthbar,#printArea .incp .inc-h,#printArea .incp .inc-note{page-break-after:avoid;break-after:avoid}#printArea .incp{font-size:12px}#printArea .incp table.inc-t{margin:6px 0;border-collapse:collapse;border:none}'+
  '#printArea .incp table.inc-t th,#printArea .incp table.inc-t td{padding:4px 7px;font-size:11.5px;text-align:left}#printArea .incp table.inc-t th{text-align:center}'+
  '#printArea .incp table.inc-t td.inc-r{text-align:right}#printArea .incp table.inc-t td.inc-c{text-align:center}#printArea .incp .inc-noprint{display:none}#printArea .incp .inc-amtrow{display:flex;justify-content:space-between;gap:8px}'+
  '#printArea .incp tbody tr:nth-child(even){background:transparent}#printArea .incp tr{page-break-inside:avoid}#printArea .incp .inc-set{page-break-inside:avoid}}'+
  '</style>';
+
+// ===== รายงานเงินรับเข้าจริง — เฉพาะเอกสาร Incoming Payment (ใช้เป็นใบปะหน้าชุดเอกสาร) =====
+// แสดงเฉพาะเอกสาร Incoming ที่บันทึกใน SAP (Q01) — ตัดเงินเข้าอื่น/โอนระหว่างบัญชี/GL-JE/หัวข้อตรวจสอบออกทั้งหมด
+// ยังใช้เอนจินจับคู่เดิม (incMatch) เพื่อบอกสถานะ "เทียบแบงค์" ของแต่ละเอกสาร: ตรง / ยอดไม่ตรง / ไม่พบในสเตทเมนท์ / ยังไม่มีสเตทเมนท์
+function incBuildOnly(opts){
+  INC_XUSED={};INC_SELFREV=opts.selfRev!==false;INC_MODE='inc';INC_KW=[];
+  var sel={};opts.accounts.forEach(function(c){sel[c]=1;});
+  var accts=bkAccounts().filter(function(a){return sel[a.code];});
+  var months=opts.yms.slice().sort(),blocks=[],missing=[],flat=[],f2=fmtFull;
+  months.forEach(function(ym){accts.forEach(function(a){
+    var r=incMatch(a,ym),rows=[];
+    if(!r.hasStmt){r.exDocs.forEach(function(d){rows.push({d:d,st:'nostmt'});});}
+    else{
+      r.sets.forEach(function(st){st.docs.forEach(function(d){rows.push({d:d,st:'ok'});});});
+      r.mism.forEach(function(m){m.docs.forEach(function(d){rows.push({d:d,st:'mism',m:m,mark:m.mark});});});
+      r.exDocs.forEach(function(d){rows.push({d:d,st:'nf',mark:d.mark});});
+    }
+    if(!rows.length){if(r.hasStmt&&r.stmtAll>0.004)missing.push({ym:ym,acct:a,amt:r.stmtAll});return;}
+    rows.forEach(function(x){if(x.st==='nostmt')x.mark=incMark(a,[x.d],[]);});
+    rows.sort(function(x,y){var ka=dateKey(x.d.date),kb=dateKey(y.d.date);if(ka!==kb)return ka<kb?-1:1;var na=String(x.d.docNo),nb=String(y.d.docNo);return na<nb?-1:(na>nb?1:0);});
+    var b={ym:ym,acct:a,rows:rows,tot:0,ok:0,n:rows.length,nOk:0};
+    rows.forEach(function(x){b.tot+=x.d.amt;if(x.st==='ok'){b.ok+=x.d.amt;b.nOk++;}});
+    b.bad=b.tot-b.ok;
+    var bads=rows.filter(function(x){return x.st==='mism'||x.st==='nf';});
+    b.state=bads.length?(bads.every(function(x){return x.mark&&x.mark.state==='full';})?'done':'bad'):(rows.every(function(x){return x.st==='nostmt';})?'nostmt':(rows.some(function(x){return x.st==='nostmt';})?'part':'ok'));
+    blocks.push(b);
+  });});
+  function statePill(b){return b.state==='ok'?'<span class="inc-pill">ตรง</span>':(b.state==='done'?'<span class="inc-pill done">ตรวจแล้ว</span>':(b.state==='bad'?'<span class="inc-pill bad">ตรวจ</span>':'<span class="inc-pill none">ไม่มีสเตทเมนท์</span>'));}
+  var h=[];
+  h.push('<h3 class="inc-h">1. สรุปเงินรับตามเอกสาร Incoming Payment แยกเดือน และแยกบัญชี</h3>');
+  if(!blocks.length){
+    h.push('<div class="inc-note">ไม่พบเอกสาร Incoming Payment ในบัญชี/เดือนที่เลือก</div>');
+  }else{
+    h.push('<div class="inc-note">เฉพาะเอกสารที่บันทึกเป็น Incoming Payment ใน SAP · "ตรงกับแบงค์" = วันที่ตรงและยอดตรงกับรายการเงินเข้าในสเตทเมนท์</div>');
+    h.push('<table class="inc-t"><colgroup><col style="width:8%"><col style="width:26%"><col style="width:9%"><col style="width:16%"><col style="width:15%"><col style="width:16%"><col style="width:10%"></colgroup><thead><tr><th>เดือน/ปี</th><th>บัญชี</th><th>จำนวนเอกสาร</th><th>ยอดรวม Incoming</th><th>ตรงกับแบงค์</th><th>ไม่ตรง / ไม่พบในแบงค์</th><th>สถานะ</th></tr></thead><tbody>');
+    var g={n:0,tot:0,ok:0,bad:0};
+    months.forEach(function(ym){
+      var bs=blocks.filter(function(b){return b.ym===ym;});if(!bs.length)return;
+      var t={n:0,tot:0,ok:0,bad:0};
+      bs.forEach(function(b,i){
+        t.n+=b.n;t.tot+=b.tot;t.ok+=b.ok;t.bad+=b.bad;
+        h.push('<tr><td class="inc-c">'+(i===0?ymLabelThai(ym):'')+'</td><td>'+incAcctCell(b.acct)+'</td><td class="inc-c">'+b.n+'</td><td class="inc-r">'+f2(b.tot)+'</td><td class="inc-r">'+f2(b.ok)+'</td><td class="inc-r">'+f2(b.bad)+'</td><td class="inc-c">'+statePill(b)+'</td></tr>');
+      });
+      Object.keys(g).forEach(function(k){g[k]+=t[k];});
+      h.push('<tr class="inc-sub"><td colspan="2" style="text-align:right">รวมเดือน '+ymLabelThai(ym)+' (ทุกบัญชี)</td><td class="inc-c">'+t.n+'</td><td class="inc-r">'+f2(t.tot)+'</td><td class="inc-r">'+f2(t.ok)+'</td><td class="inc-r">'+f2(t.bad)+'</td><td></td></tr>');
+    });
+    if(months.length>1)h.push('<tr class="inc-sum"><td colspan="2" style="text-align:right">รวมทั้งหมด</td><td class="inc-c">'+g.n+'</td><td class="inc-r">'+f2(g.tot)+'</td><td class="inc-r">'+f2(g.ok)+'</td><td class="inc-r">'+f2(g.bad)+'</td><td></td></tr>');
+    h.push('</tbody></table>');
+  }
+  if(missing.length)h.push('<div class="inc-warn inc-noprint">⚠ บัญชี/เดือนที่มีเงินเข้าตามสเตทเมนท์ แต่ไม่พบเอกสาร Incoming ในข้อมูลที่โหลด (ไม่แสดงในรายงาน): '+missing.map(function(m){return incAcctNo(m.acct)+' '+ymLabelThai(m.ym)+' ('+f2(m.amt)+')';}).join(' · ')+' — ถ้าใน SAP มีเอกสารอยู่ ให้รีโหลดหน้าแดชบอร์ด/ตรวจชีต Q01</div>');
+  // 2) รายละเอียด
+  var colg='<colgroup><col style="width:8%"><col style="width:10%"><col style="width:22%"><col style="width:22%"><col style="width:10%"><col style="width:12%"><col style="width:16%"></colgroup>';
+  months.forEach(function(ym){
+    var bs=blocks.filter(function(b){return b.ym===ym;});if(!bs.length)return;
+    var mt=bs.reduce(function(a,b){return a+b.tot;},0);
+    h.push('<div class="inc-month"><div class="inc-monthbar"><span>2. รายละเอียดเดือน '+ymLabelThai(ym)+' — รวม '+bs.length+' บัญชี</span><span>'+f2(mt)+'</span></div>');
+    h.push('<div class="inc-note">เรียงตามวันที่และเลขที่เอกสาร</div>');
+    bs.forEach(function(b){
+      var ap=incAcctParts(b.acct);
+      h.push('<div class="inc-acct'+(b.n>15?' inc-long':'')+'"><div class="inc-acctbar"><span>บัญชี '+b.acct.code+' — '+incEsc(ap.nm)+(ap.no?' '+incEsc(ap.no):'')+'</span><span>'+b.n+' เอกสาร · รวม '+f2(b.tot)+'</span></div>');
+      h.push('<table class="inc-t">'+colg+'<thead><tr><th>วันที่</th><th>เลขที่เอกสาร</th><th>รหัส / ชื่อลูกค้า</th><th>รายละเอียด / หมายเหตุ</th><th>ผู้บันทึก</th><th>จำนวนเงิน</th><th>เทียบแบงค์</th></tr></thead><tbody>');
+      b.rows.forEach(function(x){
+        var d=x.d,det=[d.detail,d.remarks].filter(Boolean).join(' · '),cell,txt;
+        if(x.st==='ok'){cell='<span class="inc-pill">ตรง</span>';txt='ตรง';}
+        else if(x.st==='mism'){cell='<span class="inc-pill bad">ยอดไม่ตรง</span><div class="inc-hint">ผลต่างวันที่นี้ (Incoming − สเตทเมนท์) '+f2(x.m.diff)+'</div>';txt='ยอดไม่ตรง (ผลต่าง '+f2(x.m.diff)+')';}
+        else if(x.st==='nf'){cell='<span class="inc-pill bad">ไม่พบในสเตทเมนท์</span>'+(d.hint?'<div class="inc-hint">'+incEsc(d.hint)+'</div>':'');txt='ไม่พบในสเตทเมนท์'+(d.hint?' · '+d.hint:'');}
+        else{cell='<span class="inc-pill none">ยังไม่มีสเตทเมนท์</span>';txt='ยังไม่มีสเตทเมนท์ให้เทียบ';}
+        if(x.st!=='ok'&&x.mark&&x.mark.state!=='none'){cell+='<div style="margin-top:3px">'+incMarkHtml(x.mark)+'</div>';txt+=' · '+incMarkTxt(x.mark);}
+        h.push('<tr><td class="inc-c">'+incDmyTh(d.date)+'</td><td class="inc-nw">'+incEsc(d.docNo)+'</td><td>'+(d.custCode?incEsc(d.custCode)+' — ':'')+incEsc(d.cust)+'</td><td>'+incEsc(det)+'</td><td class="inc-c">'+incEsc(d.by)+'</td><td class="inc-r">'+f2(d.amt)+'</td><td class="inc-c" style="white-space:normal">'+cell+'</td></tr>');
+        flat.push({month:ymLabelThai(ym),acct:b.acct.code+' — '+b.acct.name,date:incDmyTh(d.date),docNo:d.docNo,custCode:d.custCode||'',cust:d.cust||'',detail:det,by:d.by||'',amt:f2(d.amt),status:txt});
+      });
+      h.push('<tr class="inc-sum"><td colspan="5" style="text-align:right">รวมบัญชี '+incEsc(incAcctNo(b.acct))+'</td><td class="inc-r">'+f2(b.tot)+'</td><td></td></tr></tbody></table></div>');
+    });
+    h.push('</div>');
+  });
+  return {html:h.join(''),flat:flat,months:months,accts:accts,res:blocks};
+}
 function incShow(opts){
-  var out=incBuild(opts);INC_RES=out;
+  var out=incBuildOnly(opts);INC_RES=out;
   if(!document.getElementById('incStyle'))document.head.insertAdjacentHTML('beforeend',INC_CSS);
-  dmRegisterSimple('incomingReport',(INC_MODE==='all'?'รายงานเงินรับเข้าบัญชีธนาคารจริง เทียบ SAP (Incoming + GL/JE)':'รายงานเงินรับเข้าบัญชีธนาคารจริง แยกตามเอกสาร Incoming Payment (SAP)'),[
-    {label:'เดือน',get:function(r){return r.month;}},{label:'บัญชี',get:function(r){return r.acct;}},{label:'ชุด',get:function(r){return r.set;}},
-    {label:'วันที่สเตทเมนท์',get:function(r){return r.stmtDate;}},{label:'รายการสเตทเมนท์',get:function(r){return r.stmtDesc;}},{label:'ยอดสเตทเมนท์',right:true,get:function(r){return r.stmtAmt;}},
-    {label:'แหล่งข้อมูล SAP',get:function(r){return r.src;}},{label:'เลขที่เอกสาร SAP',get:function(r){return r.docNo;}},{label:'วันที่บันทึก',get:function(r){return r.docDate;}},{label:'ลูกค้า',get:function(r){return r.cust;}},
-    {label:'รายละเอียด/หมายเหตุ',get:function(r){return r.detail;}},{label:'ผู้บันทึก',get:function(r){return r.by;}},{label:'ยอด Incoming',right:true,get:function(r){return r.amt;}},{label:'สถานะ',get:function(r){return r.status;}}
+  dmRegisterSimple('incomingReport','รายงานเงินรับเข้าบัญชีธนาคารจริง เฉพาะเอกสาร Incoming Payment (SAP)',[
+    {label:'เดือน',get:function(r){return r.month;}},{label:'บัญชี',get:function(r){return r.acct;}},{label:'วันที่',get:function(r){return r.date;}},
+    {label:'เลขที่เอกสาร SAP',get:function(r){return r.docNo;}},{label:'รหัสลูกค้า',get:function(r){return r.custCode;}},{label:'ชื่อลูกค้า',get:function(r){return r.cust;}},
+    {label:'รายละเอียด/หมายเหตุ',get:function(r){return r.detail;}},{label:'ผู้บันทึก',get:function(r){return r.by;}},{label:'จำนวนเงิน',right:true,get:function(r){return r.amt;}},{label:'เทียบแบงค์',get:function(r){return r.status;}}
   ],out.flat);
   var ml=out.months.map(ymLabelThai).join(', ');
-  openModal('📥 รายงานเงินรับเข้าบัญชีจริง — '+out.accts.length+' บัญชี · '+out.months.length+' เดือน',
+  openModal('📥 รายงานเงินรับเข้าจริง (เฉพาะ Incoming) — '+out.accts.length+' บัญชี · '+out.months.length+' เดือน',
     '<div style="display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px"><button class="hbtn hbtn-muted" onclick="bkOpenIncomingFilter(INC_LAST)">← กลับไปเลือกบัญชี/เดือน</button>'+
     '<span style="display:flex;gap:8px"><button class="hbtn hbtn-muted" onclick="incPrint()">🖨️ บันทึกเป็น PDF</button><button class="hbtn hbtn-green" onclick="dmSimpleExcelById(\'incomingReport\')">📊 บันทึกเป็น Excel</button></span></div>'+
     '<div class="incp" style="padding:14px;border-radius:8px;overflow-x:auto">'+out.html+'</div>');
@@ -4310,7 +4384,7 @@ function incPrint(){
   if(!INC_RES)return;
   var o=INC_RES;
   var meta='บัญชี '+o.accts.length+' บัญชี &nbsp;·&nbsp; เดือน '+o.months.map(ymLabelThai).join(', ')+' &nbsp;·&nbsp; พิมพ์เมื่อ '+printTimestamp();
-  document.getElementById('printArea').innerHTML=prHeaderHtml((INC_MODE==='all'?'รายงานเงินรับเข้าบัญชีธนาคารจริง เทียบ SAP (Incoming + GL/JE)':'รายงานเงินรับเข้าบัญชีธนาคารจริง แยกตามเอกสาร Incoming Payment (SAP)'),meta)+'<div class="incp">'+o.html+'</div>'+prSignatureHtml(['ผู้ตรวจสอบ Bank','ผู้จัดเก็บเอกสาร']);
+  document.getElementById('printArea').innerHTML=prHeaderHtml('รายงานเงินรับเข้าบัญชีธนาคารจริง เฉพาะเอกสาร Incoming Payment (SAP)',meta)+'<div class="incp">'+o.html+'</div>'+prSignatureHtml(['ผู้ตรวจสอบ Bank','ผู้จัดเก็บเอกสาร']);
   prPrint({orient:'landscape',fixedLayout:true});
 }
 
