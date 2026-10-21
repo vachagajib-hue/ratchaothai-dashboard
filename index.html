@@ -4092,7 +4092,7 @@ function incBuild(opts){
     });
     if(months.length>1)h.push('<tr class="inc-sum"><td colspan="2" style="text-align:right">รวมทั้งหมด</td><td class="inc-r">'+f2(g.all)+'</td><td class="inc-r">'+f2(g.xf)+'</td><td class="inc-r">'+f2(g.oth)+'</td><td class="inc-r">'+f2(g.mm)+'</td><td class="inc-r">'+f2(g.mat)+'</td><td class="inc-c">'+g.sets+'</td><td class="inc-r">'+f2(g.df)+'</td><td></td></tr>');
     h.push('</tbody></table>');
-    h.push('<div class="inc-note">เงินเข้าตรงกับ Incoming = เงินเข้าตามสเตทเมนท์ทั้งหมด − โอนระหว่างบัญชี − เงินเข้าอื่นที่ไม่มี Incoming − ชุดที่ Incoming ยอดไม่ตรง · ยอดนี้เท่ากับยอดรวมเอกสาร Incoming ที่ตรงกับแบงค์ในรายละเอียดรายเดือนทุกบาท · ส่วนต่าง = Incoming ที่ไม่ตรง/ไม่พบในแบงค์ − ยอดแบงค์ของชุดที่ไม่ตรง (ดูหัวข้อ 3<span class="inc-noprint"> และ 4</span>)</div>');
+    h.push('<div class="inc-note inc-noprint">เงินเข้าตรงกับ Incoming = เงินเข้าตามสเตทเมนท์ทั้งหมด − โอนระหว่างบัญชี − เงินเข้าอื่นที่ไม่มี Incoming − ชุดที่ Incoming ยอดไม่ตรง · ยอดนี้เท่ากับยอดรวมเอกสาร Incoming ที่ตรงกับแบงค์ในรายละเอียดรายเดือนทุกบาท · ส่วนต่าง = Incoming ที่ไม่ตรง/ไม่พบในแบงค์ − ยอดแบงค์ของชุดที่ไม่ตรง (ดูหัวข้อ 3<span class="inc-noprint"> และ 4</span>)</div>');
   }
   else{
     h.push('<table class="inc-t"><colgroup><col style="width:8%"><col style="width:21%"><col style="width:13%"><col style="width:5%"><col style="width:12%"><col style="width:12%"><col style="width:12%"><col style="width:9%"><col style="width:8%"></colgroup><thead><tr><th>เดือน/ปี</th><th>บัญชี</th><th>เงินเข้าตามสเตทเมนท์</th><th>ชุด</th><th>SAP ผ่าน Incoming</th><th>SAP ผ่าน GL/JE</th><th>รวม SAP</th><th>ผลต่าง</th><th>สถานะ</th></tr></thead><tbody>');
@@ -4112,7 +4112,7 @@ function incBuild(opts){
     h.push('</tbody></table>');
   }
   if(noStmt.length)h.push('<div class="inc-warn">ข้ามบัญชี/เดือนที่ยังไม่มีสเตทเมนท์ (มีรายการเงินเข้าใน SAP แต่ไม่มีสเตทเมนท์ให้ยืนยัน): '+noStmt.map(function(r){return r.acct.code+' '+ymLabelThai(r.ym)+' ('+r.nDocs+' รายการ, '+f2(r.docTotal)+')';}).join(' · ')+'</div>');
-  if(empty.length)h.push('<div class="inc-note">ไม่แสดง '+empty.length+' บัญชี/เดือนที่ไม่มีรายการเงินรับเข้า</div>');
+  if(empty.length)h.push('<div class="inc-note inc-noprint">ไม่แสดง '+empty.length+' บัญชี/เดือนที่ไม่มีรายการเงินรับเข้า</div>');
   // 2) รายละเอียดรายเดือน
   var colg='<colgroup><col style="width:9%"><col style="width:12%"><col style="width:25%"><col style="width:28%"><col style="width:9%"><col style="width:17%"></colgroup>';
   var exAll=[];
@@ -4145,7 +4145,7 @@ function incBuild(opts){
   var xfSum=0;
   // 3) Incoming ที่ยอดไม่ตรงกับแบงค์ (อาจบันทึกผิด)
   var mmAll=[];res.forEach(function(r){r.mism.forEach(function(m){mmAll.push({ym:r.ym,acct:r.acct,m:m});});});
-  h.push('<div class="inc-sect"><h3 class="inc-h">3. เอกสาร Incoming ที่ยอดไม่ตรงกับแบงค์ (วันเดียวกัน แต่ยอดต่างกัน — อาจบันทึกยอดผิด)</h3>');
+  h.push('<div class="inc-sect"><h3 class="inc-h">3. รายละเอียดส่วนต่าง (ตรงกับคอลัมน์ "ส่วนต่าง" ในตารางสรุป หัวข้อ 1)</h3><div class="inc-note"><b>3.1 เอกสาร Incoming ที่ยอดไม่ตรงกับแบงค์</b> (วันเดียวกัน แต่ยอดต่างกัน — อาจบันทึกยอดผิด)</div>');
   if(!mmAll.length)h.push('<div class="inc-okbox">ไม่พบเอกสาร Incoming ที่ยอดไม่ตรงกับแบงค์</div>');
   else{
     h.push('<table class="inc-t"><colgroup><col style="width:7%"><col style="width:10%"><col style="width:9%"><col style="width:30%"><col style="width:12%"><col style="width:20%"><col style="width:12%"></colgroup><thead><tr><th>เดือน</th><th>บัญชี</th><th>วันที่</th><th>เอกสาร Incoming (เลขที่ · ลูกค้า · ยอด)</th><th>รวม Incoming</th><th>รายการในสเตทเมนท์ (ยอด)</th><th>ส่วนต่าง</th></tr></thead><tbody>');
@@ -4157,6 +4157,20 @@ function incBuild(opts){
     });
     h.push('<tr class="inc-sum"><td colspan="6" style="text-align:right">ส่วนต่างรวม (Incoming − สเตทเมนท์)</td><td class="inc-r">'+f2(mdf)+'</td></tr></tbody></table>');
   }
+  // 3.2) เอกสารที่ไม่พบในสเตทเมนท์ (วันที่/ยอดไม่ตรงกับรายการเงินเข้าใดเลย)
+  var ndAll=[];res.forEach(function(r){r.exDocs.forEach(function(d){ndAll.push({ym:r.ym,acct:r.acct,d:d});});});
+  ndAll.sort(function(a,b){if(a.ym!==b.ym)return a.ym<b.ym?-1:1;if(a.acct.code!==b.acct.code)return a.acct.code<b.acct.code?-1:1;var ka=dateKey(a.d.date),kb=dateKey(b.d.date);if(ka!==kb)return ka<kb?-1:1;return String(a.d.docNo)<String(b.d.docNo)?-1:1;});
+  h.push('<div class="inc-note" style="margin-top:12px"><b>3.2 เอกสารที่มีใน SAP แต่ไม่พบในสเตทเมนท์</b> (ไม่มีรายการเงินเข้าวันเดียวกันที่ยอดตรงหรือใกล้เคียง — ตรวจวันที่/ยอดที่บันทึก หรือสเตทเมนท์ยังไม่ครบ)</div>');
+  if(!ndAll.length)h.push('<div class="inc-okbox">ไม่พบเอกสารที่ไม่มีในสเตทเมนท์</div>');
+  else{
+    h.push('<table class="inc-t"><colgroup><col style="width:7%"><col style="width:9%"><col style="width:9%"><col style="width:11%"><col style="width:27%"><col style="width:23%"><col style="width:14%"></colgroup><thead><tr><th>เดือน</th><th>บัญชี</th><th>วันที่</th><th>เลขที่เอกสาร SAP</th><th>ลูกค้า / รายละเอียด</th><th>หมายเหตุ</th><th>จำนวนเงิน</th></tr></thead><tbody>');
+    var ndSum=0;
+    ndAll.forEach(function(e){var d=e.d;ndSum+=d.amt;
+      h.push('<tr><td class="inc-c">'+ymLabelThai(e.ym)+'</td><td class="inc-c">'+e.acct.code+'</td><td class="inc-c">'+incDmyTh(d.date)+'</td><td class="inc-nw">'+incEsc(d.docNo)+(d.src==='gl'?'<div class="inc-hint" style="color:#6d28d9">GL/JE'+(d.glType?' · '+incEsc(d.glType):'')+'</div>':'')+'</td><td>'+(d.custCode?incEsc(d.custCode)+' — ':'')+incEsc(d.cust||'')+(d.detail?'<div class="inc-hint" style="color:#555">'+incEsc(d.detail)+'</div>':'')+'</td><td>'+(d.hint?incEsc(d.hint):'ไม่พบรายการเงินเข้าที่ตรงกันในสเตทเมนท์')+'</td><td class="inc-r">'+f2(d.amt)+'</td></tr>');
+    });
+    h.push('<tr class="inc-sum"><td colspan="6" style="text-align:right">รวมเอกสารที่ไม่พบในสเตทเมนท์</td><td class="inc-r">'+f2(ndSum)+'</td></tr></tbody></table>');
+  }
+  if(INC_MODE!=='all')h.push('<div class="inc-note" style="margin-top:6px"><b>รวมส่วนต่างทั้งหมด (3.1 + 3.2)</b> = '+f2(mmAll.reduce(function(a,e){return a+e.m.diff;},0)+ndAll.reduce(function(a,e){return a+e.d.amt;},0))+' บาท — เท่ากับยอดรวมคอลัมน์ "ส่วนต่าง" ในตารางสรุป</div>');
   h.push('</div>');
   // 4) รายการที่ต้องตรวจสอบ
   h.push('<div class="inc-sect inc-noprint"><h3 class="inc-h">4. รายการที่ต้องตรวจสอบ</h3>');
