@@ -1075,10 +1075,10 @@ async function loadAllData(opts){
 
     st.textContent='กำลังประมวลผล…';
     var recByM={},recRows=[];
-    q01.rows.forEach(function(r){var mk=getMK(r[1]),amt=parseFloat(r[5])||0;if(mk)recByM[mk]=(recByM[mk]||0)+amt;recRows.push({date:r[1],docNo:String(r[2]||''),custCode:String(r[3]||'').trim(),custName:String(r[4]||''),amt:amt,bankCode:String(r[6]||'').trim(),bankName:String(r[7]||'').trim(),itemDetail:String(r[8]||'').trim(),itemDetails2:String(r[9]||'').trim(),docCreator:String(r[10]||'').trim(),remarks:String(r[11]||'').trim()});});
+    q01.rows.forEach(function(r){var mk=getMK(r[1]),amt=parseFloat(r[5])||0;if(mk)recByM[mk]=(recByM[mk]||0)+amt;recRows.push({date:r[1],docNo:String(r[2]||''),custCode:String(r[3]||'').trim(),custName:String(r[4]||''),amt:amt,bankCode:repairAcctCode(r[6]).trim(),bankName:String(r[7]||'').trim(),itemDetail:String(r[8]||'').trim(),itemDetails2:String(r[9]||'').trim(),docCreator:String(r[10]||'').trim(),remarks:String(r[11]||'').trim()});});
 
     var payByM={},payRows=[];
-    q02.rows.forEach(function(r){var mk=getMK(r[1]),amt=parseFloat(r[5])||0;if(mk)payByM[mk]=(payByM[mk]||0)+amt;payRows.push({date:r[1],docNo:String(r[2]||''),vendName:String(r[4]||''),amt:amt,bankCode:String(r[6]||'').trim(),bankName:String(r[7]||'').trim(),itemDetail:String(r[8]||'').trim(),itemDetails2:String(r[9]||'').trim(),docCreator:String(r[10]||'').trim(),remarks:String(r[11]||'').trim()});});
+    q02.rows.forEach(function(r){var mk=getMK(r[1]),amt=parseFloat(r[5])||0;if(mk)payByM[mk]=(payByM[mk]||0)+amt;payRows.push({date:r[1],docNo:String(r[2]||''),vendName:String(r[4]||''),amt:amt,bankCode:repairAcctCode(r[6]).trim(),bankName:String(r[7]||'').trim(),itemDetail:String(r[8]||'').trim(),itemDetails2:String(r[9]||'').trim(),docCreator:String(r[10]||'').trim(),remarks:String(r[11]||'').trim()});});
 
     var bankNet=0,bankRows=[];
     q03.rows.forEach(function(r){var code=repairAcctCode(r[1]),bal=parseFloat(r[3])||0;if(code.includes('-')){bankNet+=bal;bankRows.push({code:code,name:String(r[2]||''),bal:bal});}});
@@ -3866,7 +3866,7 @@ function incAcctNo(acct){var p=incAcctParts(acct);return p.no||(acct&&acct.code)
 function incAcctNoByCode(code){var a=bkAccounts().filter(function(x){return x.code===code;})[0];return a?incAcctNo(a):code;}
 function incAcctCell(acct){var p=incAcctParts(acct);return acct.code+' — '+incEsc(p.nm)+(p.no?'<br>'+incEsc(p.no):'');}
 // ทำให้ทนรหัสบัญชี/วันที่ที่อ่านจากชีตผิดรูปแบบเล็กน้อย: อักขระซ่อน (zero-width/NBSP), ขีดคนละชนิด, วันที่เป็น Date/ISO/เลขลำดับของ Sheets
-function incNormCode(v){return String(v==null?'':v).replace(/[\u200B-\u200D\uFEFF\u00A0]/g,'').replace(/[\u2010-\u2015\u2212]/g,'-').trim();}
+function incNormCode(v){return String(repairAcctCode(v)==null?'':repairAcctCode(v)).replace(/[\u200B-\u200D\uFEFF\u00A0]/g,'').replace(/[\u2010-\u2015\u2212]/g,'-').trim();}
 function incDocDate(v){
   var d=toSlashDMY(v);if(d)return d;
   if(typeof v==='number'&&v>32000&&v<73000){var u=new Date(Math.round((v-25569)*86400000));return String(u.getUTCDate()).padStart(2,'0')+'/'+String(u.getUTCMonth()+1).padStart(2,'0')+'/'+u.getUTCFullYear();}
