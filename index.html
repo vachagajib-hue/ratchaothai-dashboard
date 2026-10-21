@@ -3860,6 +3860,10 @@ var INC_KW=[];
 var INC_LAST=null,INC_RES=null,INC_MODE='inc'; // 'inc' = เฉพาะเอกสาร Incoming (ค่าเริ่มต้น) · 'all' = รวม GL/JE (Q15)
 function incEsc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function incDmyTh(d){var m=String(d||'').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);return m?(m[1]+'/'+m[2]+'/'+(parseInt(m[3],10)+543)):String(d||'—');}
+function incAcctParts(acct){var nm=String((acct&&acct.name)||'').trim(),m=nm.match(/^(.*?)\s*([0-9][0-9\-]{5,})$/);return m?{nm:m[1].trim(),no:m[2]}:{nm:nm,no:''};}
+function incAcctNo(acct){var p=incAcctParts(acct);return p.no||(acct&&acct.code)||'';}
+function incAcctNoByCode(code){var a=bkAccounts().filter(function(x){return x.code===code;})[0];return a?incAcctNo(a):code;}
+function incAcctCell(acct){var p=incAcctParts(acct);return acct.code+' — '+incEsc(p.nm)+(p.no?'<br>'+incEsc(p.no):'');}
 function incStmtTxns(acct){var f=bkFindBankAccount(acct.name||'');return f?(f.account.txns||[]):null;}
 function incMonths(){
   var set={};
@@ -4085,7 +4089,7 @@ function incBuild(opts){
         var xf=incSumAmt(r.xfer,'amt'),oth=incSumAmt(r.exLines,'amt'),mmL=incSumAmt(r.mism,'lineAmt'),mat=incSetsAmt(r),
             df=incSumAmt(r.mism,'docAmt')-mmL+incSumAmt(r.exDocs,'amt'),ok=!r.exDocs.length&&!r.mism.length;
         t.all+=r.stmtAll;t.xf+=xf;t.oth+=oth;t.mm+=mmL;t.mat+=mat;t.sets+=r.sets.length;t.df+=df;
-        h.push('<tr><td class="inc-c">'+(i===0?ymLabelThai(ym):'')+'</td><td>'+r.acct.code+' — '+incEsc(r.acct.name)+'</td><td class="inc-r">'+f2(r.stmtAll)+'</td><td class="inc-r">'+f2(xf)+'</td><td class="inc-r">'+f2(oth)+'</td><td class="inc-r">'+f2(mmL)+'</td><td class="inc-r">'+f2(mat)+'</td><td class="inc-c">'+r.sets.length+'</td><td class="inc-r">'+f2(df)+'</td><td class="inc-c">'+pill(ok,ok?'ตรง':'ตรวจ')+'</td></tr>');
+        h.push('<tr><td class="inc-c">'+(i===0?ymLabelThai(ym):'')+'</td><td>'+incAcctCell(r.acct)+'</td><td class="inc-r">'+f2(r.stmtAll)+'</td><td class="inc-r">'+f2(xf)+'</td><td class="inc-r">'+f2(oth)+'</td><td class="inc-r">'+f2(mmL)+'</td><td class="inc-r">'+f2(mat)+'</td><td class="inc-c">'+r.sets.length+'</td><td class="inc-r">'+f2(df)+'</td><td class="inc-c">'+pill(ok,ok?'ตรง':'ตรวจ')+'</td></tr>');
       });
       Object.keys(g).forEach(function(k){g[k]+=t[k];});
       h.push('<tr class="inc-sub"><td colspan="2" style="text-align:right">รวมเดือน '+ymLabelThai(ym)+' (ทุกบัญชี)</td><td class="inc-r">'+f2(t.all)+'</td><td class="inc-r">'+f2(t.xf)+'</td><td class="inc-r">'+f2(t.oth)+'</td><td class="inc-r">'+f2(t.mm)+'</td><td class="inc-r">'+f2(t.mat)+'</td><td class="inc-c">'+t.sets+'</td><td class="inc-r">'+f2(t.df)+'</td><td></td></tr>');
@@ -4103,7 +4107,7 @@ function incBuild(opts){
       rows.forEach(function(r,i){
         var diff=r.docTotal-r.stmtTotal,ok=Math.abs(diff)<0.01&&!r.exDocs.length&&!r.exLines.length;
         tS+=r.stmtTotal;tI+=r.incTotal;tG+=r.glTotal;tSets+=r.sets.length;
-        h.push('<tr><td class="inc-c">'+(i===0?ymLabelThai(ym):'')+'</td><td>'+r.acct.code+' — '+incEsc(r.acct.name)+'</td><td class="inc-r">'+f2(r.stmtTotal)+'</td><td class="inc-c">'+r.sets.length+'</td><td class="inc-r">'+f2(r.incTotal)+'</td><td class="inc-r">'+f2(r.glTotal)+'</td><td class="inc-r">'+f2(r.docTotal)+'</td><td class="inc-r">'+f2(diff)+'</td><td class="inc-c">'+pill(ok,ok?'ตรง':'ตรวจ')+'</td></tr>');
+        h.push('<tr><td class="inc-c">'+(i===0?ymLabelThai(ym):'')+'</td><td>'+incAcctCell(r.acct)+'</td><td class="inc-r">'+f2(r.stmtTotal)+'</td><td class="inc-c">'+r.sets.length+'</td><td class="inc-r">'+f2(r.incTotal)+'</td><td class="inc-r">'+f2(r.glTotal)+'</td><td class="inc-r">'+f2(r.docTotal)+'</td><td class="inc-r">'+f2(diff)+'</td><td class="inc-c">'+pill(ok,ok?'ตรง':'ตรวจ')+'</td></tr>');
       });
       gS+=tS;gI+=tI;gG+=tG;gSets+=tSets;
       h.push('<tr class="inc-sub"><td colspan="2" style="text-align:right">รวมเดือน '+ymLabelThai(ym)+' (ทุกบัญชี)</td><td class="inc-r">'+f2(tS)+'</td><td class="inc-c">'+tSets+'</td><td class="inc-r">'+f2(tI)+'</td><td class="inc-r">'+f2(tG)+'</td><td class="inc-r">'+f2(tI+tG)+'</td><td class="inc-r">'+f2(tI+tG-tS)+'</td><td></td></tr>');
@@ -4122,8 +4126,9 @@ function incBuild(opts){
     var tS=rows.reduce(function(a,r){return a+(INC_MODE==='all'?r.stmtTotal:incSetsAmt(r));},0);
     if(anyS)h.push('<div class="inc-month"><div class="inc-monthbar"><span>2. รายละเอียดเดือน '+ymLabelThai(ym)+' — รวม '+rowsS.length+' บัญชี</span><span>'+f2(tS)+'</span></div>');
     if(anyS)h.push('<div class="inc-note">'+(INC_MODE==='all'?'เรียงตามวันที่และเลขที่เอกสาร — เอกสาร SAP ที่ตรงกับรายการเงินเข้าในสเตทเมนท์ (ผ่านเอกสาร Incoming หรือบันทึกตรงผ่าน GL/JE)':'เรียงตามวันที่และเลขที่เอกสาร — เฉพาะเอกสาร Incoming ที่ตรงกับรายการเงินเข้าในสเตทเมนท์ (วันที่ตรง ยอดตรง)')+'</div>');
+    var acctSeq=0;
     rows.forEach(function(r){
-      if(r.sets.length)h.push('<div class="inc-acctbar"><span>บัญชี '+r.acct.code+' — '+incEsc(r.acct.name)+'</span><span>'+incSumAmt(r.sets.map(function(s){return {n:s.docs.length};}),'n')+' เอกสาร · รวม '+f2(INC_MODE==='all'?r.stmtTotal:incSetsAmt(r))+'</span></div>');
+      if(r.sets.length)h.push('<div class="inc-acctbar'+(acctSeq++>0?' inc-newpg':'')+'"><span>บัญชี '+r.acct.code+' — '+incEsc(r.acct.name)+'</span><span>'+incSumAmt(r.sets.map(function(s){return {n:s.docs.length};}),'n')+' เอกสาร · รวม '+f2(INC_MODE==='all'?r.stmtTotal:incSetsAmt(r))+'</span></div>');
       var rowsD=[];r.sets.forEach(function(st,si){st.docs.forEach(function(d){rowsD.push({d:d,si:si,st:st});});});
       rowsD.sort(function(x,y){var ka=dateKey(x.d.date),kb=dateKey(y.d.date);if(ka!==kb)return ka<kb?-1:1;var na=String(x.d.docNo),nb=String(y.d.docNo);return na<nb?-1:(na>nb?1:0);});
       if(rowsD.length){
@@ -4152,7 +4157,7 @@ function incBuild(opts){
     var mdf=0;
     mmAll.forEach(function(e){
       var m=e.m;mdf+=m.diff;
-      h.push('<tr><td class="inc-c">'+ymLabelThai(e.ym)+'</td><td class="inc-c">'+e.acct.code+'</td><td class="inc-c">'+incDmyTh(m.date)+'</td><td>'+m.docs.map(function(d){return '<div class="inc-amtrow"><span>'+incEsc(d.docNo)+' · '+(d.custCode?incEsc(d.custCode)+' — ':'')+incEsc(d.cust)+'</span><span class="inc-amt">'+f2(d.amt)+'</span></div>';}).join('')+'</td><td class="inc-r">'+f2(m.docAmt)+'</td><td>'+m.lines.map(function(l){return '<div class="inc-amtrow"><span>'+incEsc(l.desc)+'</span><span class="inc-amt">'+f2(l.amt)+'</span></div>';}).join('')+'</td><td class="inc-r" style="color:#b91c1c">'+f2(m.diff)+'</td></tr>');
+      h.push('<tr><td class="inc-c">'+ymLabelThai(e.ym)+'</td><td class="inc-c">'+incEsc(incAcctNo(e.acct))+'</td><td class="inc-c">'+incDmyTh(m.date)+'</td><td>'+m.docs.map(function(d){return '<div class="inc-amtrow"><span>'+incEsc(d.docNo)+' · '+(d.custCode?incEsc(d.custCode)+' — ':'')+incEsc(d.cust)+'</span><span class="inc-amt">'+f2(d.amt)+'</span></div>';}).join('')+'</td><td class="inc-r">'+f2(m.docAmt)+'</td><td>'+m.lines.map(function(l){return '<div class="inc-amtrow"><span>'+incEsc(l.desc)+'</span><span class="inc-amt">'+f2(l.amt)+'</span></div>';}).join('')+'</td><td class="inc-r" style="color:#b91c1c">'+f2(m.diff)+'</td></tr>');
       flat.push({month:ymLabelThai(e.ym),acct:e.acct.code+' — '+e.acct.name,set:'ยอดไม่ตรง',src:'Incoming',stmtDate:incDmyTh(m.date),stmtDesc:m.lines.map(function(l){return l.desc;}).join(' + '),stmtAmt:f2(m.lineAmt),docNo:m.docs.map(function(d){return d.docNo;}).join(', '),docDate:incDmyTh(m.date),cust:m.docs.map(function(d){return d.cust;}).join(', '),detail:'ผลต่าง (Incoming − สเตทเมนท์) '+f2(m.diff),by:m.docs.map(function(d){return d.by;}).filter(Boolean).join(', '),amt:f2(m.docAmt),status:'ยอดไม่ตรง'});
     });
     h.push('<tr class="inc-sum"><td colspan="6" style="text-align:right">ส่วนต่างรวม (Incoming − สเตทเมนท์)</td><td class="inc-r">'+f2(mdf)+'</td></tr></tbody></table>');
@@ -4166,11 +4171,28 @@ function incBuild(opts){
     h.push('<table class="inc-t"><colgroup><col style="width:7%"><col style="width:9%"><col style="width:9%"><col style="width:11%"><col style="width:27%"><col style="width:23%"><col style="width:14%"></colgroup><thead><tr><th>เดือน</th><th>บัญชี</th><th>วันที่</th><th>เลขที่เอกสาร SAP</th><th>ลูกค้า / รายละเอียด</th><th>หมายเหตุ</th><th>จำนวนเงิน</th></tr></thead><tbody>');
     var ndSum=0;
     ndAll.forEach(function(e){var d=e.d;ndSum+=d.amt;
-      h.push('<tr><td class="inc-c">'+ymLabelThai(e.ym)+'</td><td class="inc-c">'+e.acct.code+'</td><td class="inc-c">'+incDmyTh(d.date)+'</td><td class="inc-nw">'+incEsc(d.docNo)+(d.src==='gl'?'<div class="inc-hint" style="color:#6d28d9">GL/JE'+(d.glType?' · '+incEsc(d.glType):'')+'</div>':'')+'</td><td>'+(d.custCode?incEsc(d.custCode)+' — ':'')+incEsc(d.cust||'')+(d.detail?'<div class="inc-hint" style="color:#555">'+incEsc(d.detail)+'</div>':'')+'</td><td>'+(d.hint?incEsc(d.hint):'ไม่พบรายการเงินเข้าที่ตรงกันในสเตทเมนท์')+'</td><td class="inc-r">'+f2(d.amt)+'</td></tr>');
+      h.push('<tr><td class="inc-c">'+ymLabelThai(e.ym)+'</td><td class="inc-c">'+incEsc(incAcctNo(e.acct))+'</td><td class="inc-c">'+incDmyTh(d.date)+'</td><td class="inc-nw">'+incEsc(d.docNo)+(d.src==='gl'?'<div class="inc-hint" style="color:#6d28d9">GL/JE'+(d.glType?' · '+incEsc(d.glType):'')+'</div>':'')+'</td><td>'+(d.custCode?incEsc(d.custCode)+' — ':'')+incEsc(d.cust||'')+(d.detail?'<div class="inc-hint" style="color:#555">'+incEsc(d.detail)+'</div>':'')+'</td><td>'+(d.hint?incEsc(d.hint):'ไม่พบรายการเงินเข้าที่ตรงกันในสเตทเมนท์')+'</td><td class="inc-r">'+f2(d.amt)+'</td></tr>');
     });
     h.push('<tr class="inc-sum"><td colspan="6" style="text-align:right">รวมเอกสารที่ไม่พบในสเตทเมนท์</td><td class="inc-r">'+f2(ndSum)+'</td></tr></tbody></table>');
   }
-  if(INC_MODE!=='all')h.push('<div class="inc-note" style="margin-top:6px"><b>รวมส่วนต่างทั้งหมด (3.1 + 3.2)</b> = '+f2(mmAll.reduce(function(a,e){return a+e.m.diff;},0)+ndAll.reduce(function(a,e){return a+e.d.amt;},0))+' บาท — เท่ากับยอดรวมคอลัมน์ "ส่วนต่าง" ในตารางสรุป</div>');
+  if(INC_MODE!=='all'){
+    var rcMap={};
+    mmAll.forEach(function(e){var k=e.ym+'|'+e.acct.code;(rcMap[k]=rcMap[k]||{ym:e.ym,acct:e.acct,a:0,b:0}).a+=e.m.diff;});
+    ndAll.forEach(function(e){var k=e.ym+'|'+e.acct.code;(rcMap[k]=rcMap[k]||{ym:e.ym,acct:e.acct,a:0,b:0}).b+=e.d.amt;});
+    var rcKeys=Object.keys(rcMap).sort();
+    if(rcKeys.length){
+      h.push('<div class="inc-note" style="margin-top:12px"><b>3.3 สรุปส่วนต่างรายบัญชี</b> (3.1 + 3.2 เทียบกับคอลัมน์ "ส่วนต่าง" ในตารางสรุป หัวข้อ 1)</div>');
+      h.push('<table class="inc-t"><colgroup><col style="width:9%"><col style="width:17%"><col style="width:16%"><col style="width:16%"><col style="width:16%"><col style="width:16%"><col style="width:10%"></colgroup><thead><tr><th>เดือน</th><th>เลขที่บัญชี</th><th>3.1 ยอดไม่ตรง</th><th>3.2 ไม่พบในสเตทเมนท์</th><th>รวม (3.1 + 3.2)</th><th>ส่วนต่างในตารางสรุป</th><th>ผลต่าง</th></tr></thead><tbody>');
+      var tA=0,tB=0,tS=0;
+      rcKeys.forEach(function(k){
+        var o=rcMap[k],rr=res.filter(function(r){return r.ym===o.ym&&r.acct.code===o.acct.code;})[0];
+        var sm=rr?(incSumAmt(rr.mism,'docAmt')-incSumAmt(rr.mism,'lineAmt')+incSumAmt(rr.exDocs,'amt')):0,tot=o.a+o.b,dd=tot-sm;
+        tA+=o.a;tB+=o.b;tS+=sm;
+        h.push('<tr><td class="inc-c">'+ymLabelThai(o.ym)+'</td><td class="inc-c">'+incEsc(incAcctNo(o.acct))+'</td><td class="inc-r">'+f2(o.a)+'</td><td class="inc-r">'+f2(o.b)+'</td><td class="inc-r">'+f2(tot)+'</td><td class="inc-r">'+f2(sm)+'</td><td class="inc-r"'+(Math.abs(dd)>=0.01?' style="color:#b91c1c"':'')+'>'+f2(dd)+'</td></tr>');
+      });
+      h.push('<tr class="inc-sum"><td colspan="2" style="text-align:right">รวมทุกบัญชี</td><td class="inc-r">'+f2(tA)+'</td><td class="inc-r">'+f2(tB)+'</td><td class="inc-r">'+f2(tA+tB)+'</td><td class="inc-r">'+f2(tS)+'</td><td class="inc-r">'+f2(tA+tB-tS)+'</td></tr></tbody></table>');
+    }
+  }
   h.push('</div>');
   // 4) รายการที่ต้องตรวจสอบ
   h.push('<div class="inc-sect inc-noprint"><h3 class="inc-h">4. รายการที่ต้องตรวจสอบ</h3>');
@@ -4190,7 +4212,7 @@ function incBuild(opts){
       }
       var lbl=e.type==='line'?(INC_MODE==='all'?'มีในสเตทเมนท์ ไม่พบใน SAP':(sapTxt?'บันทึกใน SAP: GL/JE ('+sapTxt+')':'ไม่พบบันทึกใน SAP')):(e.type==='doc'?'มี Incoming ไม่พบในสเตทเมนท์':(e.type==='gl'?'มี GL/JE ไม่พบในสเตทเมนท์':'ไม่มีสเตทเมนท์'));
       if(e.type==='line'){net-=e.amt;netL+=e.amt;}else if(e.type==='doc'||e.type==='gl'){net+=e.amt;netD+=e.amt;}
-      h.push('<tr><td class="inc-c">'+ymLabelThai(e.ym)+'</td><td class="inc-c">'+e.acct.code+'</td><td><span class="inc-pill bad'+warnCls+'">'+lbl+'</span></td><td class="inc-c">'+incDmyTh(e.date)+'</td><td>'+incEsc(e.desc)+(e.hint?'<div class="inc-hint">'+incEsc(e.hint)+'</div>':'')+'</td><td class="inc-c">'+incEsc(sapDoc)+'</td><td class="inc-r">'+f2(e.amt)+'</td></tr>');
+      h.push('<tr><td class="inc-c">'+ymLabelThai(e.ym)+'</td><td class="inc-c">'+incEsc(incAcctNo(e.acct))+'</td><td><span class="inc-pill bad'+warnCls+'">'+lbl+'</span></td><td class="inc-c">'+incDmyTh(e.date)+'</td><td>'+incEsc(e.desc)+(e.hint?'<div class="inc-hint">'+incEsc(e.hint)+'</div>':'')+'</td><td class="inc-c">'+incEsc(sapDoc)+'</td><td class="inc-r">'+f2(e.amt)+'</td></tr>');
       flat.push({month:ymLabelThai(e.ym),acct:e.acct.code+' — '+e.acct.name,set:'—',src:e.type==='line'?'':(e.src==='gl'?'GL/JE':'Incoming'),stmtDate:e.type==='line'?incDmyTh(e.date):'',stmtDesc:e.type==='line'?e.desc:'',stmtAmt:e.type==='line'?f2(e.amt):'',docNo:e.type==='line'?(sapDoc==='—'?'':sapDoc):e.doc,docDate:e.type==='line'?'':incDmyTh(e.date),cust:e.type==='line'?'':e.desc,detail:e.hint,by:'',amt:e.type==='line'?'':f2(e.amt),status:lbl});
     });
     if(INC_MODE==='all')h.push('<tr class="inc-sum"><td colspan="6" style="text-align:right">ผลต่างรวมรายการที่ต้องตรวจสอบ (SAP − สเตทเมนท์ ไม่รวมบัญชีที่ไม่มีสเตทเมนท์)</td><td class="inc-r">'+f2(net)+'</td></tr></tbody></table>');
@@ -4201,7 +4223,7 @@ function incBuild(opts){
     xf.forEach(function(e){xfSum+=e.x.amt;});
     h.push('<div class="inc-note" style="margin-top:12px"><b>หมายเหตุ:</b> ตัดรายการ "โอนระหว่างบัญชีของบริษัท" และรายการที่ตรงคำที่ระบุ ออกจากรายงานแล้ว '+xf.length+' รายการ รวม '+f2(xfSum)+' (โอนระหว่างบัญชี = มีเงินออกยอดเท่ากัน วันเดียวกัน ในอีกบัญชีของบริษัท) — ไม่นับรวมในยอดเงินเข้าตามสเตทเมนท์ด้านบน</div>');
     h.push('<table class="inc-t"><colgroup><col style="width:8%"><col style="width:11%"><col style="width:10%"><col style="width:27%"><col style="width:11%"><col style="width:12%"><col style="width:21%"></colgroup><thead><tr><th>เดือน</th><th>บัญชีที่รับเข้า</th><th>วันที่</th><th>รายการในสเตทเมนท์</th><th>บัญชีต้นทาง</th><th>จำนวนเงิน</th><th>ตรวจจาก</th></tr></thead><tbody>'+
-      xf.map(function(e){return '<tr><td class="inc-c">'+ymLabelThai(e.ym)+'</td><td class="inc-c">'+e.acct.code+'</td><td class="inc-c">'+incDmyTh(e.x.date)+'</td><td>'+incEsc(e.x.desc)+'</td><td class="inc-c">'+e.x.from+'</td><td class="inc-r">'+f2(e.x.amt)+'</td><td>'+e.x.via+'</td></tr>';}).join('')+'</tbody></table>');
+      xf.map(function(e){return '<tr><td class="inc-c">'+ymLabelThai(e.ym)+'</td><td class="inc-c">'+incEsc(incAcctNo(e.acct))+'</td><td class="inc-c">'+incDmyTh(e.x.date)+'</td><td>'+incEsc(e.x.desc)+'</td><td class="inc-c">'+incEsc(incAcctNoByCode(e.x.from))+'</td><td class="inc-r">'+f2(e.x.amt)+'</td><td>'+e.x.via+'</td></tr>';}).join('')+'</tbody></table>');
   }
   return {html:h.join(''),flat:flat,months:months,accts:accts,res:res};
 }
@@ -4225,7 +4247,7 @@ var INC_CSS='<style id="incStyle">'+
  '.incp .inc-okbox{font-size:12.5px;color:#15803d;background:#ECFDF3;border:1px solid #15803d;border-radius:4px;padding:8px 10px;font-weight:700}'+
  '.incp .inc-hint{font-size:10.5px;color:#92400e;margin-top:2px}'+
  '.incp .inc-pill{display:inline-block;padding:0 7px;border-radius:9px;font-size:10.5px;font-weight:700;color:#fff;background:#15803d}.incp .inc-pill.bad{background:#b91c1c}.incp .inc-pill.bad.warn{background:#b45309}'+
- '@media print{#printArea .incp{font-size:12px}#printArea .incp .inc-month{page-break-before:always}#printArea .incp table.inc-t{margin:6px 0;border-collapse:collapse;border:none}'+
+ '@media print{#printArea .incp .inc-newpg{page-break-before:always;break-before:page;margin-top:0}#printArea .incp .inc-acctbar{page-break-after:avoid;break-after:avoid}#printArea .incp{font-size:12px}#printArea .incp .inc-month{page-break-before:always}#printArea .incp table.inc-t{margin:6px 0;border-collapse:collapse;border:none}'+
  '#printArea .incp table.inc-t th,#printArea .incp table.inc-t td{padding:4px 7px;font-size:11.5px;text-align:left}#printArea .incp table.inc-t th{text-align:center}'+
  '#printArea .incp table.inc-t td.inc-r{text-align:right}#printArea .incp table.inc-t td.inc-c{text-align:center}#printArea .incp .inc-noprint{display:none}#printArea .incp .inc-amtrow{display:flex;justify-content:space-between;gap:8px}'+
  '#printArea .incp tbody tr:nth-child(even){background:transparent}#printArea .incp tr{page-break-inside:avoid}#printArea .incp .inc-set{page-break-inside:avoid}}'+
