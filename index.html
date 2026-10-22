@@ -4876,6 +4876,37 @@ function bkDetectReversals(rows){
       // แบงค์รองรับทั้งที่ถูกยกเลิกไปแล้ว — แก้โดยจับคู่ "ฝั่งที่ไม่มีคำว่า Reversal ในหมายเหตุ" (เอกสาร
       // ต้นฉบับ) กับ "ฝั่งที่มีคำว่า Reversal" (เอกสารกลับรายการ) ก่อนเสมอ แล้วจึงค่อยจับคู่ที่เหลือ (ทั้งคู่มี
       // หลักฐานอยู่แล้ว) เป็นลำดับสุดท้าย — คู่ที่ไม่มีหลักฐานฝั่งใดเลยจะไม่ถูกจับคู่เหมือนเดิม (ปลอดภัยกว่า)
+      // จับคู่ด้วย "เลขที่เอกสารเดียวกัน (DocNumber) + Origin เดียวกัน" ก่อน (แม่นยำที่สุด) — เคสจริง 10 ส.ค. 2569
+      // (บัญชี 1112-10, ยอด 933,056.64): มีเอกสารจ่าย 3 ใบ (260810364 ยกเลิก / 260810368 ใช้งานจริง /
+      // 260810371 ยกเลิก) แต่มีใบกลับรายการ 2 ใบ — การจับตามลำดับ JE จับ 40111(กลับรายการของ 260810371)
+      // ไปคู่กับ 260810368 ที่ไม่ได้ยกเลิก ทำให้ใบจริงถูกซ่อนและใบที่ยกเลิกแล้วกลับขึ้นเป็นรายการปกติ
+      // ใบกลับรายการของ SAP ใช้ DocNumber เดียวกับต้นฉบับ จึงใช้เลขนี้ผูกคู่ก่อน แล้วค่อยใช้เกณฑ์เดิมกับที่เหลือ
+      (function(){
+        var refKey=function(i){
+          var rf=String(rows[i].docRef||'').trim();
+          if(!rf)return '';
+          return rf+'|'+String(rows[i].origin||'').trim();
+        };
+        var dList=b.debits.slice(),cList=b.credits.slice();
+        dList.forEach(function(dIdx){
+          if(flags[dIdx])return;
+          var k=refKey(dIdx);if(!k)return;
+          // ต้องมีฝั่งใดฝั่งหนึ่งเป็นใบกลับรายการ (memo) จึงถือเป็นคู่ยกเลิก
+          for(var j=0;j<cList.length;j++){
+            var cIdx=cList[j];
+            if(flags[cIdx])continue;
+            if(refKey(cIdx)!==k)continue;
+            if(!hasEvid(dIdx)&&!hasEvid(cIdx))continue;
+            pairId++;
+            flags[dIdx]=pairId;flags[cIdx]=pairId;
+            debitTotal+=rows[dIdx].debit;
+            creditTotal+=rows[cIdx].credit;
+            break;
+          }
+        });
+        b.debits=b.debits.filter(function(i){return !flags[i];});
+        b.credits=b.credits.filter(function(i){return !flags[i];});
+      })();
       var noEvidDebits=b.debits.filter(function(i){return !hasEvid(i);});
       var evidDebits=b.debits.filter(hasEvid);
       var noEvidCredits=b.credits.filter(function(i){return !hasEvid(i);});
