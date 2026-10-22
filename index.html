@@ -550,7 +550,9 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <div class="recon-section" id="bkCovSection" style="margin-bottom:16px"></div>
 <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px">
 <span style="font-size:12px;color:var(--muted);font-weight:600">เลือกบัญชี:</span>
+<input id="bkAcctSearch" class="filter-select" type="search" autocomplete="off" placeholder="&#128269; พิมพ์ค้นหา เช่น 72482 / กสิกร / 1113-06" style="width:230px;cursor:text" oninput="bkAcctFilter(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();bkAcctFilter(this.value,true);}">
 <select id="bkAcctSel" class="filter-select" style="min-width:300px" onchange="bkPopulateYm()"></select>
+<span id="bkAcctSearchHint" style="font-size:11px;color:var(--muted)"></span>
 <span style="font-size:12px;color:var(--muted);font-weight:600;margin-left:8px">เดือน/ปี:</span>
 <select id="bkYmSel" class="filter-select" onchange="bkRender()"></select>
 <button class="hbtn" onclick="bkOpenReportFilter()">&#128269; ตัวกรองรายงาน (หลายบัญชี/หลายเดือน)</button>
@@ -3070,9 +3072,44 @@ function bkPopulate(){
   var accSel=document.getElementById('bkAcctSel');
   if(!accSel)return;
   var prevAcc=accSel.value;
-  accSel.innerHTML=accts.map(function(a){return '<option value="'+a.code+'">'+a.code+' — '+a.name+'</option>';}).join('')||'<option value="">— ไม่มีบัญชี —</option>';
-  if(prevAcc && accts.some(function(a){return a.code===prevAcc;}))accSel.value=prevAcc;
+  BK_ACCTS_ALL=accts;
+  // ถ้ามีคำค้นค้างอยู่ในช่องค้นหา ให้คงการกรองไว้ (กรณีรีโหลดข้อมูลแล้ววาดรายการใหม่)
+  var qEl=document.getElementById('bkAcctSearch');
+  var list=bkAcctMatch(qEl?qEl.value:'');
+  if(!list.length)list=accts;
+  accSel.innerHTML=list.map(function(a){return '<option value="'+a.code+'">'+a.code+' — '+a.name+'</option>';}).join('')||'<option value="">— ไม่มีบัญชี —</option>';
+  if(prevAcc && list.some(function(a){return a.code===prevAcc;}))accSel.value=prevAcc;
   bkPopulateYm();
+}
+// ค้นหาบัญชีในรายการ "เลือกบัญชี" — พิมพ์ส่วนใดก็ได้ของรหัส/ชื่อ/เลขที่บัญชีธนาคาร (ไม่สนใจขีด-ช่องว่าง-ตัวพิมพ์)
+// เช่น "72482", "0543", "กสิกร", "1113 06" ; หลายคำคั่นด้วยช่องว่างต้องเจอครบทุกคำ
+var BK_ACCTS_ALL=[];
+function bkAcctNorm(t){return String(t==null?'':t).toLowerCase().replace(/[\s\-_.\/()]+/g,'');}
+function bkAcctMatch(q){
+  var raw=String(q||'').trim().toLowerCase();
+  if(!raw)return BK_ACCTS_ALL.slice();
+  var toks=raw.split(/\s+/).map(bkAcctNorm).filter(Boolean);
+  if(!toks.length)return BK_ACCTS_ALL.slice();
+  return BK_ACCTS_ALL.filter(function(a){
+    var hay=bkAcctNorm(a.code+' '+a.name);
+    return toks.every(function(t){return hay.indexOf(t)>=0;});
+  });
+}
+function bkAcctFilter(q,openFirst){
+  var accSel=document.getElementById('bkAcctSel');
+  var hint=document.getElementById('bkAcctSearchHint');
+  if(!accSel)return;
+  var list=bkAcctMatch(q);
+  var hasQ=String(q||'').trim()!=='';
+  if(hint)hint.textContent=hasQ?(list.length?('พบ '+list.length+' บัญชี'):'ไม่พบบัญชีที่ค้นหา'):'';
+  if(hint)hint.style.color=(hasQ&&!list.length)?'var(--red)':'var(--muted)';
+  if(!list.length)return; // ไม่พบ — คงรายการเดิมไว้ ไม่ล้างตัวเลือก
+  var prev=accSel.value;
+  accSel.innerHTML=list.map(function(a){return '<option value="'+a.code+'">'+a.code+' — '+a.name+'</option>';}).join('');
+  var keep=list.some(function(a){return a.code===prev;});
+  if(keep)accSel.value=prev;else accSel.value=list[0].code;
+  // เจอบัญชีเดียว หรือกด Enter → โหลดบัญชีนั้นทันที; ถ้ายังมีหลายบัญชีให้เปลี่ยนเมื่อบัญชีที่เลือกอยู่เปลี่ยนไปเท่านั้น
+  if(!keep||list.length===1||openFirst)bkPopulateYm();
 }
 function bkPopulateYm(){
   var acctSel=document.getElementById('bkAcctSel');
