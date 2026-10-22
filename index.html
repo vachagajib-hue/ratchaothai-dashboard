@@ -569,7 +569,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <div id="bkRevNote" style="display:none;font-size:12px;color:var(--gold2);margin:4px 0 8px">&#128257; = รายการที่ถูกกลับ/หักล้างกันเอง (บันทึกวันเดียวกัน ยอดเท่ากัน เดบิต-เครดิตตรงข้าม) — ไม่ใช่ยอดจริงที่กระทบเงินสดสุทธิ</div>
 <div id="bkExportBtnsWrap"></div>
 <div style="overflow:auto;max-height:560px;border:1px solid var(--border);border-radius:8px"><table id="bkLedgerTbl">
-<thead style="position:sticky;top:0;z-index:2;background:#0b1626"><tr><th>วันที่</th><th>เลขที่เอกสาร</th><th>รายละเอียด</th><th>คู่ค้า</th><th style="text-align:right">เดบิต</th><th style="text-align:right">เครดิต</th><th style="text-align:right">ยอดคงเหลือ</th><th>ผู้บันทึก</th><th>เทียบกับแบงค์</th></tr></thead>
+<thead style="position:sticky;top:0;z-index:2;background:#0b1626"><tr><th>วันที่</th><th id="bkDocTh">เลขที่เอกสาร</th><th>รายละเอียด</th><th>คู่ค้า</th><th style="text-align:right">เดบิต</th><th style="text-align:right">เครดิต</th><th style="text-align:right">ยอดคงเหลือ</th><th>ผู้บันทึก</th><th>เทียบกับแบงค์</th></tr></thead>
 <tbody id="bkLedgerBody"></tbody>
 </table></div>
 </div>
@@ -708,6 +708,7 @@ function modalBackBtnHtml(){
 }
 function mStat(label,val,color){return '<div class="modal-stat"><div class="modal-stat-label">'+label+'</div><div class="modal-stat-val" style="color:'+color+'">'+val+'</div></div>';}
 
+var Q15_HAS_DOCREF=false;
 function repairAcctCode(raw){
   var s=String(raw==null?'':raw);
   var m=s.match(/^(\d+)-(\d{2})-(\d{2})T/);
@@ -1247,6 +1248,9 @@ async function loadAllData(opts){
         // ix15CreatedByName จะเป็น -1 และ createdByName จะเป็นค่าว่างเสมอ ไม่กระทบการทำงานอื่น)
         var ix15CreatedByName=findCol15(['createdbyname']);
         var ix15Origin=findCol15(['origin']);
+        // เลขที่เอกสารจริง (Document Number เช่น เลขใบจ่าย 260710153) = OJDT.Ref1/BaseRef — ออปชันเสริม ถ้าชีตยังไม่มีคอลัมน์นี้จะเป็น -1 และหน้าจอแสดงเลข JE (TransId) แทนเหมือนเดิม
+        var ix15DocRef=findCol15(['docnumber','docnum','docref','reference','ref1','baseref','document number']);
+        Q15_HAS_DOCREF=ix15DocRef>=0;
         if(ix15Trans>=0 && ix15Acct>=0 && ix15Debit>=0 && ix15Credit>=0){
           var jGroups={};
           q15.rows.forEach(function(r){
@@ -1258,13 +1262,14 @@ async function loadAllData(opts){
             var memo=ix15Memo>=0?String(r[ix15Memo]||'').trim():'';
             var createdByName=ix15CreatedByName>=0?String(r[ix15CreatedByName]||'').trim():'';
             var origin=ix15Origin>=0?String(r[ix15Origin]||'').trim():'';
+            var docRef=ix15DocRef>=0?String(r[ix15DocRef]==null?'':r[ix15DocRef]).trim():'';
             if(!jGroups[tid])jGroups[tid]={legs:[],hasBP:false,accts:{}};
             jGroups[tid].legs.push({acct:acct,date:date,debit:debit,credit:credit,bpName:bpName,memo:memo});
             if(bpName)jGroups[tid].hasBP=true;
             if(acct.indexOf('111')===0)jGroups[tid].accts[acct]=true;
             if(acct && acct.indexOf('111')===0){
               if(!sapAllBankLegs[acct])sapAllBankLegs[acct]=[];
-              sapAllBankLegs[acct].push({date:date,debit:debit,credit:credit,tid:tid,bpName:bpName,memo:memo,createdByName:createdByName,origin:origin});
+              sapAllBankLegs[acct].push({date:date,debit:debit,credit:credit,tid:tid,bpName:bpName,memo:memo,createdByName:createdByName,origin:origin,docRef:docRef});
             }
           });
           Object.keys(jGroups).forEach(function(tid){
@@ -4914,8 +4919,10 @@ function bkRecalc(){
   var hasBankCsv=!!BK_STATE.bankDetail;
   var runningRows=BK_STATE.rows.map(function(r,idx){
     bal=bal+r.debit-r.credit;
-    return {date:r.date,tid:r.tid,memo:r.memo,bpName:r.bpName,debit:r.debit,credit:r.credit,createdByName:r.createdByName||'',bal:bal,isReversed:!!revFlags[idx],pairId:revFlags[idx]||null,bankMatched:!!bankMatched[idx],hint:bankHint[idx]||null,alert:(BK_STATE.sapRevAlert||[])[idx]||null,key:sapKeys[idx]};
+    return {date:r.date,tid:r.tid,docRef:r.docRef||'',memo:r.memo,bpName:r.bpName,debit:r.debit,credit:r.credit,createdByName:r.createdByName||'',bal:bal,isReversed:!!revFlags[idx],pairId:revFlags[idx]||null,bankMatched:!!bankMatched[idx],hint:bankHint[idx]||null,alert:(BK_STATE.sapRevAlert||[])[idx]||null,key:sapKeys[idx]};
   });
+  var docThEl=document.getElementById('bkDocTh');
+  if(docThEl){var anyRef=runningRows.some(function(x){return x.docRef;});docThEl.innerHTML=anyRef?'เลขที่เอกสาร':'เลขที่เอกสาร<div style="font-size:10px;font-weight:400;color:var(--muted)" title="ชีต Q15 ยังไม่มีคอลัมน์ DocNumber จึงแสดงเลข Journal Entry (TransId) แทน">(เลข JE)</div>';}
   var hideChk=document.getElementById('bkHideReversedChk');
   var hideReversed=!!(hideChk&&hideChk.checked);
   var visibleRows=hideReversed?runningRows.filter(function(r){return !r.isReversed;}):runningRows;
@@ -4928,7 +4935,7 @@ function bkRecalc(){
       var sapB=bkSapBadge(r.key,{isReversed:r.isReversed,hasBankCsv:hasBankCsv,matched:r.bankMatched,hint:r.hint,displayLabel:((r.date||'')+' '+(r.memo||'')+' '+fmtFull(r.debit||r.credit||0))});
       var bankCell=sapB.badge;
       return '<tr'+revStyle+'><td style="font-size:12px;color:var(--muted)">'+(r.date||'—')+'</td>'+
-        '<td style="font-size:12px">'+(r.tid||'')+'</td>'+
+        '<td style="font-size:12px">'+(r.docRef?('<b>'+bkDiffEsc(r.docRef)+'</b><div style="font-size:10.5px;color:var(--muted)" title="เลข Journal Entry (TransId)">JE '+bkDiffEsc(r.tid||'')+'</div>'):(r.tid||''))+'</td>'+
         '<td style="font-size:12px">'+(r.memo||'')+revBadge+'</td>'+
         '<td style="font-size:12px">'+(r.bpName||'')+'</td>'+
         '<td class="right green">'+(r.debit?fmtFull(r.debit):'—')+'</td>'+
@@ -4954,7 +4961,8 @@ function bkRecalc(){
     : (diffKnown ? (okMatch?'✅ ตรงกับ Q11':'⚠️ ต่างจาก Q11 '+fmtFull(diff)+' บาท') : '— ไม่มียอด Q11 เดือนนี้ให้เทียบ');
   dmRegisterSimple('bkLedger','สมุดบัญชีธนาคาร '+BK_STATE.acctCode+' ('+ymLabelThai(BK_STATE.ym)+')'+(isCustomOpening?' [ยอดยกมากำหนดเอง]':''),[
     {label:'วันที่',get:function(r){return r.date||'—';}},
-    {label:'เลขที่เอกสาร',get:function(r){return r.tid||'';}},
+    {label:'เลขที่เอกสาร',get:function(r){return r.docRef||r.tid||'';}},
+    {label:'เลข JE (TransId)',get:function(r){return r.tid||'';}},
     {label:'รายละเอียด',get:function(r){return r.memo||'';}},
     {label:'คู่ค้า',get:function(r){return r.bpName||'';}},
     {label:'เดบิต',right:true,get:function(r){return fmtFull(r.debit||0);}},
