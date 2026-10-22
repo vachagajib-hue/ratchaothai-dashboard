@@ -4933,6 +4933,9 @@ function bkDetectReversals(rows){
             var cIdx=cList[j];
             if(flags[cIdx])continue;
             if(refKey(cIdx)!==k)continue;
+            // ต้องเป็นคนละเอกสาร JE (ต้นฉบับ ↔ ใบกลับรายการ) — เดบิต+เครดิตในใบเดียวกันห้ามจับคู่กันเอง
+            // (เคส 07 ส.ค. 2569 บัญชี 242-1-00749-9: JE 31785 มีทั้งเดบิตและเครดิต 200,000 ในใบเดียว)
+            if(String(rows[cIdx].tid)===String(rows[dIdx].tid))continue;
             if(!hasEvid(dIdx)&&!hasEvid(cIdx))continue;
             pairId++;
             flags[dIdx]=pairId;flags[cIdx]=pairId;
