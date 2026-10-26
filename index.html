@@ -736,6 +736,16 @@ function repairAcctCode(raw){
   return s;
 }
 function sleepMs(ms){return new Promise(function(resolve){setTimeout(resolve,ms);});}
+// แปลงค่าคอลัมน์ "เดือน" (YearMonth) จากชีตเป็น 'YYYY-MM' — รับทั้งข้อความ '2025-12' และกรณี Google Sheets แปลงเป็นวันที่ (1 ธ.ค. 2025)
+// ซึ่ง Apps Script ส่งออกเป็น ISO UTC ที่ถอยหลัง (เช่น '2025-11-30T17:00:00.000Z' เมื่อชีตใช้เขตเวลา UTC+7) ถ้าอ่านแค่ 7 ตัวแรกจะได้เดือนก่อนหน้า
+// แก้โดยบวก 1 วัน (UTC) ก่อนอ่านเดือน — ใช้ได้กับค่าที่เป็น "วันที่ 1 ของเดือน" ทุกเขตเวลา (เหมือนที่ repairAcctCode ทำกับรหัสบัญชี)
+function sheetYmOf(raw){
+  if(raw==null||raw==='')return '';
+  var s=String(raw).trim(),m=s.match(/^(\d{4})-(\d{2})-(\d{2})T/);
+  if(m){var d=new Date(Date.UTC(+m[1],+m[2]-1,+m[3]));d.setUTCDate(d.getUTCDate()+1);return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0');}
+  m=s.match(/^(\d{4})-(\d{2})/);
+  return m?m[1]+'-'+m[2]:'';
+}
 // ============================================================================
 // ระบบตรวจความครบถ้วนของข้อมูล (Data Quality / Completeness) — แสดงที่หน้าแรก
 // fetchSheet() ทุกครั้งจะบันทึกผลลง DQ.s[ชื่อชีต] → dqEval() ประเมินสถานะ → dqRender() วาดชิปในหัวหน้า + แถบเตือน
@@ -778,8 +788,9 @@ var DQ={s:{},inflight:0,bgDone:false,ext:{},timer:null,open:false};
 function dqCanon(name){return String(name==null?'':name).replace(/[\s ​]+/g,'_').replace(/^_+|_+$/g,'').toUpperCase();}
 function dqDef(canon){for(var i=0;i<DQ_SHEETS.length;i++)if(DQ_SHEETS[i].n===canon)return DQ_SHEETS[i];return null;}
 // แปลงค่าเซลล์เป็น 'YYYY-MM' ให้ได้หลายรูปแบบ (dd.mm.yyyy / dd/mm/yyyy / ISO / Date)
-function dqMonthOf(v){
+function dqMonthOf(v,monthCol){
   if(v==null||v==='')return null;
+  if(monthCol&&!(v instanceof Date)){var q=sheetYmOf(v);return q||null;}
   if(v instanceof Date){return isNaN(v.getTime())?null:v.getFullYear()+'-'+String(v.getMonth()+1).padStart(2,'0');}
   var s=String(v).trim(),m;
   m=s.match(/^(\d{2})[.\/](\d{2})[.\/](\d{4})/);if(m)return m[3]+'-'+m[2];
@@ -792,7 +803,8 @@ function dqMonthCounts(def,cols,rows){
   if(def.m==='date1')ix=1;else if(def.m==='ym3')ix=3;else if(def.m==='ym4')ix=4;else if(def.m==='date4')ix=4;
   else if(def.m==='due'){ix=cols.map(function(c){return String(c).trim().toLowerCase();}).indexOf('duedate');if(ix<0)return null;}
   var cnt={},hit=0;
-  rows.forEach(function(r){var mk=dqMonthOf(r[ix]);if(mk){cnt[mk]=(cnt[mk]||0)+1;hit++;}});
+  var isMonthCol=(def.m==='ym3'||def.m==='ym4');
+  rows.forEach(function(r){var mk=dqMonthOf(r[ix],isMonthCol);if(mk){cnt[mk]=(cnt[mk]||0)+1;hit++;}});
   // ถ้าคอลัมน์นั้นไม่ใช่วันที่/เดือน (อ่านเดือนได้น้อยกว่า 60% ของแถว) ไม่ตรวจเดือน กันเตือนเท็จ
   if(hit<rows.length*0.6)return null;
   return cnt;
@@ -1168,8 +1180,7 @@ async function loadAllData(opts){
         if(raw instanceof Date){
           ym=raw.getFullYear()+'-'+String(raw.getMonth()+1).padStart(2,'0');
         }else{
-          var m=String(raw||'').match(/^(\d{4})-(\d{2})/);
-          ym=m?m[1]+'-'+m[2]:'';
+          ym=sheetYmOf(raw);   // รองรับกรณีชีตแปลงเป็นวันที่ (เดือนไม่เลื่อน)
         }
         if(!ym)return;
         var bal=parseFloat(r[4])||0;
