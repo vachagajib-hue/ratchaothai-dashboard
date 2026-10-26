@@ -295,6 +295,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <div class="tab" onclick="switchTab(8)">&#128176; สมุดบัญชีธนาคาร</div>
 <div class="tab" onclick="switchTab(9)">&#128197; รายได้-ค่าใช้จ่ายตามดิว</div>
 <div class="tab" onclick="switchTab(10)">&#128202; ค้างจ่ายสะสมรายเดือน</div>
+<div class="tab" onclick="switchTab(11)">&#129534; เช็คจ่ายรอผ่านธนาคาร</div>
 </div>
 <div class="filter-bar">
 <span class="filter-label">&#128197; กรองช่วงเวลา:</span>
@@ -557,6 +558,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <select id="bkYmSel" class="filter-select" onchange="bkRender()"></select>
 <button class="hbtn" onclick="bkOpenReportFilter()">&#128269; ตัวกรองรายงาน (หลายบัญชี/หลายเดือน)</button>
 <button class="hbtn hbtn-gold" onclick="bkOpenIncomingFilter()">&#128229; รายงานเงินรับเข้าจริง (เฉพาะ Incoming)</button>
+<button class="hbtn" onclick="bkReplacedReport()">&#8505;&#65039; รายการยกเลิกแล้วออกใหม่</button>
 <button class="hbtn hbtn-gold" style="margin-left:auto" onclick="bkAllBanksUnmatchedReport()">&#128203; รายงานยังไม่พบใน SAP (ทุกธนาคาร)</button>
 </div>
 <div class="kpi-row" id="bkKpiRow"></div>
@@ -617,6 +619,9 @@ tr.cov-hl td{background:rgba(224,92,92,.08)}.cov-st{font-size:11.5px;font-weight
 .mxt .mxsep{border-left:2px solid rgba(255,255,255,.14)}
 </style>
 <div id="mxRoot"><div class="info-box blue">&#9203; กำลังเตรียมหน้ารายงาน…</div></div>
+</div>
+<div class="page" id="page11">
+<div id="chqRoot"><div class="info-box blue">&#9203; กำลังเตรียมหน้ารายงาน…</div></div>
 </div>
 
 </div>
@@ -3488,7 +3493,7 @@ function bkMatchSapBank(sapRows,bankTxns,bankTxnsFull,sapLegsFull){
         }
       }
       sameIdx.forEach(function(i2){revAlertSap[i2]={bankDate:bankTxns[best].date,bankDesc:bankTxns[best].desc||'',replaced:replaced};});
-      var info={amt:cents/100,dir:isDebitRev?'out':'in',sapDate:r.date,docs:docs.filter(Boolean),memo:o.memo||'',bankDate:bankTxns[best].date,bankDesc:bankTxns[best].desc||'',replaced:replaced};
+      var info={amt:cents/100,dir:isDebitRev?'out':'in',sapDate:r.date,docs:docs.filter(Boolean),memo:o.memo||'',origRef:o.docRef||'',bankDate:bankTxns[best].date,bankDesc:bankTxns[best].desc||'',replaced:replaced};
       revAlertBank[best]=info;
       revAlertSap[i]={bankDate:info.bankDate,bankDesc:info.bankDesc,replaced:replaced};
     });
@@ -4602,6 +4607,78 @@ function bkShowRevAlerts(){
   if(!items.length)return;
   openModal('⚠️ SAP กลับรายการ/ยกเลิก แต่แบงค์ตัดเงินจริง — '+(BK_STATE.acctCode||'')+' ('+ymLabelThai(BK_STATE.ym)+')',
     '<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">เอกสารฝั่ง SAP ถูกกลับรายการแล้ว (ระบบตัดคู่ออกจากยอดสุทธิ) แต่สเตทเมนท์แบงค์มีรายการยอดเท่ากันในช่วง ±7 วัน และยังไม่มีเอกสาร SAP ใหม่มารองรับ — ตรวจว่าแบงค์ตัดเงินจริงหรือถูกโอนคืน หากตัดจริงต้องบันทึกการจ่าย/รับใหม่ใน SAP (ระวังจ่ายซ้ำเจ้าหนี้)</div>'+bkRevAlertTableHtml(items));
+}
+
+// รายงาน "ยกเลิกแล้วออกใหม่" ทุกบัญชี/ทุกเดือน (22 ต.ค. 2569 ตามคำขอ) — ใช้ตรรกะเดียวกับ bkMatchSapBank
+// (revAlertBank ที่มี .replaced) จึงครอบคลุมเฉพาะบัญชี/เดือนที่มีสเตทเมนท์แบงค์ (CSV) อัปโหลดไว้แล้ว
+function bkReplacedReport(){
+  var rows=[],byAcct={};
+  bkAccounts().forEach(function(acctInfo){
+    var foundBank=bkFindBankAccount(acctInfo.name||'');
+    if(!foundBank)return;
+    var bankTxnsFull=foundBank.account.txns||[];
+    var allLegs=(G.sapAllBankLegs&&G.sapAllBankLegs[acctInfo.code])||[];
+    bkAvailableYm(acctInfo.code).forEach(function(ym){
+      var legs=allLegs.filter(function(l){return bkYmOf(l.date)===ym;}).slice();
+      if(!legs.length)return;
+      legs.sort(function(a,b){var ka=dateKey(a.date),kb=dateKey(b.date);if(ka!==kb)return ka<kb?-1:1;return (parseInt(a.tid,10)||0)-(parseInt(b.tid,10)||0);});
+      var ymC=ym.replace('-','');
+      var bankMonth=bankTxnsFull.filter(function(t){return dateKey(t.date||'').slice(0,6)===ymC;});
+      if(!bankMonth.length)return;
+      var rev=bkDetectReversals(legs);
+      var rfm=legs.map(function(r,i){return {date:r.date,debit:r.debit,credit:r.credit,isReversed:!!rev.flags[i],_orig:r};});
+      var m=bkMatchSapBank(rfm,bankMonth,bankTxnsFull,allLegs);
+      (m.revAlertBank||[]).forEach(function(a){
+        if(!a||!a.replaced)return;
+        var row={code:acctInfo.code,acct:acctInfo.code+' — '+(acctInfo.name||''),ym:ym,ymLabel:ymLabelThai(ym),sapDate:a.sapDate,
+          origRef:a.origRef||'',origJe:((a.docs||[]).length>1?a.docs[1]:(a.docs||[])[0])||'',amt:a.amt,newRef:a.replaced.docRef||'',newJe:a.replaced.tid||'',newAmt:a.replaced.amt,diff:a.replaced.diff,
+          bankDate:a.bankDate,dir:a.dir==='out'?'เงินออก':'เงินเข้า'};
+        rows.push(row);
+        byAcct[row.code]=byAcct[row.code]||{label:row.acct,n:0,diff:0};
+        byAcct[row.code].n++;byAcct[row.code].diff+=row.diff;
+      });
+    });
+  });
+  rows.sort(function(a,b){return a.code<b.code?-1:a.code>b.code?1:(a.ym<b.ym?-1:a.ym>b.ym?1:(dateKey(a.sapDate)<dateKey(b.sapDate)?-1:1));});
+  var title='รายการยกเลิกแล้วออกใหม่ (ผลต่างไม่เกิน 15.00 บาท)';
+  dmRegisterSimple('bkReplacedList',title,[
+    {label:'บัญชี',get:function(r){return r.acct;}},
+    {label:'เดือน/ปี',get:function(r){return r.ymLabel;}},
+    {label:'วันที่ SAP',get:function(r){return r.sapDate;}},
+    {label:'ทิศทาง',get:function(r){return r.dir;}},
+    {label:'เอกสารที่ยกเลิก',get:function(r){return (r.origRef||'—')+(r.origJe?' (JE '+r.origJe+')':'');}},
+    {label:'ยอดเดิม',right:true,get:function(r){return fmtFull(r.amt);}},
+    {label:'เอกสารใหม่',get:function(r){return (r.newRef||'—')+(r.newJe?' (JE '+r.newJe+')':'');}},
+    {label:'ยอดใหม่',right:true,get:function(r){return fmtFull(r.newAmt);}},
+    {label:'ผลต่าง',right:true,get:function(r){return fmtFull(r.diff);}},
+    {label:'วันที่แบงค์ตัด',get:function(r){return r.bankDate;}}
+  ],rows);
+  var acctKeys=Object.keys(byAcct).sort();
+  var sumHtml=acctKeys.length?('<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">'+acctKeys.map(function(k){var a=byAcct[k];
+      return '<span class="bkd-cnt" style="cursor:default;padding:5px 10px;font-size:12px">'+bkDiffEsc(a.label)+' · <b>'+a.n+'</b> รายการ'+(Math.abs(a.diff)>=0.005?(' · ผลต่างรวม '+fmtFull(a.diff)):'')+'</span>';}).join('')+'</div>'):'';
+  var body;
+  if(!rows.length){
+    body='<div style="padding:18px;color:var(--muted);font-size:13px">ไม่พบรายการยกเลิกแล้วออกใหม่ในบัญชี/เดือนที่มีสเตทเมนท์แบงค์ (CSV) อัปโหลดไว้</div>';
+  } else {
+    body='<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">เอกสารที่ SAP ยกเลิกแล้วแบงค์ตัดเงินจริง และมีเอกสารใหม่ทดแทน (ฝั่งเดียวกัน วันที่เดียวกัน หมายเหตุตรงกัน ยอดต่างไม่เกิน 15.00 บาท) — กดแถวเพื่อไปดูในสมุดบัญชี · รวม <b>'+rows.length+'</b> รายการ ใน <b>'+acctKeys.length+'</b> บัญชี</div>'+sumHtml+
+      '<div style="overflow:auto;max-height:62vh"><table style="min-width:900px;width:100%"><thead><tr><th>บัญชี</th><th>เดือน/ปี</th><th>วันที่ SAP</th><th>ทิศทาง</th><th>เอกสารที่ยกเลิก</th><th style="text-align:right">ยอดเดิม</th><th>เอกสารใหม่ (ทดแทน)</th><th style="text-align:right">ยอดใหม่</th><th style="text-align:right">ผลต่าง</th><th>แบงค์ตัด</th></tr></thead><tbody>'+
+      rows.map(function(r){
+        return '<tr style="cursor:pointer" onclick="bkGotoLedger(\''+r.code+'\',\''+r.ym+'\')" title="กดเพื่อเปิดสมุดบัญชีของบัญชีนี้ เดือนนี้"><td style="font-size:12px">'+bkDiffEsc(r.acct)+'</td><td style="font-size:12px">'+bkDiffEsc(r.ymLabel)+'</td><td style="font-size:12px">'+bkDiffEsc(r.sapDate)+'</td><td style="font-size:12px">'+r.dir+'</td>'+
+          '<td style="font-size:12px"><b>'+bkDiffEsc(r.origRef||'—')+'</b>'+(r.origJe?'<div style="font-size:10.5px;color:var(--muted)">JE '+bkDiffEsc(r.origJe)+'</div>':'')+'</td><td class="right" style="font-size:12px">'+fmtFull(r.amt)+'</td>'+
+          '<td style="font-size:12px"><b>'+bkDiffEsc(r.newRef||'—')+'</b>'+(r.newJe?'<div style="font-size:10.5px;color:var(--muted)">JE '+bkDiffEsc(r.newJe)+'</div>':'')+'</td><td class="right" style="font-size:12px">'+fmtFull(r.newAmt)+'</td>'+
+          '<td class="right" style="font-size:12px;font-weight:700">'+(Math.abs(r.diff)<0.005?'0.00':fmtFull(r.diff))+'</td><td style="font-size:12px">'+bkDiffEsc(r.bankDate)+'</td></tr>';
+      }).join('')+'</tbody></table></div>';
+  }
+  openModal('ℹ️ '+title,(rows.length?dmExportBtns('bkReplacedList'):'')+body);
+}
+function bkGotoLedger(code,ym){
+  closeModal();
+  var a=document.getElementById('bkAcctSel'),y=document.getElementById('bkYmSel');
+  var q=document.getElementById('bkAcctSearch');if(q&&q.value){q.value='';try{bkAcctFilter('');}catch(e){}}
+  if(!a||!y)return;
+  a.value=code;bkPopulateYm();
+  y.value=ym;bkRender();
+  try{a.scrollIntoView({block:'center'});}catch(e){}
 }
 function bkDiffToggle(tr){tr.classList.toggle('open');var n=tr.nextElementSibling;if(n)n.classList.toggle('show');}
 function bkDiffAll(open){
@@ -7581,9 +7658,10 @@ function switchTab(i){
   if(i===7){try{renderNet();}catch(e){}}
   if(i===2){try{renderApCat();}catch(e){}}
   if(i===8){try{bkPopulate();}catch(e){console.error(e);}}
-  var fb=document.querySelector('.filter-bar');if(fb)fb.style.display=((i===9||i===10)?'none':'');
+  var fb=document.querySelector('.filter-bar');if(fb)fb.style.display=((i===9||i===10||i===11)?'none':'');
   if(i===9){try{dueEnter();}catch(e){console.error(e);}}
   if(i===10){try{mxEnter();}catch(e){console.error(e);}}
+  if(i===11){try{chqEnter();}catch(e){console.error(e);}}
 }
 
 // ============================================================================
@@ -8340,6 +8418,193 @@ function mxRender(){
   }
   root.innerHTML=bar+note+body;
   if(MX.cur&&DUE.loaded&&DUE.have[side])mxDrawChart(MX.cur);
+}
+
+// ============================================================================
+// หน้า "เช็คจ่ายรอผ่านธนาคาร" (tab 11) — เช็คสั่งจ่ายที่ออกแล้วแต่ยังไม่ Pass Cheque (เงินยังไม่ออกจากบัญชีธนาคารจริง)
+// ข้อมูล: ชีต Q28_CHEQUE_OUTSTANDING (ไฟล์ SQL: Q28_CHEQUE_OUTSTANDING.sql) — แถวละ 1 เช็ค อ่านตามชื่อหัวคอลัมน์
+//   CheckKey, CheckNum, PaymentDocNum, PaymentDate, CheckDate, BankCode, BankAcctNo, VendorCode, VendorName, CheckAmount,
+//   Currency, Remarks, JournalRemarks, CreatedByName, DaysSinceCheckDate, Status, PaymentDocEntry
+// หลักคิด: SAP บันทึกเช็คจ่ายเข้า 2121-01 (เช็คจ่ายรอผ่านธนาคาร) ยอดบัญชีธนาคารใน SAP (Q03) จึง "ยังไม่ถูกหัก" จนกว่าจะ Pass Cheque
+//   → เปรียบเทียบเช็คที่ถึงกำหนด/ใกล้ถึงกำหนด กับยอดคงเหลือ SAP ของบัญชีนั้น เพื่อเตือนล่วงหน้าว่าเงินอาจไม่พอ
+// "ถึงกำหนด" คำนวณจากวันที่ในเช็คเทียบวันนี้ของเครื่องที่เปิดหน้า (ไม่ใช้คอลัมน์ Status ในชีต เพราะเป็นภาพ ณ วันที่รันคิวรี)
+// โหลดเมื่อเปิดแท็บครั้งแรกเท่านั้น (ไม่ทำให้หน้าแรกช้าลง)
+// ============================================================================
+var CHQ={loaded:false,loading:false,fail:'',rows:[],asOfKey:0,q:''};
+var CHQ_NAME='Q28_CHEQUE_OUTSTANDING';
+var CHQ_COLS=['checkkey','checknum','paymentdocnum','paymentdate','checkdate','bankcode','bankacctno','vendorcode','vendorname','checkamount','currency','remarks','journalremarks','createdbyname','dayssincecheckdate','status','paymentdocentry'];
+var CHQ_BANKS={'002':'BBL','004':'KBANK','006':'KTB','011':'TTB','014':'SCB','025':'BAY','030':'GSB','069':'KKP'};
+var CHQ_SOON=7;   // เตือน "ครบกำหนดภายใน N วัน"
+function chqIsThb(c){c=String(c||'').trim().toUpperCase();return c===''||c==='THB'||c==='BHT'||c==='บาท';}
+function chqAddDays(dk,n){var d=new Date(Date.UTC(Math.floor(dk/10000),Math.floor(dk/100)%100-1,dk%100)+n*86400000);return d.getUTCFullYear()*10000+(d.getUTCMonth()+1)*100+d.getUTCDate();}
+function chqDaysTo(dk){ // จำนวนวันจากวันนี้ถึงวันที่ในเช็ค (บวก = ยังไม่ถึง, 0 = วันนี้, ลบ = เลยมาแล้ว)
+  if(!dk)return null;var n=new Date(),a=Date.UTC(n.getFullYear(),n.getMonth(),n.getDate()),b=Date.UTC(Math.floor(dk/10000),Math.floor(dk/100)%100-1,dk%100);
+  return Math.round((b-a)/86400000);
+}
+function chqParse(res){
+  var cols=(res.cols||[]).map(function(c){return String(c==null?'':c).trim().toLowerCase();});
+  var off=cols[0]==='#'?1:0,ix={};
+  CHQ_COLS.forEach(function(n,i){var p=cols.indexOf(n);ix[n]=p>=0?p:(i+off);});
+  var must=['checkdate','checkamount','bankacctno'];
+  var bad=must.filter(function(n){return cols.indexOf(n)<0;});
+  if((res.rows||[]).length&&bad.length)throw new Error('หัวคอลัมน์ในชีตไม่ตรง (ไม่พบ: '+bad.join(', ')+') — ต้องวางผลลัพธ์พร้อมหัวคอลัมน์จากไฟล์ SQL Q28');
+  var g=function(r,n){var v=r[ix[n]];return v==null?'':v;};
+  var out=[],asOfs=[];
+  (res.rows||[]).forEach(function(r){
+    var amt=parseFloat(String(g(r,'checkamount')).replace(/,/g,''))||0;
+    var dd=dueKeyDate(g(r,'checkdate'));
+    var no=String(g(r,'checknum')).trim();if(/^\d+$/.test(no)&&no.length<8)no=('00000000'+no).slice(-8);
+    var ds=parseFloat(g(r,'dayssincecheckdate'));
+    if(dd&&!isNaN(ds))asOfs.push(chqAddDays(dd,ds));
+    out.push({key:String(g(r,'checkkey')).trim(),no:no,payDoc:String(g(r,'paymentdocnum')).trim(),payDate:dueKeyDate(g(r,'paymentdate')),dd:dd,
+      bankCode:String(g(r,'bankcode')).trim(),acct:String(g(r,'bankacctno')).trim(),vendCode:String(g(r,'vendorcode')).trim(),vendor:String(g(r,'vendorname')).trim(),
+      amt:amt,cur:String(g(r,'currency')).trim(),remarks:String(g(r,'remarks')).trim(),jrnl:String(g(r,'journalremarks')).trim(),by:String(g(r,'createdbyname')).trim()});
+  });
+  asOfs.sort(function(a,b){return a-b;});
+  CHQ.asOfKey=asOfs.length?asOfs[Math.floor(asOfs.length/2)]:0;   // วันที่รันคิวรี = วันที่ในเช็ค + DaysSinceCheckDate (ใช้ค่ากลาง)
+  return out;
+}
+async function chqLoad(force){
+  if(CHQ.loading)return;
+  if(CHQ.loaded&&!force)return;
+  CHQ.loading=true;CHQ.loaded=false;CHQ.fail='';
+  try{chqRender();}catch(e){}
+  try{
+    var res=null;
+    for(var pass=0;pass<2&&!res;pass++){
+      if(pass>0)await sleepMs(3000);
+      try{res=await fetchSheet(CHQ_NAME);}catch(e){CHQ.fail=String((e&&e.message)||e);if(/Sheet not found/i.test(CHQ.fail))break;}
+    }
+    if(res){CHQ.fail='';try{CHQ.rows=chqParse(res);CHQ.loaded=true;}catch(e){CHQ.fail=String((e&&e.message)||e);CHQ.rows=[];}}
+  }catch(e){console.error('chqLoad',e);CHQ.fail=String((e&&e.message)||e);}
+  CHQ.loading=false;
+  try{chqRender();}catch(e){console.error(e);}
+}
+function chqEnter(){if(!CHQ.loaded&&!CHQ.loading)chqLoad();else chqRender();}
+// หายอดคงเหลือ SAP ของบัญชี (Q03) จากเลขบัญชีในเช็ค — เทียบเฉพาะตัวเลข ตัดขีด/ช่องว่าง
+function chqBalFor(acct){
+  var n=bkAcctNorm(acct);if(n.length<6)return null;
+  var rows=(G.bankRows&&G.bankRows.length?G.bankRows:[]);
+  for(var i=0;i<rows.length;i++){if(bkAcctNorm(rows[i].name).indexOf(n)>=0)return rows[i];}
+  return null;
+}
+function chqAgg(){
+  var today=projTodayKey(),map={},order=[],nonThb=[],T={n:0,all:0,due:0,dueN:0,fwd:0,fwdN:0,soon:0,soonN:0,noDate:0};
+  CHQ.rows.forEach(function(r){
+    if(!chqIsThb(r.cur)){nonThb.push(r);return;}
+    var k=bkAcctNorm(r.acct)||('bank'+r.bankCode);
+    if(!map[k]){map[k]={key:k,acct:r.acct,bankCode:r.bankCode,rows:[],due:0,dueN:0,fwd:0,fwdN:0,soon:0,soonN:0,all:0,next:0};order.push(k);}
+    var a=map[k],dl=chqDaysTo(r.dd);r.days=dl;r.isDue=(dl!=null&&dl<=0);
+    a.rows.push(r);a.all+=r.amt;T.all+=r.amt;T.n++;
+    if(dl==null)T.noDate++;
+    if(r.isDue){a.due+=r.amt;a.dueN++;T.due+=r.amt;T.dueN++;}
+    else{a.fwd+=r.amt;a.fwdN++;T.fwd+=r.amt;T.fwdN++;}
+    if(dl!=null&&dl<=CHQ_SOON){a.soon+=r.amt;a.soonN++;T.soon+=r.amt;T.soonN++;}
+    if(r.dd&&(!a.next||(!r.isDue&&r.dd<a.next)||(a.next&&chqDaysTo(a.next)<=0&&!r.isDue)))a.next=r.dd;
+  });
+  var accts=order.map(function(k){var a=map[k];
+    a.rows.sort(function(x,y){return (x.dd||0)-(y.dd||0)||String(x.no).localeCompare(String(y.no));});
+    a.next=0;for(var i=0;i<a.rows.length;i++){if(a.rows[i].dd&&(!a.next||a.rows[i].dd<a.next))a.next=a.rows[i].dd;}   // ใบที่ครบกำหนดเร็วสุด
+    var b=chqBalFor(a.acct);a.bal=b?b.bal:null;a.balName=b?b.name:'';
+    a.name=b?String(b.name).trim():((CHQ_BANKS[a.bankCode]||('ธนาคารรหัส '+a.bankCode))+' '+a.acct);
+    // สถานะเตือน: red = เช็คที่ถึงกำหนดแล้วเกินยอดคงเหลือ · gold = ภายใน N วันจะไม่พอ · blue = รวมเช็คล่วงหน้าทั้งหมดจะไม่พอ · green = พอ · gray = ไม่พบยอด
+    if(a.bal==null){a.lv='gray';a.msg='ไม่พบยอดคงเหลือบัญชีนี้ใน Q03';}
+    else if(a.due>0&&a.bal-a.due<0){a.lv='red';a.msg='เช็คที่ถึงกำหนดแล้ว เกินยอดคงเหลือ ขาด '+fmtFull(a.due-a.bal)+' บาท';}
+    else if(a.soon>0&&a.bal-a.soon<0){a.lv='gold';a.msg='เช็คที่ถึง/ใกล้ถึงกำหนดใน '+CHQ_SOON+' วัน เกินยอดคงเหลือ ขาด '+fmtFull(a.soon-a.bal)+' บาท';}
+    else if(a.bal-a.all<0){a.lv='blue';a.msg='ถ้ารวมเช็คล่วงหน้าทั้งหมด จะเกินยอดคงเหลือ '+fmtFull(a.all-a.bal)+' บาท (ยังไม่ด่วน)';}
+    else{a.lv='green';a.msg='ยอดคงเหลือเพียงพอสำหรับเช็คทั้งหมด';}
+    return a;});
+  var rank={red:0,gold:1,blue:2,gray:3,green:4};
+  accts.sort(function(x,y){return rank[x.lv]-rank[y.lv]||(x.next||99999999)-(y.next||99999999)||y.all-x.all;});
+  return {accts:accts,T:T,nonThb:nonThb,today:today};
+}
+function chqDayTxt(r){
+  if(r.days==null)return '—';
+  if(r.days===0)return 'ครบกำหนดวันนี้';
+  if(r.days>0)return 'อีก '+r.days+' วัน';
+  return 'เลยมา '+(-r.days)+' วัน';
+}
+function chqSetQ(v){CHQ.q=String(v||'');chqApplyQ();}
+function chqApplyQ(){
+  var q=CHQ.q.trim().toLowerCase();
+  document.querySelectorAll('#chqRoot tr.chq-r').forEach(function(tr){tr.style.display=(!q||tr.textContent.toLowerCase().indexOf(q)>=0)?'':'none';});
+}
+function chqRender(){
+  var root=document.getElementById('chqRoot');if(!root)return;
+  var bar='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,0.03)">'+
+    '<span style="font-size:12px;color:var(--muted);font-weight:600">🧾 เช็คจ่ายที่ออกแล้ว แต่ยังไม่ผ่านธนาคาร (ยังไม่ Pass Cheque)</span>'+
+    '<button class="hbtn hbtn-muted" style="margin-left:auto" onclick="chqLoad(true)">🔄 โหลดข้อมูลใหม่</button></div>';
+  if(CHQ.loading){root.innerHTML=bar+'<div class="info-box blue">⏳ กำลังโหลดข้อมูลจากชีต '+CHQ_NAME+'…</div>';return;}
+  if(!CHQ.loaded){
+    var nf=/Sheet not found/i.test(CHQ.fail);
+    root.innerHTML=bar+'<div class="info-box gold"><div class="info-box-title">'+(nf?'ยังไม่พบแท็บ '+CHQ_NAME+' ใน Google Sheet':'โหลดข้อมูลเช็คไม่สำเร็จ')+'</div>'+
+      (nf?'วิธีเริ่มใช้งาน: (1) รันคิวรี Q28 (ไฟล์ Q28_CHEQUE_OUTSTANDING.sql) ใน SAP Query Manager (2) คัดลอกผลลัพธ์ <b>พร้อมแถวหัวคอลัมน์</b> วางที่แท็บใหม่ชื่อ <b>'+CHQ_NAME+'</b> ในชีตเดียวกับ Q01–Q27 (3) กด 🔄 โหลดข้อมูลใหม่'
+        :projEsc(CHQ.fail||'ไม่ทราบสาเหตุ')+'<br>ตรวจชื่อแท็บและหัวคอลัมน์ในชีต แล้วกด 🔄 โหลดข้อมูลใหม่')+'</div>';
+    return;
+  }
+  var A=chqAgg(),T=A.T,todayK=A.today;
+  var notes=[];
+  if(CHQ.asOfKey){
+    var lag=chqDaysTo(CHQ.asOfKey);
+    if(lag!=null&&lag<0)notes.push('⚠ ข้อมูลเช็คในชีตรันคิวรีเมื่อ <b>'+dueFmtKey(CHQ.asOfKey)+'</b> ('+(-lag)+' วันก่อน) — เช็คที่ผ่านธนาคาร/ออกใหม่หลังวันนั้นยังไม่สะท้อน ให้รัน Q28 ใหม่แล้ววางทับก่อนตัดสินใจ');
+    else notes.push('ข้อมูลเช็ค ณ วันที่ '+dueFmtKey(CHQ.asOfKey));
+  }
+  notes.push('ยอดคงเหลือ = ยอดบัญชีธนาคารใน SAP (Q03) ซึ่ง<b>ยังไม่หักเช็คเหล่านี้</b> (เช็คจ่ายพักอยู่ที่บัญชี 2121-01 จนกว่าจะ Pass Cheque) · ไม่รวมเงินเข้า/รายการจ่ายอื่นที่จะเกิดขึ้น และไม่รวมวงเงิน OD ของบัญชี — ใช้เป็นสัญญาณเตือนเบื้องต้น ไม่ใช่ยอดพร้อมใช้จริง');
+  if(A.nonThb.length)notes.push('มีเช็คสกุลเงินอื่น '+A.nonThb.length+' ใบ — ไม่รวมในยอดและการเทียบยอดคงเหลือ (แสดงแยกท้ายหน้า)');
+  if(T.noDate)notes.push('มีเช็ค '+T.noDate+' ใบที่อ่านวันที่ลงเช็คไม่ได้ — นับเป็น "ลงวันที่ล่วงหน้า"');
+  var noteHtml='<div class="info-box blue" style="font-size:12.5px;line-height:1.7">'+notes.join('<br>')+'</div>';
+  if(!CHQ.rows.length){root.innerHTML=bar+'<div class="info-box blue" style="border-color:var(--green)">✅ ไม่มีเช็คจ่ายค้างผ่านธนาคาร (ชีตไม่มีข้อมูล)</div>'+noteHtml;dmRegisterSimple('chqList','เช็คจ่ายรอผ่านธนาคาร',[],[]);return;}
+  var shortRed=A.accts.filter(function(a){return a.lv==='red';}),shortGold=A.accts.filter(function(a){return a.lv==='gold';});
+  var alert='';
+  if(shortRed.length||shortGold.length){
+    alert='<div class="info-box gold" style="border-color:var(--red);background:rgba(224,92,92,0.08)"><div class="info-box-title" style="color:var(--red);opacity:1">⚠ ยอดคงเหลือไม่พอสำหรับเช็คที่ถึงกำหนด</div>'+
+      shortRed.concat(shortGold).map(function(a){return '• <b>'+projEsc(a.name)+'</b> — '+projEsc(a.msg)+' (คงเหลือ '+fmtFull(a.bal)+' · เช็ค '+(a.lv==='red'?'ถึงกำหนดแล้ว '+fmtFull(a.due):'ภายใน '+CHQ_SOON+' วัน '+fmtFull(a.soon))+')';}).join('<br>')+
+      '<div style="margin-top:6px;font-size:12px;color:var(--text2)">ทางเลือก: โอนเงินเข้าบัญชีนี้ก่อนวันที่เช็คเข้า · ขอเลื่อนเช็คกับเจ้าหนี้ · ตรวจวงเงิน OD ของบัญชี</div></div>';
+  }
+  var kpi=function(cls,label,val,sub,vcls){return '<div class="kpi-card '+cls+'" style="cursor:default;padding-bottom:16px"><div class="kpi-label">'+label+'</div><div class="kpi-value '+(vcls||cls)+'">'+val+'</div><div class="kpi-sub">'+sub+'</div></div>';};
+  var kpis='<div class="kpi-row">'+
+    kpi('gold','เช็ครอผ่านทั้งหมด',fmtFull(T.all),T.n+' ใบ · '+A.accts.length+' บัญชี')+
+    kpi('red','ถึงกำหนดแล้ว',fmtFull(T.due),T.dueN+' ใบ · รอธนาคารตัดบัญชี',T.dueN?'red':'teal')+
+    kpi('blue','ลงวันที่ล่วงหน้า',fmtFull(T.fwd),T.fwdN+' ใบ · ยังไม่ถึงกำหนด')+
+    kpi('teal','ครบภายใน '+CHQ_SOON+' วัน',fmtFull(T.soon),T.soonN+' ใบ (รวมที่ถึงกำหนดแล้ว)',T.soonN?'gold':'teal')+
+    kpi(shortRed.length?'red':(shortGold.length?'gold':'green'),'บัญชีที่ยอดอาจไม่พอ',String(shortRed.length+shortGold.length),shortRed.length?shortRed.length+' บัญชีเกินยอดแล้วที่ถึงกำหนด':(shortGold.length?shortGold.length+' บัญชีจะไม่พอภายใน '+CHQ_SOON+' วัน':'ทุกบัญชีพอสำหรับเช็คที่ใกล้ครบ'),shortRed.length?'red':(shortGold.length?'gold':'green'))+
+    '</div>';
+  var badge=function(lv,txt){var c={red:'badge-red',gold:'badge-gold',blue:'badge-blue',green:'badge-green',gray:''}[lv];return '<span class="badge '+c+'"'+(lv==='gray'?' style="background:rgba(255,255,255,0.06);color:var(--muted)"':'')+'>'+txt+'</span>';};
+  var lvTxt={red:'ไม่พอ (ถึงกำหนดแล้ว)',gold:'เสี่ยง ภายใน '+CHQ_SOON+' วัน',blue:'เฝ้าระวัง',green:'พอ',gray:'ไม่พบยอด'};
+  var sum='<div class="chart-card" style="margin-bottom:14px"><div class="chart-title">สรุปรายบัญชีธนาคาร <span class="chart-sub">เรียงตามความเร่งด่วน</span></div><div style="overflow-x:auto"><table><thead><tr><th>บัญชีธนาคาร</th><th class="right">จำนวน (ใบ)</th><th class="right">ถึงกำหนดแล้ว</th><th class="right">ลงวันที่ล่วงหน้า</th><th class="right">รวม</th><th>ครบกำหนดเร็วสุด</th><th class="right">ยอดคงเหลือ SAP</th><th class="right">คงเหลือหลังหักเช็คครบใน '+CHQ_SOON+' วัน</th><th>สถานะ</th></tr></thead><tbody>'+
+    A.accts.map(function(a){
+      var nx=a.next?dueFmtKey(a.next)+' <span style="color:var(--muted);font-size:11px">('+chqDayTxt({days:chqDaysTo(a.next)})+')</span>':'—';
+      var af=a.bal==null?'—':fmtFull(a.bal-a.soon);
+      return '<tr><td style="font-weight:600">'+projEsc(a.name)+'</td><td class="right">'+a.rows.length+'</td><td class="right '+(a.due>0?'red':'')+'">'+fmtFull(a.due)+'</td><td class="right">'+fmtFull(a.fwd)+'</td><td class="right gold">'+fmtFull(a.all)+'</td><td>'+nx+'</td><td class="right">'+(a.bal==null?'—':fmtFull(a.bal))+'</td><td class="right '+(a.bal!=null&&a.bal-a.soon<0?'red':'')+'">'+af+'</td><td title="'+projEsc(a.msg)+'">'+badge(a.lv,lvTxt[a.lv])+'</td></tr>';
+    }).join('')+
+    '<tr style="font-weight:700;border-top:2px solid var(--border)"><td>รวมทุกบัญชี</td><td class="right">'+T.n+'</td><td class="right red">'+fmtFull(T.due)+'</td><td class="right">'+fmtFull(T.fwd)+'</td><td class="right gold">'+fmtFull(T.all)+'</td><td colspan="4"></td></tr></tbody></table></div></div>';
+  // รายละเอียดรายใบ แยกตามบัญชี
+  var det='<div class="chart-card"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px"><div class="chart-title" style="margin:0">รายละเอียดเช็คแต่ละใบ</div>'+
+    '<input class="filter-select" type="search" placeholder="🔍 ค้นหา เลขที่เช็ค / เจ้าหนี้ / เลขที่ใบจ่าย" value="'+projEsc(CHQ.q)+'" oninput="chqSetQ(this.value)" style="min-width:260px;margin-left:auto"></div>'+
+    '<div id="chqExp"></div><div style="overflow-x:auto"><table><thead><tr><th>เลขที่เช็ค</th><th>ครบกำหนด</th><th>อีก (วัน)</th><th>สถานะ</th><th>เจ้าหนี้</th><th>เลขที่ใบจ่าย</th><th class="right">จำนวนเงิน</th><th>หมายเหตุ</th></tr></thead><tbody>';
+  var exp=[];
+  A.accts.forEach(function(a){
+    det+='<tr class="chq-r" style="background:rgba(255,255,255,0.04)"><td colspan="6" style="font-weight:700">'+projEsc(a.name)+' <span style="font-weight:400;color:var(--muted);font-size:11.5px">· '+a.rows.length+' ใบ</span></td><td class="right gold">'+fmtFull(a.all)+'</td><td></td></tr>';
+    a.rows.forEach(function(r){
+      var st=r.isDue?badge('red','ถึงกำหนดแล้ว'):(r.days!=null&&r.days<=CHQ_SOON?badge('gold','ใกล้ถึงกำหนด'):badge('blue','ลงวันที่ล่วงหน้า'));
+      det+='<tr class="chq-r"><td style="font-variant-numeric:tabular-nums">'+projEsc(r.no)+'</td><td>'+dueFmtKey(r.dd)+'</td><td'+(r.isDue?' style="color:var(--red);font-weight:600"':'')+'>'+chqDayTxt(r)+'</td><td>'+st+'</td><td>'+projEsc(r.vendor||r.vendCode)+'</td><td>'+projEsc(r.payDoc)+'</td><td class="right">'+fmtFull(r.amt)+'</td><td style="font-size:12px;color:var(--muted);max-width:260px">'+projEsc(r.remarks||r.jrnl)+'</td></tr>';
+      exp.push({acct:a.name,no:r.no,due:dueFmtKey(r.dd),days:chqDayTxt(r),st:r.isDue?'ถึงกำหนดแล้ว':'ลงวันที่ล่วงหน้า',vendor:r.vendor||r.vendCode,doc:r.payDoc,amt:fmtFull(r.amt),rem:r.remarks||r.jrnl});
+    });
+  });
+  det+='</tbody></table></div>';
+  if(A.nonThb.length){
+    det+='<div class="section-sep" style="margin-top:14px">เช็คสกุลเงินอื่น (ไม่รวมในยอดด้านบน)</div><table><tbody>'+A.nonThb.map(function(r){return '<tr><td>'+projEsc(r.no)+'</td><td>'+dueFmtKey(r.dd)+'</td><td>'+projEsc(r.vendor)+'</td><td>'+projEsc(r.acct)+'</td><td class="right">'+fmtFull(r.amt)+' '+projEsc(r.cur)+'</td></tr>';}).join('')+'</tbody></table>';
+  }
+  det+='</div>';
+  exp.push({acct:'รวมทั้งหมด',no:'',due:'',days:'',st:'',vendor:'',doc:'',amt:fmtFull(T.all),rem:'ถึงกำหนดแล้ว '+fmtFull(T.due)+' · ลงวันที่ล่วงหน้า '+fmtFull(T.fwd)});
+  dmRegisterSimple('chqList','เช็คจ่ายรอผ่านธนาคาร ณ '+dueFmtKey(todayK),[
+    {label:'บัญชีธนาคาร',get:function(r){return r.acct;}},{label:'เลขที่เช็ค',get:function(r){return r.no;}},
+    {label:'ครบกำหนด',get:function(r){return r.due;}},{label:'อีก (วัน)',get:function(r){return r.days;}},{label:'สถานะ',get:function(r){return r.st;}},
+    {label:'เจ้าหนี้',get:function(r){return r.vendor;}},{label:'เลขที่ใบจ่าย',get:function(r){return r.doc;}},
+    {label:'จำนวนเงิน',right:true,get:function(r){return r.amt;}},{label:'หมายเหตุ',get:function(r){return r.rem;}}],exp);
+  root.innerHTML=bar+alert+kpis+noteHtml+sum+det;
+  var ex=document.getElementById('chqExp');if(ex)ex.innerHTML=dmExportBtns('chqList');
+  if(CHQ.q)chqApplyQ();
 }
 
 Chart.defaults.color='#8FA3B8';Chart.defaults.font.family='Sarabun';Chart.defaults.font.size=12;
