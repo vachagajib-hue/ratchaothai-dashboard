@@ -6026,7 +6026,7 @@ async function rHandleFiles(files){
     if(!RBANK_DATA[bk])RBANK_DATA[bk]={uploaded:true,accounts:[]};
     RBANK_DATA[bk].uploaded=true;
     RBANK_DATA[bk].period=period||RBANK_DATA[bk].period;
-    RBANK_DATA[bk].accounts.push({acctNo:acctNo,name:acctNo+' (CSV)',bal:lastBal,txns:txns});
+    RBANK_DATA[bk].accounts.push({acctNo:acctNo,name:acctNo+' (CSV)',bal:lastBal,txns:bkOrderTxns(txns)});
     el.className='upload-result';el.textContent=tag+'✅ '+file.name+' ('+bk+') — '+txns.length+' รายการ — กำลังบันทึกลง Google Sheets…';
     RACTIVE=bk;document.querySelectorAll('.recon-bank-btn').forEach(function(b){b.classList.remove('active');});var btn=document.getElementById('rbtn-'+bk);if(btn)btn.classList.add('active');
     renderRecon();
@@ -7084,6 +7084,40 @@ function bankSetStatus(html, cls){
   var el=document.getElementById('bankLoadStatus');if(!el)return;
   el.className='info-box '+(cls||'blue');el.style.display=html?'':'none';el.style.marginBottom='16px';el.innerHTML=html||'';
 }
+// ===== เรียงรายการสเตทเมนต์ธนาคาร: ตามวันที่ แล้วเรียง "ในวันเดียวกัน" ตามห่วงโซ่ยอดคงเหลือ (26 ต.ค. 2569) =====
+// ปัญหาเดิม: ชีต BANK_STATEMENTS เก็บวันที่เป็นข้อความไม่มีเวลา รายการวันเดียวกันจึงเรียงตามลำดับแถวในไฟล์ ซึ่งสเตทเมนต์ BBL เรียง "ใหม่ → เก่า"
+// → ยอดปิดเดือน ("แถวสุดท้ายของวันสุดท้าย") ไปตกที่รายการแรกสุดของวัน เช่น 28/04/2026 ได้ 9,374,349.63 แทน 12,086.38 ทั้งที่ยอดปิดจริงคือ 12,086.38
+// วิธีแก้: ในวันเดียวกัน หาลำดับที่ ยอดก่อนหน้า + เงินเข้า − เงินออก = ยอดคงเหลือ ต่อกันครบทุกแถว (ไม่ขึ้นกับทิศทางไฟล์/ธนาคาร)
+// ถ้าต่อไม่ครบหรือกำกวม (เช่นไม่มีคอลัมน์ยอดคงเหลือ) ใช้ทิศทางโดยรวมของไฟล์: ถ้าทั้งไฟล์เรียงใหม่→เก่า ให้กลับลำดับในวัน
+function bkChainOrderDay(g){
+  var n=g.length;if(n<2)return g;if(n>60)return null;
+  var link=function(a,b){return Math.abs((a.t.bal||0)+(b.t.credit||0)-Math.abs(b.t.debit||0)-(b.t.bal||0))<0.015;};
+  var starts=g.filter(function(b){return !g.some(function(a){return a!==b&&link(a,b);});});
+  if(starts.length!==1)return null;
+  var chain=[starts[0]],used={},cur=starts[0];used[g.indexOf(cur)]=true;
+  while(chain.length<n){
+    var nx=g.filter(function(b,j){return !used[j]&&link(cur,b);});
+    if(nx.length!==1)return null;
+    cur=nx[0];used[g.indexOf(cur)]=true;chain.push(cur);
+  }
+  return chain;
+}
+function bkOrderTxns(arr){
+  arr=arr||[];
+  var idx=arr.map(function(t,i){return {t:t,i:i,k:dateKey(t.date)};});
+  var desc=0,asc=0;
+  for(var i=1;i<idx.length;i++){if(idx[i].k&&idx[i-1].k){if(idx[i].k<idx[i-1].k)desc++;else if(idx[i].k>idx[i-1].k)asc++;}}
+  var fileDesc=desc>asc,days={},order=[];
+  idx.forEach(function(o){if(days[o.k]===undefined){days[o.k]=[];order.push(o.k);}days[o.k].push(o);});
+  order.sort();
+  var out=[];
+  order.forEach(function(k){
+    var g=days[k],ordered=bkChainOrderDay(g);
+    if(!ordered)ordered=fileDesc?g.slice().reverse():g;
+    ordered.forEach(function(o){out.push(o.t);});
+  });
+  return out;
+}
 async function loadBankFromSheets() {
   bankSetStatus('&#9203; กำลังโหลด Bank Statement จากชีต BANK_STATEMENTS…','blue');
   try {
@@ -7135,7 +7169,7 @@ async function loadBankFromSheets() {
     // เรียงรายการตามวันที่ (คงลำดับเดิมในวันเดียวกัน) — ถ้าแถวในชีตไม่เรียงตามเวลา (เช่น อัปโหลดเดือนก่อนทีหลัง)
     // ยอดคงเหลือ "แถวสุดท้าย" จะไม่ใช่ยอดล่าสุดจริง
     Object.values(grouped).forEach(function(g) {
-      g.txns = g.txns.map(function(t, i) { return {t: t, i: i}; }).sort(function(a, b) { return dateKey(a.t.date).localeCompare(dateKey(b.t.date)) || a.i - b.i; }).map(function(o) { return o.t; });
+      g.txns = bkOrderTxns(g.txns);
       if (g.txns.length) g.lastBal = g.txns[g.txns.length - 1].bal;
     });
 
@@ -7282,7 +7316,7 @@ async function csvSheetHandle(files){
       if(!RBANK_DATA[bk])RBANK_DATA[bk]={uploaded:true,period:period,accounts:[]};
       RBANK_DATA[bk].uploaded=true;
       var existIdx=RBANK_DATA[bk].accounts.findIndex(function(a){return a.acctNo===acctNo;});
-      var acctData={acctNo:acctNo,name:acctNo+' (CSV)',bal:lastBal,txns:txns.map(function(t){return{date:t.date,desc:t.description,debit:t.debit,credit:t.credit,bal:t.balance};})};
+      var acctData={acctNo:acctNo,name:acctNo+' (CSV)',bal:lastBal,txns:bkOrderTxns(txns.map(function(t){return{date:t.date,desc:t.description,debit:t.debit,credit:t.credit,bal:t.balance};}))};
       if(existIdx>=0)RBANK_DATA[bk].accounts[existIdx]=acctData;
       else RBANK_DATA[bk].accounts.push(acctData);
       if(document.getElementById('page5').classList.contains('active'))renderRecon();
