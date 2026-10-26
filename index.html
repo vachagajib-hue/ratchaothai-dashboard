@@ -465,7 +465,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 </div>
 <div class="recon-section" id="reconSapMonthlySection" style="display:none">
 <div class="recon-section-title">&#128202; เทียบยอด SAP vs Bank แยกรายเดือน</div>
-<div style="font-size:11px;color:var(--muted);margin-bottom:8px">เขียว = ตรงกัน (ต่างกันไม่เกิน 1 บาท) &nbsp;·&nbsp; แดง = ต้องตรวจสอบ &nbsp;·&nbsp; — = ไม่มีข้อมูลเดือนนั้น</div>
+<div style="font-size:11px;color:var(--muted);margin-bottom:8px">เขียว = ตรงกัน (ต่างกันไม่เกิน 1 บาท) &nbsp;·&nbsp; แดง = ต้องตรวจสอบ &nbsp;·&nbsp; <i style="opacity:.7">ตัวเอียงจาง</i> = SAP เดือนนั้นไม่มีรายการเคลื่อนไหว ยกยอดจากเดือนก่อนมาแสดง &nbsp;·&nbsp; — = ยังไม่มีข้อมูลในช่วงนั้น</div>
 <div id="reconSapMonthlyWrap" style="overflow-x:auto"></div>
 </div>
 <div class="recon-section">
@@ -6774,23 +6774,29 @@ function renderRecon(){
         var ba=bd.accounts.find(function(x){return acctMatches(x.acctNo,a.name);});
         var sortedTxns=ba?(ba.txns||[]).slice().sort(function(x,y){return dateKey(x.date).localeCompare(dateKey(y.date));}):[];
         var mm=(G.sapMonthlyByAcct||{})[a.code];
-        var sapVals=cmpMonths.map(function(ym){return mm&&mm[ym]!==undefined?mm[ym]:null;});
+        // เดือนที่ SAP ไม่มีรายการเคลื่อนไหว Q11 จะไม่คืนแถว → ยกยอดสิ้นเดือนก่อนหน้ามาแสดง (เริ่มนับตั้งแต่เดือนแรกที่มีข้อมูล)
+        var sapCarry=[],lastSap=null;
+        var sapVals=cmpMonths.map(function(ym){
+          if(mm&&mm[ym]!==undefined){lastSap=mm[ym];sapCarry.push(false);return lastSap;}
+          sapCarry.push(lastSap!==null);return lastSap;
+        });
         var bankVals=cmpMonths.map(function(ym){
           if(!ba)return null;
           var upTo=sortedTxns.filter(function(t){var mk=dateKey(t.date||'');return mk&&(mk.slice(0,4)+'-'+mk.slice(4,6))<=ym;});
           return upTo.length?(upTo[upTo.length-1].bal||0):null;
         });
         var diffVals=cmpMonths.map(function(ym,i){return sapVals[i]!==null&&bankVals[i]!==null?bankVals[i]-sapVals[i]:null;});
-        return {code:a.code,name:a.name,sapVals:sapVals,bankVals:bankVals,diffVals:diffVals};
+        return {code:a.code,name:a.name,sapVals:sapVals,sapCarry:sapCarry,bankVals:bankVals,diffVals:diffVals};
       }).filter(function(p){return p.sapVals.some(function(v){return v!==null;})||p.bankVals.some(function(v){return v!==null;});});
       var totSap=cmpMonths.map(function(ym,i){var any=false,t=0;acctPairs.forEach(function(p){if(p.sapVals[i]!==null){t+=p.sapVals[i];any=true;}});return any?t:null;});
       var totBank=cmpMonths.map(function(ym,i){var any=false,t=0;acctPairs.forEach(function(p){if(p.bankVals[i]!==null){t+=p.bankVals[i];any=true;}});return any?t:null;});
       var totDiff=cmpMonths.map(function(ym,i){return totSap[i]!==null&&totBank[i]!==null?totBank[i]-totSap[i]:null;});
+      function sapCellC(carry){return function(v,i){return (carry&&carry[i]&&v!==null)?'<td class="right" style="opacity:.6;font-style:italic" title="เดือนนี้ไม่มีรายการเคลื่อนไหวใน SAP — ยกยอดจากเดือนก่อน">'+fmtFull(v)+'</td>':sapCell(v);};}
       function sapCell(v){return v===null?'<td class="right" style="color:var(--muted)">—</td>':'<td class="right">'+fmtFull(v)+'</td>';}
       function diffCell(v){return v===null?'<td class="right" style="color:var(--muted)">—</td>':'<td class="right '+(Math.abs(v)<1?'green':'red')+'">'+fmtFull(v)+'</td>';}
       var html='<table><thead><tr><th>บัญชี</th><th>ประเภท</th>'+cmpLbls.map(function(l){return '<th style="text-align:right">'+l+'</th>';}).join('')+'</tr></thead><tbody>';
       html+=acctPairs.map(function(p){
-        return '<tr><td rowspan="3" style="font-size:11px;color:var(--muted);vertical-align:top;padding-top:8px">'+p.name+'</td><td style="font-size:11px;color:var(--blue)">SAP</td>'+p.sapVals.map(sapCell).join('')+'</tr>'+
+        return '<tr><td rowspan="3" style="font-size:11px;color:var(--muted);vertical-align:top;padding-top:8px">'+p.name+'</td><td style="font-size:11px;color:var(--blue)">SAP</td>'+p.sapVals.map(sapCellC(p.sapCarry)).join('')+'</tr>'+
         '<tr><td style="font-size:11px;color:var(--teal)">Bank</td>'+p.bankVals.map(sapCell).join('')+'</tr>'+
         '<tr style="border-bottom:1px solid var(--border)"><td style="font-size:11px;color:var(--gold2);font-weight:600">ส่วนต่าง</td>'+p.diffVals.map(diffCell).join('')+'</tr>';
       }).join('');
