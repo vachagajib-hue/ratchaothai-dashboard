@@ -7089,18 +7089,24 @@ function bankSetStatus(html, cls){
 // → ยอดปิดเดือน ("แถวสุดท้ายของวันสุดท้าย") ไปตกที่รายการแรกสุดของวัน เช่น 28/04/2026 ได้ 9,374,349.63 แทน 12,086.38 ทั้งที่ยอดปิดจริงคือ 12,086.38
 // วิธีแก้: ในวันเดียวกัน หาลำดับที่ ยอดก่อนหน้า + เงินเข้า − เงินออก = ยอดคงเหลือ ต่อกันครบทุกแถว (ไม่ขึ้นกับทิศทางไฟล์/ธนาคาร)
 // ถ้าต่อไม่ครบหรือกำกวม (เช่นไม่มีคอลัมน์ยอดคงเหลือ) ใช้ทิศทางโดยรวมของไฟล์: ถ้าทั้งไฟล์เรียงใหม่→เก่า ให้กลับลำดับในวัน
-function bkChainOrderDay(g){
-  var n=g.length;if(n<2)return g;if(n>60)return null;
-  var link=function(a,b){return Math.abs((a.t.bal||0)+(b.t.credit||0)-Math.abs(b.t.debit||0)-(b.t.bal||0))<0.015;};
-  var starts=g.filter(function(b){return !g.some(function(a){return a!==b&&link(a,b);});});
-  if(starts.length!==1)return null;
-  var chain=[starts[0]],used={},cur=starts[0];used[g.indexOf(cur)]=true;
-  while(chain.length<n){
-    var nx=g.filter(function(b,j){return !used[j]&&link(cur,b);});
-    if(nx.length!==1)return null;
-    cur=nx[0];used[g.indexOf(cur)]=true;chain.push(cur);
+function bkLinkOk(prev,t){return Math.abs((prev||0)+(t.credit||0)-Math.abs(t.debit||0)-(t.bal||0))<0.015;}
+// หาลำดับรายการในวันเดียวกันที่ยอดคงเหลือต่อกันครบ โดยเริ่มจากยอดปิดวันก่อนหน้า (prevBal; null = ไม่ทราบ)
+// คืนค่า {byEnd:{ยอดปิด(สตางค์):ลำดับ}, n:จำนวนคำตอบที่ยอดปิดต่างกัน}
+function bkDayPaths(g,prevBal){
+  var n=g.length,res={},cnt=0,nodes=0,used=[],path=[];
+  for(var i=0;i<n;i++)used.push(false);
+  function dfs(prev,depth){
+    if(nodes++>20000)return;
+    if(depth===n){var key=Math.round(prev*100);if(!res[key]){res[key]=path.slice();cnt++;}return;}
+    var tried={};
+    for(var j=0;j<n;j++){
+      if(used[j])continue;var t=g[j].t;
+      var sig=(t.credit||0)+'|'+(t.debit||0)+'|'+(t.bal||0);if(tried[sig])continue;
+      if(prev===null||bkLinkOk(prev,t)){tried[sig]=1;used[j]=true;path.push(g[j]);dfs(t.bal||0,depth+1);path.pop();used[j]=false;}
+    }
   }
-  return chain;
+  dfs(prevBal,0);
+  return {byEnd:res,n:cnt};
 }
 function bkOrderTxns(arr){
   arr=arr||[];
@@ -7110,11 +7116,27 @@ function bkOrderTxns(arr){
   var fileDesc=desc>asc,days={},order=[];
   idx.forEach(function(o){if(days[o.k]===undefined){days[o.k]=[];order.push(o.k);}days[o.k].push(o);});
   order.sort();
-  var out=[];
-  order.forEach(function(k){
-    var g=days[k],ordered=bkChainOrderDay(g);
-    if(!ordered)ordered=fileDesc?g.slice().reverse():g;
+  var out=[],prevBal=null;
+  order.forEach(function(k,di){
+    var g=days[k],fb=fileDesc?g.slice().reverse():g,ordered=null;
+    if(g.length<2||g.length>40){ordered=fb;}
+    else{
+      // ยอดคงเหลือก่อนรายการแรกของวันถัดไป = ยอดปิดที่ถูกต้องของวันนี้
+      var nextOpen={},hasNext=false,ng=days[order[di+1]];
+      if(ng)ng.forEach(function(o){nextOpen[Math.round(((o.t.bal||0)-(o.t.credit||0)+Math.abs(o.t.debit||0))*100)]=true;hasNext=true;});
+      var r=bkDayPaths(g,prevBal);
+      if(!r.n&&prevBal!==null)r=bkDayPaths(g,null);
+      var keys=Object.keys(r.byEnd);
+      if(keys.length>1&&hasNext){var f=keys.filter(function(x){return nextOpen[x];});if(f.length)keys=f;}
+      if(keys.length===1)ordered=r.byEnd[keys[0]];
+      else if(keys.length>1){
+        var fbEnd=String(Math.round((fb[fb.length-1].t.bal||0)*100));
+        ordered=r.byEnd[fbEnd]||r.byEnd[keys[0]];
+      } else ordered=fb;
+    }
     ordered.forEach(function(o){out.push(o.t);});
+    var lb=ordered[ordered.length-1].t.bal;
+    prevBal=(typeof lb==='number'&&!isNaN(lb))?lb:null;
   });
   return out;
 }
