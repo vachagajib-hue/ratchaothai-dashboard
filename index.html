@@ -3875,33 +3875,41 @@ function bkSubsetSolutions(vals,target,maxSol,deadline){
 function bkFindGroups(lumps,parts,opt){
   opt=opt||{};
   var maxDays=opt.maxDays==null?3:opt.maxDays,deadline=Date.now()+(opt.budgetMs||4000);
-  var out={proposals:[],ambiguous:[],conflict:[],timedOut:false,tooMany:0};
+  var out={proposals:[],ambiguous:[],conflict:[],timedOut:false,tooMany:0,tooManyList:[]};
   parts=parts.filter(function(p){return p.cents>0&&p.dn!=null;});
   lumps.slice().sort(function(a,b){return b.cents-a.cents;}).forEach(function(L){
     if(out.timedOut)return;
     if(Date.now()>deadline){out.timedOut=true;return;}
-    for(var d=0;d<=maxDays;d++){
-      var pool=parts.filter(function(p){return p.cents<L.cents&&Math.abs(p.dn-L.dn)<=d;});
-      if(pool.length<2)continue;
+    // ลำดับหน้าต่างค้นหา: วันเดียวกัน → (ย้อนหลัง d วัน / ล่วงหน้า d วัน / ±d วัน) เรียงจากแคบไปกว้าง
+    // หน้าต่างข้างเดียวช่วยให้ pool เล็กลงจนค้นได้ (≤36) ในกรณีที่ ±d ใหญ่เกินไป
+    var wins=[[0,0]];
+    for(var dd=1;dd<=maxDays;dd++){wins.push([-dd,0]);wins.push([0,dd]);wins.push([-dd,dd]);}
+    var seen={},overflow=0,overflowPool=0;
+    for(var wi=0;wi<wins.length;wi++){
+      var lo=wins[wi][0],hi=wins[wi][1];
+      var pool=parts.filter(function(p){var df=p.dn-L.dn;return p.cents<L.cents&&df>=lo&&df<=hi;});
+      var psig=pool.map(function(p){return p.key;}).join('|');
+      if(pool.length<2||seen[psig])continue;   // pool เดิมที่เคยค้นแล้ว (ไม่เจอ) ไม่ต้องค้นซ้ำ
+      seen[psig]=true;
       var tot=0;pool.forEach(function(p){tot+=p.cents;});
       if(tot<L.cents)continue;
       var r=bkSubsetSolutions(pool.map(function(p){return p.cents;}),L.cents,4,deadline);
-      if(r.tooMany){out.tooMany++;return;}
+      if(r.tooMany){overflow++;overflowPool=Math.max(overflowPool,pool.length);continue;}
       if(r.capped){out.timedOut=true;return;}   // ค้นไม่ครบ → รับรองความเป็นคำตอบเดียวไม่ได้ ไม่เสนอ
       if(!r.sols.length)continue;
       var sigs={};
       r.sols.forEach(function(ix){sigs[ix.map(function(i){return pool[i].cents;}).sort(function(a,b){return a-b;}).join(',')]=true;});
-      if(Object.keys(sigs).length>1){out.ambiguous.push({lump:L,days:d});return;}
+      if(Object.keys(sigs).length>1){out.ambiguous.push({lump:L,days:Math.max(-lo,hi)});return;}
       var chosen=r.sols[0].map(function(i){return pool[i];});
       var spread=0;chosen.forEach(function(p){spread=Math.max(spread,Math.abs(p.dn-L.dn));});
-      // ประมาณจำนวน "ชุดอื่นที่บังเอิญรวมได้เท่ากัน" (λ) ด้วยการแจกแจงปกติของผลรวมย่อย: 2^n·φ((target−mean)/σ)/σ
-      // λ ต่ำ = ชุดนี้ไม่น่าบังเอิญ (ติ๊กให้) · λ สูง = pool ใหญ่/ยอดใกล้กลาง ผลรวมบังเอิญตรงได้ (ต้องตรวจเอง)
+      // ประมาณจำนวน "ชุดอื่นที่บังเอิญรวมได้เท่ากัน" (λ) ด้วยการแจกแจงปกติของผลรวมย่อย: 2^n·pdf — λ ต่ำ = ไม่น่าบังเอิญ (ติ๊กให้) · λ สูง = pool ใหญ่ ผลรวมบังเอิญตรงได้ (ไม่ติ๊กให้)
       var sq=0;pool.forEach(function(p){sq+=p.cents*p.cents;});
       var sg=0.5*Math.sqrt(sq),mu=tot/2,z=(L.cents-mu)/sg;
       var lam=Math.pow(2,pool.length)*Math.exp(-z*z/2)/(sg*2.5066);
       out.proposals.push({lump:L,parts:chosen,spread:spread,lambda:lam,poolSize:pool.length});
       return;
     }
+    if(overflow){out.tooMany++;out.tooManyList.push({lump:L,pool:overflowPool});}
   });
   // ชุดที่ใช้รายการซ้ำกัน = ชนกัน ไม่เสนอ (ให้ตรวจเอง)
   var usedBy={};
@@ -3948,12 +3956,16 @@ function bkGroupPanelHtml(kind,expectedDiff,sapNewStrict,bankNewStrict){
   if(conf)notes.push(conf+' ชุดใช้รายการซ้ำกัน — ตรวจเอง');
   if(many)notes.push(many+' ก้อนมีรายการอีกฝั่งในช่วงเดียวกันเกิน 36 รายการ — ค้นหาชุดอย่างปลอดภัยไม่ได้ ใช้ปุ่มยืนยันทั้งวันหรือยืนยันทีละรายการ');
   if(tmo)notes.push('คำนวณไม่ครบเวลาที่กำหนด');
+  var manyList=(a.tooManyList||[]).concat(b.tooManyList||[]).sort(function(x,y){return (x.lump.dk||'').localeCompare(y.lump.dk||'')||y.lump.cents-x.lump.cents;});
+  var manyHtml=manyList.length?('<details style="margin-top:6px"><summary style="font-size:11.5px;color:var(--muted);cursor:pointer">ดูก้อนที่ค้นอัตโนมัติไม่ได้ ('+manyList.length+' ก้อน)</summary><table style="width:100%;margin-top:4px"><tbody>'+
+    manyList.map(function(m){return '<tr><td style="font-size:11.5px;color:var(--muted);width:90px">'+bkDiffEsc(m.lump.date||'')+'</td><td style="font-size:11.5px">'+bkDiffEsc(m.lump.label||'')+'</td><td class="right" style="font-size:11.5px;width:120px">'+fmtFull(m.lump.cents/100)+'</td><td class="right" style="font-size:11px;color:var(--muted);width:110px">ผู้สมัคร '+m.pool+'</td></tr>';}).join('')+
+    '</tbody></table></details>'):'';
   var btnId='bkGrpBtn';
   return '<div style="background:rgba(76,175,125,0.10);border:1px solid var(--green);border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:16px">'+
     '<div style="font-weight:700;color:var(--green);margin-bottom:6px">&#129513; พบชุดรายการที่รวมแล้วตรงกับก้อน ('+list.length+' ชุด) — ติ๊กเลือกแล้วยืนยันครั้งเดียว</div>'+
     '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">ผลรวมเท่ากับก้อนเป๊ะ ภายใน ±3 วัน — ติ๊กไว้ให้เฉพาะชุดวันเดียวกันที่ความมั่นใจสูง ชุดอื่นต้องตรวจรายการในชุดแล้วติ๊กเอง</div>'+
     rowsH+
-    (notes.length?'<div style="font-size:11.5px;color:var(--gold2);margin-top:6px">'+notes.join(' · ')+'</div>':'')+
+    (notes.length?'<div style="font-size:11.5px;color:var(--gold2);margin-top:6px">'+notes.join(' · ')+'</div>':'')+manyHtml+
     (list.length?'<div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button id="'+btnId+'" onclick="bkConfirmGroups(\''+btnId+'\')" style="background:linear-gradient(135deg,var(--green),#7FD9A8);color:#08131f;border:none;padding:7px 16px;border-radius:7px;font-weight:700;cursor:pointer;font-family:\'Sarabun\',sans-serif;font-size:12.5px">ยืนยันชุดที่ติ๊กไว้</button>'+
     '<button class="hbtn" onclick="document.querySelectorAll(\'.bkGrpChk\').forEach(function(c){c.checked=true;})">ติ๊กทั้งหมด</button><button class="hbtn" onclick="document.querySelectorAll(\'.bkGrpChk\').forEach(function(c){c.checked=false;})">ล้างที่ติ๊ก</button></div>':'')+
     '</div>';
