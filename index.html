@@ -5114,6 +5114,26 @@ function bkDetectReversals(rows){
       takePairs(evidDebits,evidCredits);   // เหลือที่มีหลักฐานทั้ง 2 ฝั่ง (เช่น 2 เอกสารกลับรายการชนกัน)
     });
   });
+  // รอบสุดท้าย: จับคู่ "ข้ามวัน" ด้วยเลข JE ที่อ้างใน memo — SAP/ผู้ใช้ใส่หมายเหตุกลับรายการแบบ "(Reversal) - 9643"
+  // (เลขท้ายคือ TransId ของใบต้นฉบับ) เคสจริง 20 ม.ค. 2569 บัญชี 1113-15: JE 9680 เดบิต 40.00 กลับรายการ JE 9643 (16 ม.ค. เครดิต 40.00)
+  // คนละวัน การจับคู่วันเดียวกันจึงไม่เจอ ต้องมียอดเท่ากัน ฝั่งตรงข้าม และยังไม่ถูกจับคู่ทั้งสองใบ จึงจะถือเป็นคู่กลับรายการ
+  var byTid={};
+  rows.forEach(function(r,i){var t=String(r.tid||'').trim();if(t){(byTid[t]=byTid[t]||[]).push(i);}});
+  rows.forEach(function(r,i){
+    if(flags[i])return;
+    var m=String(r.memo||'').match(/(?:reversal|reverse\s*entry|กลับรายการ)[^0-9]{0,12}[-\u2013:#]\s*(\d{3,})/i);
+    if(!m)return;
+    var cands=(byTid[m[1]]||[]).filter(function(j){return j!==i&&!flags[j];});
+    for(var k=0;k<cands.length;k++){
+      var j=cands[k],o=rows[j];
+      var iDeb=!!r.debit&&!r.credit,iCre=!!r.credit&&!r.debit,jDeb=!!o.debit&&!o.credit,jCre=!!o.credit&&!o.debit;
+      var sameAmt=Math.abs(Math.abs(iDeb?r.debit:r.credit)-Math.abs(jDeb?o.debit:o.credit))<0.005;
+      if(!sameAmt||!((iDeb&&jCre)||(iCre&&jDeb)))continue;
+      pairId++;flags[i]=pairId;flags[j]=pairId;
+      debitTotal+=(iDeb?r.debit:o.debit);creditTotal+=(iCre?r.credit:o.credit);
+      break;
+    }
+  });
   return {flags:flags,pairCount:pairId,debitTotal:debitTotal,creditTotal:creditTotal};
 }
 function bkResetOpening(){
@@ -5148,7 +5168,7 @@ function bkRecalc(){
   if(bodyEl){
     bodyEl.innerHTML = visibleRows.length ? visibleRows.map(function(r){
       var revStyle=r.isReversed?' style="opacity:0.55"':'';
-      var revBadge=r.isReversed?' <span title="คู่กลับรายการ #'+r.pairId+' — จับคู่จากวันที่+ยอดเดียวกัน เดบิต/เครดิตตรงข้าม" style="font-size:11px;color:var(--gold2);white-space:nowrap">&#128257; กลับรายการ</span>':'';
+      var revBadge=r.isReversed?' <span title="คู่กลับรายการ #'+r.pairId+' — จับคู่จากยอดเท่ากัน เดบิต/เครดิตตรงข้าม (วันเดียวกัน หรืออ้างเลข JE ใน memo เช่น (Reversal) - 9643)" style="font-size:11px;color:var(--gold2);white-space:nowrap">&#128257; กลับรายการ</span>':'';
       if(r.alert&&r.alert.replaced)revBadge+=' <span title="SAP ยกเลิกเอกสารแล้วออกใหม่ทดแทน (แบงค์ '+bkDiffEsc(r.alert.bankDate)+')" style="font-size:11px;color:var(--muted);white-space:nowrap">&#8505;&#65039; '+bkDiffEsc(bkReplLabel(r.alert))+'</span>';
       else if(r.alert)revBadge+=' <span title="แบงค์มีรายการตัดเงินยอดนี้จริง ('+bkDiffEsc(r.alert.bankDate)+' '+bkDiffEsc(r.alert.bankDesc)+') แต่ SAP กลับรายการ/ยกเลิกแล้ว" style="font-size:11px;color:var(--red);font-weight:700;white-space:nowrap">&#9888;&#65039; แบงค์ตัดเงินจริง ('+bkDiffEsc(r.alert.bankDate)+')</span>';
       var sapB=bkSapBadge(r.key,{isReversed:r.isReversed,hasBankCsv:hasBankCsv,matched:r.bankMatched,hint:r.hint,displayLabel:((r.date||'')+' '+(r.memo||'')+' '+fmtFull(r.debit||r.credit||0))});
