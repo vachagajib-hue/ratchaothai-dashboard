@@ -5350,7 +5350,11 @@ function bkRecalc(){
   if(bodyEl){
     bodyEl.innerHTML = visibleRows.length ? visibleRows.map(function(r){
       var revStyle=r.isReversed?' style="opacity:0.55"':'';
-      var revBadge=r.isReversed?' <span title="คู่กลับรายการ #'+r.pairId+' — จับคู่จากยอดเท่ากัน เดบิต/เครดิตตรงข้าม (วันเดียวกัน หรืออ้างเลข JE ใน memo เช่น (Reversal) - 9643)" style="font-size:11px;color:var(--gold2);white-space:nowrap">&#128257; กลับรายการ</span>':'';
+      var revPartner=null;
+      if(r.isReversed&&r.pairId){for(var pi=0;pi<runningRows.length;pi++){var q=runningRows[pi];if(q!==r&&q.pairId===r.pairId){revPartner=q;break;}}}
+      var revPartnerTxt=revPartner?(' ↔ JE '+bkDiffEsc(revPartner.tid||'')+(revPartner.docRef?(' ('+bkDiffEsc(revPartner.docRef)+')'):'')):'';
+      var revPartnerTip=revPartner?(' | คู่กับ: JE '+(revPartner.tid||'')+' วันที่ '+(revPartner.date||'')+' '+(revPartner.debit?('เดบิต '+fmtFull(revPartner.debit)):('เครดิต '+fmtFull(revPartner.credit)))+' — '+String(revPartner.memo||'').replace(/"/g,'&quot;').slice(0,140)):'';
+      var revBadge=r.isReversed?' <span title="คู่กลับรายการ #'+r.pairId+' — จับคู่จากยอดเท่ากัน เดบิต/เครดิตตรงข้าม (วันเดียวกัน หรืออ้างเลข JE ใน memo เช่น (Reversal) - 9643)'+revPartnerTip+'" style="font-size:11px;color:var(--gold2);white-space:nowrap">&#128257; กลับรายการ'+revPartnerTxt+'</span>':'';
       if(r.alert&&r.alert.replaced)revBadge+=' <span title="SAP ยกเลิกเอกสารแล้วออกใหม่ทดแทน (แบงค์ '+bkDiffEsc(r.alert.bankDate)+')" style="font-size:11px;color:var(--muted);white-space:nowrap">&#8505;&#65039; '+bkDiffEsc(bkReplLabel(r.alert))+'</span>';
       else if(r.alert)revBadge+=' <span title="แบงค์มีรายการตัดเงินยอดนี้จริง ('+bkDiffEsc(r.alert.bankDate)+' '+bkDiffEsc(r.alert.bankDesc)+') แต่ SAP กลับรายการ/ยกเลิกแล้ว" style="font-size:11px;color:var(--red);font-weight:700;white-space:nowrap">&#9888;&#65039; แบงค์ตัดเงินจริง ('+bkDiffEsc(r.alert.bankDate)+')</span>';
       var sapB=bkSapBadge(r.key,{isReversed:r.isReversed,hasBankCsv:hasBankCsv,matched:r.bankMatched,hint:r.hint,displayLabel:((r.date||'')+' '+(r.memo||'')+' '+fmtFull(r.debit||r.credit||0))});
