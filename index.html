@@ -5276,6 +5276,32 @@ function bkDetectReversals(rows){
         b.debits=b.debits.filter(function(i){return !flags[i];});
         b.credits=b.credits.filter(function(i){return !flags[i];});
       })();
+      // จับคู่ด้วย "เลข JE ที่อ้างใน memo" ก่อนวิธีจับตามลำดับ/หลักฐานรวม (เคสจริง 27 ต.ค. 2569 บัญชี 1113-15 วันที่ 15/01/2026:
+      // JE 9934 โอนเงินคืน (เครดิต 2,199,400 memo มีคำว่า "ยกเลิก") ถูกกลับด้วย JE 9942 "(Reversal) - 9934" แต่เดบิตยอดเท่ากันอีกใบคือ
+      // Incoming 260110037 (JE 17505 รับเงินจริง) ถูกจับคู่กับ 9934 ผิดใบ เพราะ 9934 มีคำว่า "ยกเลิก" นับเป็นหลักฐาน)
+      // ถ้า memo ระบุเลข JE ต้นฉบับชัดเจน และต้นฉบับอยู่ในกลุ่มยอดเดียวกัน/ฝั่งตรงข้าม → จับคู่ใบนั้นเสมอ
+      (function(){
+        var ALL=b.debits.concat(b.credits);
+        var RE=/(?:reversal|reverse\s*entry|กลับรายการ)[^0-9]{0,12}[-–:#]\s*(\d{3,})/i;
+        ALL.forEach(function(i){
+          if(flags[i])return;
+          var m=String(rows[i].memo||'').match(RE);
+          if(!m)return;
+          var iDeb=b.debits.indexOf(i)>=0;
+          var pool=iDeb?b.credits:b.debits;
+          for(var k=0;k<pool.length;k++){
+            var j=pool[k];
+            if(flags[j]||j===i)continue;
+            if(String(rows[j].tid||'').trim()!==m[1])continue;
+            var dI=iDeb?i:j,cI=iDeb?j:i;
+            pairId++;flags[dI]=pairId;flags[cI]=pairId;
+            debitTotal+=rows[dI].debit;creditTotal+=rows[cI].credit;
+            break;
+          }
+        });
+        b.debits=b.debits.filter(function(i){return !flags[i];});
+        b.credits=b.credits.filter(function(i){return !flags[i];});
+      })();
       var noEvidDebits=b.debits.filter(function(i){return !hasEvid(i);});
       var evidDebits=b.debits.filter(hasEvid);
       var noEvidCredits=b.credits.filter(function(i){return !hasEvid(i);});
