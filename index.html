@@ -3819,6 +3819,7 @@ function bkShowDiffDetail(kind,expectedDiff){
   var html=
     '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">แสดงเฉพาะรายการที่ยัง "ไม่พบอีกฝั่ง" ตามเกณฑ์จับคู่วันที่+ยอดตรงเป๊ะ ซึ่งรวมกันแล้วเท่ากับส่วนต่างบนการ์ด KPI พอดี — รายการที่มีป้าย &#128992;/&#9989;/&#10060; กำกับ (ตรวจสอบ/ยืนยันแล้ว) จะถูกจางลงและแยกไว้ด้านล่างของแต่ละตาราง ไม่ต้องตามซ้ำ &middot; กดที่สถานะของแต่ละรายการ (ทั้งฝั่ง SAP และฝั่งแบงค์) เพื่อยืนยัน/บันทึกผลตรวจสอบเองได้ทันที</div>'+
     dayMatchHtml+
+    (function(){try{return bkGroupPanelHtml(kind,expectedDiffNum,sapNewStrict,bankNewStrict);}catch(e){console.error('bkGroupPanelHtml',e);return '';}})()+
     headHtml+
     '<div style="font-size:12.5px;font-weight:700;color:var(--text2);margin:10px 0 6px">&#128215; ฝั่ง SAP ที่ยังไม่พบในแบงค์ <span style="font-weight:400;color:var(--muted)">('+sapRows.length+' รายการ &middot; ต้องตรวจ '+sapNew.length+')</span></div>'+
     '<div style="overflow:auto;max-height:260px"><table style="width:100%;table-layout:fixed"><colgroup><col style="width:90px"><col><col style="width:130px"></colgroup><thead><tr><th>วันที่</th><th>รายละเอียด (SAP)</th><th style="text-align:right">จำนวนเงิน</th></tr></thead><tbody>'+(sapRowsHtml||noRowsTpl)+'</tbody></table></div>'+
@@ -3835,6 +3836,174 @@ function bkShowDiffDetail(kind,expectedDiff){
     {label:'หมายเหตุ',get:function(r){return r.note;}}
   ],flatRows);
   openModal('🔍 '+title, dmExportBtns('bkDiffDetail')+html);
+}
+// ============================================================================
+// จับคู่ "ก้อนเดียวฝั่งหนึ่ง ↔ หลายรายการอีกฝั่ง" (เช่น เกียรตินาคิน KKBIZC หักเป็นก้อน แต่ SAP ลงใบจ่ายรายใบ) — 27 ต.ค. 2569
+// หาชุดรายการที่ "ผลรวมเท่ากับก้อนเป๊ะ" ภายในช่วง ±3 วัน (เริ่มจากวันเดียวกันก่อน) เสนอเป็นชุดให้ดูแล้วยืนยันทีเดียว
+// ปลอดภัย: เสนอเฉพาะชุดที่ "คำตอบเดียว" (ถ้ามีหลายชุดที่ผลรวมเท่ากันและต่างกันจริง = กำกวม ไม่เสนอ) และชุดที่ชนกันไม่เสนอ
+// ===========================================================================
+function bkDayNum(dk){if(!dk||String(dk).length!==8)return null;return Math.round(Date.UTC(+dk.slice(0,4),+dk.slice(4,6)-1,+dk.slice(6,8))/86400000);}
+// คืน {sols:[[index...]...] (≤maxSol ชุด, ชุดละ ≥2 รายการ), capped:bool}
+function bkSubsetSolutions(vals,target,maxSol,deadline){
+  var n=vals.length,sols=[],capped=false;
+  if(n<2)return {sols:sols,capped:false};
+  if(n<=36){
+    var h=n>>1,nl=1<<h,nr=1<<(n-h),m,low,bi;
+    var sl=new Float64Array(nl),sr=new Float64Array(nr);
+    for(m=1;m<nl;m++){low=m&-m;bi=31-Math.clz32(low);sl[m]=sl[m^low]+vals[bi];}
+    for(m=1;m<nr;m++){low=m&-m;bi=31-Math.clz32(low);sr[m]=sr[m^low]+vals[h+bi];}
+    var mp=new Map(),a;
+    for(m=0;m<nl;m++){var v=sl[m];if(v>target)continue;a=mp.get(v);if(!a)mp.set(v,[m]);else if(a.length<6)a.push(m);}
+    for(m=0;m<nr;m++){
+      if((m&4095)===0&&deadline&&Date.now()>deadline){capped=true;break;}
+      var need=target-sr[m];if(need<0)continue;
+      a=mp.get(need);if(!a)continue;
+      for(var k=0;k<a.length;k++){
+        var idx=[],t;
+        for(t=0;t<h;t++)if(a[k]&(1<<t))idx.push(t);
+        for(t=0;t<n-h;t++)if(m&(1<<t))idx.push(h+t);
+        if(idx.length>=2)sols.push(idx);
+        if(sols.length>=maxSol)return {sols:sols,capped:false};
+      }
+    }
+    return {sols:sols,capped:capped};
+  }
+  // รายการมากกว่า 36: ไม่ค้น — ผลรวมของรายการจำนวนมากบังเอิญเท่ากันได้หลายแบบ จึงรับรองว่า "คำตอบเดียว" ไม่ได้
+  return {sols:[],capped:true,tooMany:true};
+}
+// lumps/parts: [{key,date,dk,cents,label}] — คืน {proposals,ambiguous,conflict,timedOut}
+function bkFindGroups(lumps,parts,opt){
+  opt=opt||{};
+  var maxDays=opt.maxDays==null?3:opt.maxDays,deadline=Date.now()+(opt.budgetMs||4000);
+  var out={proposals:[],ambiguous:[],conflict:[],timedOut:false,tooMany:0};
+  parts=parts.filter(function(p){return p.cents>0&&p.dn!=null;});
+  lumps.slice().sort(function(a,b){return b.cents-a.cents;}).forEach(function(L){
+    if(out.timedOut)return;
+    if(Date.now()>deadline){out.timedOut=true;return;}
+    for(var d=0;d<=maxDays;d++){
+      var pool=parts.filter(function(p){return p.cents<L.cents&&Math.abs(p.dn-L.dn)<=d;});
+      if(pool.length<2)continue;
+      var tot=0;pool.forEach(function(p){tot+=p.cents;});
+      if(tot<L.cents)continue;
+      var r=bkSubsetSolutions(pool.map(function(p){return p.cents;}),L.cents,4,deadline);
+      if(r.tooMany){out.tooMany++;return;}
+      if(r.capped){out.timedOut=true;return;}   // ค้นไม่ครบ → รับรองความเป็นคำตอบเดียวไม่ได้ ไม่เสนอ
+      if(!r.sols.length)continue;
+      var sigs={};
+      r.sols.forEach(function(ix){sigs[ix.map(function(i){return pool[i].cents;}).sort(function(a,b){return a-b;}).join(',')]=true;});
+      if(Object.keys(sigs).length>1){out.ambiguous.push({lump:L,days:d});return;}
+      var chosen=r.sols[0].map(function(i){return pool[i];});
+      var spread=0;chosen.forEach(function(p){spread=Math.max(spread,Math.abs(p.dn-L.dn));});
+      // ประมาณจำนวน "ชุดอื่นที่บังเอิญรวมได้เท่ากัน" (λ) ด้วยการแจกแจงปกติของผลรวมย่อย: 2^n·φ((target−mean)/σ)/σ
+      // λ ต่ำ = ชุดนี้ไม่น่าบังเอิญ (ติ๊กให้) · λ สูง = pool ใหญ่/ยอดใกล้กลาง ผลรวมบังเอิญตรงได้ (ต้องตรวจเอง)
+      var sq=0;pool.forEach(function(p){sq+=p.cents*p.cents;});
+      var sg=0.5*Math.sqrt(sq),mu=tot/2,z=(L.cents-mu)/sg;
+      var lam=Math.pow(2,pool.length)*Math.exp(-z*z/2)/(sg*2.5066);
+      out.proposals.push({lump:L,parts:chosen,spread:spread,lambda:lam,poolSize:pool.length});
+      return;
+    }
+  });
+  // ชุดที่ใช้รายการซ้ำกัน = ชนกัน ไม่เสนอ (ให้ตรวจเอง)
+  var usedBy={};
+  out.proposals.forEach(function(g,gi){g.parts.forEach(function(p){(usedBy[p.key]=usedBy[p.key]||[]).push(gi);});});
+  var bad={};
+  Object.keys(usedBy).forEach(function(k){if(usedBy[k].length>1)usedBy[k].forEach(function(gi){bad[gi]=true;});});
+  out.conflict=out.proposals.filter(function(g,gi){return bad[gi];});
+  out.proposals=out.proposals.filter(function(g,gi){return !bad[gi];});
+  return out;
+}
+var BK_GROUPS={kind:'',expected:0,list:[]};
+function bkGroupPanelHtml(kind,expectedDiff,sapNewStrict,bankNewStrict){
+  var mk=function(r,label){var dk=dateKey(r.date||'');return {key:r.key,date:r.date,dk:dk,dn:bkDayNum(dk),cents:Math.round((r.amt||0)*100),label:label};};
+  var sapP=sapNewStrict.filter(function(r){return r.key;}).map(function(r){return mk(r,(r.memo||'')+(r.bpName?(' — '+r.bpName):''));});
+  var bankP=bankNewStrict.filter(function(r){return r.key;}).map(function(r){return mk(r,r.desc||'');});
+  var a=bkFindGroups(bankP,sapP,{maxDays:3,budgetMs:2500});
+  a.proposals.forEach(function(g){g.type='bankLump';});
+  var usedBank={};a.proposals.forEach(function(g){usedBank[g.lump.key]=true;g.parts.forEach(function(p){});});
+  // ทิศกลับ: SAP ก้อนเดียว ↔ แบงค์หลายรายการ (เฉพาะที่ยังไม่ถูกใช้)
+  var usedSap={};a.proposals.forEach(function(g){g.parts.forEach(function(p){usedSap[p.key]=true;});});
+  var b=bkFindGroups(sapP.filter(function(p){return !usedSap[p.key];}),bankP.filter(function(p){return !usedBank[p.key];}),{maxDays:3,budgetMs:1500});
+  b.proposals.forEach(function(g){g.type='sapLump';});
+  var list=a.proposals.concat(b.proposals).sort(function(x,y){return (x.lump.dk||'').localeCompare(y.lump.dk||'')||y.lump.cents-x.lump.cents;});
+  var amb=a.ambiguous.length+b.ambiguous.length,conf=a.conflict.length+b.conflict.length,tmo=a.timedOut||b.timedOut,many=a.tooMany+b.tooMany;
+  BK_GROUPS={kind:kind,expected:expectedDiff,list:list};
+  if(!list.length&&!amb&&!conf&&!tmo&&!many)return '';
+  var rowsH=list.map(function(g,gi){
+    var isBank=g.type==='bankLump';
+    var sum=0;g.parts.forEach(function(p){sum+=p.cents;});
+    var ds=g.parts.map(function(p){return p.dk;}).filter(Boolean).sort();
+    var rng=ds.length?(ds[0]===ds[ds.length-1]?g.parts[0].date:(g.parts.slice().sort(function(x,y){return x.dk.localeCompare(y.dk);})[0].date+' – '+g.parts.slice().sort(function(x,y){return y.dk.localeCompare(x.dk);})[0].date)):'';
+    var partRows=g.parts.slice().sort(function(x,y){return (x.dk||'').localeCompare(y.dk||'');}).map(function(p){
+      return '<tr><td style="font-size:11.5px;color:var(--muted);width:90px">'+bkDiffEsc(p.date||'')+'</td><td style="font-size:11.5px">'+bkDiffEsc(p.label||'')+'</td><td class="right" style="font-size:11.5px;width:120px">'+fmtFull(p.cents/100)+'</td></tr>';}).join('');
+    return '<div style="padding:7px 0;border-top:1px solid rgba(255,255,255,0.06)">'+
+      '<label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer"><input type="checkbox" class="bkGrpChk" value="'+gi+'"'+((g.spread===0&&g.lambda<0.02)?' checked':'')+' style="margin-top:3px">'+
+      '<span><b>'+(isBank?'ก้อนแบงค์':'ก้อน SAP')+' '+bkDiffEsc(g.lump.date||'')+'</b> '+bkDiffEsc(g.lump.label||'')+' &nbsp;<b style="color:var(--blue)">'+fmtFull(g.lump.cents/100)+'</b>'+
+      ' = '+(isBank?'SAP ':'แบงค์ ')+g.parts.length+' รายการ ('+bkDiffEsc(rng)+')'+
+      (g.spread>0?' <span style="font-size:11px;color:var(--gold2)">&#9888;&#65039; ข้ามวัน (ห่างสูงสุด '+g.spread+' วัน) — ตรวจก่อนติ๊ก</span>':'')+
+      (g.lambda<0.02?' <span style="font-size:11px;color:var(--green)">&#10003; ความมั่นใจสูง</span>':' <span style="font-size:11px;color:var(--gold2)" title="รายการในช่วงนี้มี '+g.poolSize+' รายการ ผลรวมบังเอิญตรงได้ — ดูรายการในชุดว่าเป็นงานเดียวกันจริงก่อนติ๊ก">&#9888;&#65039; ผลรวมอาจบังเอิญตรง — ตรวจก่อนติ๊ก</span>')+'</span></label>'+
+      '<details style="margin:4px 0 0 24px"><summary style="font-size:11.5px;color:var(--muted);cursor:pointer">ดูรายการที่รวมเป็นก้อนนี้</summary><table style="width:100%;margin-top:4px"><tbody>'+partRows+'</tbody></table></details></div>';
+  }).join('');
+  var notes=[];
+  if(amb)notes.push(amb+' ก้อนหาชุดได้หลายแบบที่ยอดเท่ากัน (กำกวม) — ตรวจเอง');
+  if(conf)notes.push(conf+' ชุดใช้รายการซ้ำกัน — ตรวจเอง');
+  if(many)notes.push(many+' ก้อนมีรายการอีกฝั่งในช่วงเดียวกันเกิน 36 รายการ — ค้นหาชุดอย่างปลอดภัยไม่ได้ ใช้ปุ่มยืนยันทั้งวันหรือยืนยันทีละรายการ');
+  if(tmo)notes.push('คำนวณไม่ครบเวลาที่กำหนด');
+  var btnId='bkGrpBtn';
+  return '<div style="background:rgba(76,175,125,0.10);border:1px solid var(--green);border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:16px">'+
+    '<div style="font-weight:700;color:var(--green);margin-bottom:6px">&#129513; พบชุดรายการที่รวมแล้วตรงกับก้อน ('+list.length+' ชุด) — ติ๊กเลือกแล้วยืนยันครั้งเดียว</div>'+
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">ผลรวมเท่ากับก้อนเป๊ะ ภายใน ±3 วัน — ติ๊กไว้ให้เฉพาะชุดวันเดียวกันที่ความมั่นใจสูง ชุดอื่นต้องตรวจรายการในชุดแล้วติ๊กเอง</div>'+
+    rowsH+
+    (notes.length?'<div style="font-size:11.5px;color:var(--gold2);margin-top:6px">'+notes.join(' · ')+'</div>':'')+
+    (list.length?'<div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button id="'+btnId+'" onclick="bkConfirmGroups(\''+btnId+'\')" style="background:linear-gradient(135deg,var(--green),#7FD9A8);color:#08131f;border:none;padding:7px 16px;border-radius:7px;font-weight:700;cursor:pointer;font-family:\'Sarabun\',sans-serif;font-size:12.5px">ยืนยันชุดที่ติ๊กไว้</button>'+
+    '<button class="hbtn" onclick="document.querySelectorAll(\'.bkGrpChk\').forEach(function(c){c.checked=true;})">ติ๊กทั้งหมด</button><button class="hbtn" onclick="document.querySelectorAll(\'.bkGrpChk\').forEach(function(c){c.checked=false;})">ล้างที่ติ๊ก</button></div>':'')+
+    '</div>';
+}
+async function bkConfirmGroups(btnId){
+  var btn=document.getElementById(btnId);
+  var sel=[].slice.call(document.querySelectorAll('.bkGrpChk:checked')).map(function(c){return BK_GROUPS.list[+c.value];}).filter(Boolean);
+  if(!sel.length){if(btn)btn.textContent='ยังไม่ได้ติ๊กชุดใด';return;}
+  if(btn){btn.disabled=true;btn.textContent='กำลังบันทึก…';}
+  try{
+    var items=[],seen={};
+    sel.forEach(function(g){
+      var isBank=g.type==='bankLump';
+      var note='ยืนยันชุด — ก้อน'+(isBank?'แบงค์':' SAP')+' '+(g.lump.date||'')+' '+fmtFull(g.lump.cents/100)+' = '+g.parts.length+' รายการ'+(g.spread?' (ข้ามวัน ห่างสูงสุด '+g.spread+' วัน)':'');
+      var lumpSide=isBank?'bkTxn':'bkSapLeg',partSide=isBank?'bkSapLeg':'bkTxn';
+      var add=function(side,key){var k=side+'|'+key;if(!key||seen[k]||manualMatchFor(side,key))return;seen[k]=1;items.push({side:side,docNo:key,status:'matched',note:note});};
+      add(lumpSide,g.lump.key);g.parts.forEach(function(p){add(partSide,p.key);});
+    });
+    if(!items.length){if(btn){btn.disabled=false;btn.textContent='ไม่มีรายการให้ยืนยันแล้ว (อาจยืนยันไปก่อนหน้านี้)';}return;}
+    var res=await saveManualMatchBatch(items,function(done,total){if(btn)btn.textContent='กำลังบันทึก '+done+'/'+total+'…';});
+    if(!res.success){if(btn){btn.disabled=false;btn.textContent='บันทึกไม่สำเร็จ ('+(res.error||'')+') — กดลองใหม่';}return;}
+    G.manualMatch=G.manualMatch||{};
+    items.forEach(function(it){G.manualMatch[it.side+'|'+it.docNo]={status:'matched',note:it.note};});
+    bkRefreshAfterConfirm();
+    BK_DETAIL_REOPEN={type:'diff',kind:BK_GROUPS.kind,expectedDiff:BK_GROUPS.expected};
+    bkShowDiffDetail(BK_GROUPS.kind,BK_GROUPS.expected);
+  }catch(e){if(btn){btn.disabled=false;btn.textContent='เกิดข้อผิดพลาด — กดลองใหม่';}console.error(e);}
+}
+// บันทึกการยืนยันหลายรายการในคำขอเดียว (Apps Script action 'saveManualMatchBatch', ล็อกกันเขียนชนกัน)
+// ถ้า Apps Script ยังเป็นเวอร์ชันเก่า (ไม่รู้จัก action) จะถอยไปบันทึกทีละรายการแบบเรียงลำดับ (ช้ากว่า แต่ไม่เขียนทับกัน)
+var MM_BATCH_OK=null;
+async function saveManualMatchBatch(items,onProgress){
+  if(!items||!items.length)return {success:true,saved:0,mode:'none'};
+  if(MM_BATCH_OK!==false){
+    try{
+      var res=await fetch(APPS_URL,{method:'POST',mode:'cors',credentials:'omit',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action:'saveManualMatchBatch',items:items})});
+      if(!res.ok)return {success:false,error:'HTTP '+res.status};
+      var data=await res.json();
+      if(data&&data.success){MM_BATCH_OK=true;if(onProgress)onProgress(items.length,items.length);return {success:true,saved:items.length,mode:'batch'};}
+      if(data&&/Unknown action/i.test(String(data.error||''))){MM_BATCH_OK=false;}
+      else return {success:false,error:(data&&data.error)||'batch ไม่สำเร็จ'};
+    }catch(e){return {success:false,error:(e&&e.message)||String(e)};}
+  }
+  var done=0;
+  for(var i=0;i<items.length;i++){
+    var it=items[i],r=await saveManualMatchToSheet(it.side,it.docNo,it.status,it.note);
+    if(!r.success)return {success:false,error:r.error,saved:done,mode:'single'};
+    done++;if(onProgress)onProgress(done,items.length);
+  }
+  return {success:true,saved:done,mode:'single'};
 }
 // ปุ่ม "เลือกทั้งหมดของวันนี้ + ยืนยันทีเดียว" ใน bkShowDiffDetail — ยืนยันรายการที่ "ยังไม่มีเบาะแส"
 // ทั้งหมดของวันนั้น (ทิศทางเดียวกับ kind) ทั้งฝั่ง SAP (bkSapLeg) และฝั่งแบงค์ (bkTxn) ในทีเดียว โดย
@@ -3860,10 +4029,11 @@ async function bkBulkConfirmDayMatch(kind,dk,expectedDiff,btnId){
       return;
     }
     var note='ยืนยันอัตโนมัติ — ยอดรวมวันเดียวกันตรงกันทั้งวัน';
-    var jobs=[];
-    sapTargets.forEach(function(r){jobs.push(saveManualMatchToSheet('bkSapLeg',r.key,'matched',note).then(function(res){return{side:'bkSapLeg',key:r.key,res:res};}));});
-    bankTargets.forEach(function(r){jobs.push(saveManualMatchToSheet('bkTxn',r.key,'matched',note).then(function(res){return{side:'bkTxn',key:r.key,res:res};}));});
-    var results=await Promise.all(jobs);
+    var items=[];
+    sapTargets.forEach(function(r){items.push({side:'bkSapLeg',docNo:r.key,status:'matched',note:note});});
+    bankTargets.forEach(function(r){items.push({side:'bkTxn',docNo:r.key,status:'matched',note:note});});
+    var bres=await saveManualMatchBatch(items,function(done,total){if(btn)btn.textContent='กำลังบันทึก '+done+'/'+total+'…';});
+    var results=items.map(function(it){return {side:it.side,key:it.docNo,res:{success:!!bres.success}};});
     var failed=results.filter(function(r){return !r.res.success;});
     G.manualMatch=G.manualMatch||{};
     results.forEach(function(r){if(r.res.success)G.manualMatch[r.side+'|'+r.key]={status:'matched',note:note};});
