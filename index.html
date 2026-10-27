@@ -3772,13 +3772,18 @@ function bkShowDiffDetail(kind,expectedDiff){
   }).sort();
   var dayMatchSet={};dayMatchDates.forEach(function(dk){dayMatchSet[dk]=true;});
   var flatRows=[];
+  // ช่องติ๊กเลือกหลายรายการ: ไม่ใส่ในรายการที่ยืนยันว่า "ตรงกัน" แล้ว / ไม่มีรหัสรายการ
+  function selCell(side,r,faded){
+    if(!r.key||(r.ov&&r.ov.status==='matched'))return '<td></td>';
+    return '<td style="width:26px;text-align:center"><input type="checkbox" class="bkSelChk" data-side="'+side+'" data-key="'+bkAttr(encodeURIComponent(r.key))+'" data-cents="'+Math.round((r.amt||0)*100)+'" data-dk="'+dateKey(r.date||'')+'" data-strict="'+((!r.hint&&!r.ov)?1:0)+'" data-fad="'+(faded?1:0)+'" onclick="bkSelClick(event,this)"></td>';
+  }
   function sapRowHtml(r,faded){
     var descTxt=(r.memo||'')+(r.bpName?(' — '+r.bpName):'');
     var dk=dateKey(r.date);
     var isDayMatch=!faded && !r.hint && !r.ov && !!dayMatchSet[dk];
     var sapB=bkSapBadge(r.key,{isReversed:false,hasBankCsv:hasBankCsv,matched:false,hint:r.hint,dayMatch:isDayMatch,displayLabel:(r.date||'')+' '+descTxt+' '+fmtFull(r.amt)});
     flatRows.push({side:'SAP',date:r.date,desc:descTxt,amt:r.amt,note:r.ov?(r.ov.status==='matched'?'ยืนยันเอง':'ยืนยันว่าไม่ตรง'):(r.hint?(bkHintIsFee(r.hint)?'ค่าธรรมเนียมหักจากยอดรับ (จับคู่แล้ว)':'พบยอดตรงกันคนละวันที่'):(isDayMatch?'ยอดรวมวันนี้ตรงกัน':'ยังไม่พบในแบงค์'))});
-    return '<tr'+(faded?' style="opacity:0.55"':'')+'><td style="font-size:12px;color:var(--muted)">'+(r.date||'—')+'</td><td style="font-size:12px">'+descTxt+' '+sapB.badge+'</td><td class="right" style="font-weight:600">'+fmtFull(r.amt)+'</td></tr>';
+    return '<tr'+(faded?' style="opacity:0.55"':'')+'>'+selCell('sap',r,faded)+'<td style="font-size:12px;color:var(--muted)">'+(r.date||'—')+'</td><td style="font-size:12px">'+descTxt+' '+sapB.badge+'</td><td class="right" style="font-weight:600">'+fmtFull(r.amt)+'</td></tr>';
   }
   function bankRowHtml(r,faded){
     var dk=dateKey(r.date);
@@ -3787,14 +3792,14 @@ function bkShowDiffDetail(kind,expectedDiff){
     var tb=bkTxnBadge(shim);
     var dayTag=isDayMatch?' <span style="font-size:10.5px;color:var(--blue)">&#128309; ยอดรวมวันนี้ตรงกัน (SAP)</span>':'';
     flatRows.push({side:'แบงค์',date:r.date,desc:r.desc,amt:r.amt,note:r.ov?(r.ov.status==='matched'?'ยืนยันเอง':'ยืนยันว่าไม่ตรง'):(r.hint?(bkHintIsFee(r.hint)?'ค่าธรรมเนียมหักจากยอดรับ (จับคู่แล้ว)':'พบยอดตรงกันคนละวันที่'):(isDayMatch?'ยอดรวมวันนี้ตรงกัน':'ยังไม่พบใน SAP'))});
-    return '<tr'+(faded?' style="opacity:0.55"':'')+'><td style="font-size:12px;color:var(--muted)">'+(r.date||'—')+'</td><td style="font-size:12px">'+(r.desc||'')+' '+tb.badge+dayTag+'</td><td class="right" style="font-weight:600">'+fmtFull(r.amt)+'</td></tr>';
+    return '<tr'+(faded?' style="opacity:0.55"':'')+'>'+selCell('bank',r,faded)+'<td style="font-size:12px;color:var(--muted)">'+(r.date||'—')+'</td><td style="font-size:12px">'+(r.desc||'')+' '+tb.badge+dayTag+'</td><td class="right" style="font-weight:600">'+fmtFull(r.amt)+'</td></tr>';
   }
-  var dividerTpl='<tr><td colspan="3" style="background:rgba(255,255,255,0.03);font-size:11px;color:var(--muted);padding:6px 8px">&#128203; ตรวจสอบ/ยืนยัน/มีเบาะแสแล้ว — ไม่ต้องตามซ้ำ ('+'{{n}}'+' รายการ)</td></tr>';
+  var dividerTpl='<tr><td colspan="4" style="background:rgba(255,255,255,0.03);font-size:11px;color:var(--muted);padding:6px 8px">&#128203; ตรวจสอบ/ยืนยัน/มีเบาะแสแล้ว — ไม่ต้องตามซ้ำ ('+'{{n}}'+' รายการ)</td></tr>';
   var sapRowsHtml=sapNew.map(function(r){return sapRowHtml(r,false);}).join('')+
     (sapResolved.length?dividerTpl.replace('{{n}}',sapResolved.length)+sapResolved.map(function(r){return sapRowHtml(r,true);}).join(''):'');
   var bankRowsHtml=bankNew.map(function(r){return bankRowHtml(r,false);}).join('')+
     (bankResolved.length?dividerTpl.replace('{{n}}',bankResolved.length)+bankResolved.map(function(r){return bankRowHtml(r,true);}).join(''):'');
-  var noRowsTpl='<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:14px">— ไม่มีรายการ —</td></tr>';
+  var noRowsTpl='<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:14px">— ไม่มีรายการ —</td></tr>';
   var title='ตัวช่วยกระทบยอดส่วนต่าง'+dirLabel+' — '+(acctInfo.name||BK_STATE.acctCode)+' ('+ymLabelThai(BK_STATE.ym)+')';
   var okMatch=Math.abs(diff-(+expectedDiff||0))<0.02;
   var checksumBg=okMatch?'rgba(76,175,125,0.12)':'rgba(224,92,92,0.14)';
@@ -3817,17 +3822,20 @@ function bkShowDiffDetail(kind,expectedDiff){
     (remAbs0?'<b style="color:var(--green)">&#9989; 0.00</b>':'<b style="color:var(--gold2)">'+fmtFull(needsCheckNet)+'</b>')+
     '<div style="margin-top:6px;font-size:12px;color:var(--muted)">ส่วนต่างตามสูตร '+fmtFull(diff)+' = <span style="color:var(--green)">ตรวจ/จับคู่แล้ว '+fmtFull(bkClearedNet(brM))+'</span> + <span style="color:var(--gold2)">รอแก้วันที่ '+fmtFull(brM.dateNet)+'</span> + ต้องตรวจสอบจริง '+fmtFull(needsCheckNet)+'</div></div>';
   var html=
-    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">แสดงเฉพาะรายการที่ยัง "ไม่พบอีกฝั่ง" ตามเกณฑ์จับคู่วันที่+ยอดตรงเป๊ะ ซึ่งรวมกันแล้วเท่ากับส่วนต่างบนการ์ด KPI พอดี — รายการที่มีป้าย &#128992;/&#9989;/&#10060; กำกับ (ตรวจสอบ/ยืนยันแล้ว) จะถูกจางลงและแยกไว้ด้านล่างของแต่ละตาราง ไม่ต้องตามซ้ำ &middot; กดที่สถานะของแต่ละรายการ (ทั้งฝั่ง SAP และฝั่งแบงค์) เพื่อยืนยัน/บันทึกผลตรวจสอบเองได้ทันที</div>'+
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">แสดงเฉพาะรายการที่ยัง "ไม่พบอีกฝั่ง" ตามเกณฑ์จับคู่วันที่+ยอดตรงเป๊ะ ซึ่งรวมกันแล้วเท่ากับส่วนต่างบนการ์ด KPI พอดี — รายการที่มีป้าย &#128992;/&#9989;/&#10060; กำกับ (ตรวจสอบ/ยืนยันแล้ว) จะถูกจางลงและแยกไว้ด้านล่างของแต่ละตาราง ไม่ต้องตามซ้ำ &middot; กดที่สถานะของแต่ละรายการ (ทั้งฝั่ง SAP และฝั่งแบงค์) เพื่อยืนยันทีละรายการ หรือ <b>ติ๊กช่องหน้าแถว (กด Shift ค้างเพื่อเลือกเป็นช่วง)</b> แล้วยืนยันหลายรายการพร้อมกันที่แถบด้านล่างได้</div>'+
     dayMatchHtml+
+    (function(){try{return bkExcPanelHtml(kind,expectedDiffNum,sapNewStrict,bankNewStrict);}catch(e){console.error('bkExcPanelHtml',e);return '';}})()+
     (function(){try{return bkGroupPanelHtml(kind,expectedDiffNum,sapNewStrict,bankNewStrict);}catch(e){console.error('bkGroupPanelHtml',e);return '';}})()+
+    (function(){try{return bkDailyPanelHtml(sapNewStrict,bankNewStrict);}catch(e){console.error('bkDailyPanelHtml',e);return '';}})()+
     headHtml+
     '<div style="font-size:12.5px;font-weight:700;color:var(--text2);margin:10px 0 6px">&#128215; ฝั่ง SAP ที่ยังไม่พบในแบงค์ <span style="font-weight:400;color:var(--muted)">('+sapRows.length+' รายการ &middot; ต้องตรวจ '+sapNew.length+')</span></div>'+
-    '<div style="overflow:auto;max-height:260px"><table style="width:100%;table-layout:fixed"><colgroup><col style="width:90px"><col><col style="width:130px"></colgroup><thead><tr><th>วันที่</th><th>รายละเอียด (SAP)</th><th style="text-align:right">จำนวนเงิน</th></tr></thead><tbody>'+(sapRowsHtml||noRowsTpl)+'</tbody></table></div>'+
+    '<div style="overflow:auto;max-height:260px"><table style="width:100%;table-layout:fixed"><colgroup><col style="width:30px"><col style="width:90px"><col><col style="width:130px"></colgroup><thead><tr><th style="width:30px"><input type="checkbox" title="เลือกทั้งหมด (เฉพาะรายการที่ต้องตรวจ)" onclick="bkSelAll(\'sap\',this.checked)"></th><th>วันที่</th><th>รายละเอียด (SAP)</th><th style="text-align:right">จำนวนเงิน</th></tr></thead><tbody>'+(sapRowsHtml||noRowsTpl)+'</tbody></table></div>'+
     '<div style="text-align:right;font-size:12.5px;font-weight:700;padding:6px 8px;border-top:1px solid var(--border);margin-bottom:16px">รวม SAP ที่ยังไม่พบในแบงค์ (ทั้งหมด): '+fmtFull(sapSum)+'</div>'+
     '<div style="font-size:12.5px;font-weight:700;color:var(--text2);margin:10px 0 6px">&#127974; ฝั่งแบงค์ที่ยังไม่พบใน SAP <span style="font-weight:400;color:var(--muted)">('+bankRows.length+' รายการ &middot; ต้องตรวจ '+bankNew.length+')</span></div>'+
-    '<div style="overflow:auto;max-height:260px"><table style="width:100%;table-layout:fixed"><colgroup><col style="width:90px"><col><col style="width:130px"></colgroup><thead><tr><th>วันที่</th><th>รายละเอียด (แบงค์)</th><th style="text-align:right">จำนวนเงิน</th></tr></thead><tbody>'+(bankRowsHtml||noRowsTpl)+'</tbody></table></div>'+
+    '<div style="overflow:auto;max-height:260px"><table style="width:100%;table-layout:fixed"><colgroup><col style="width:30px"><col style="width:90px"><col><col style="width:130px"></colgroup><thead><tr><th style="width:30px"><input type="checkbox" title="เลือกทั้งหมด (เฉพาะรายการที่ต้องตรวจ)" onclick="bkSelAll(\'bank\',this.checked)"></th><th>วันที่</th><th>รายละเอียด (แบงค์)</th><th style="text-align:right">จำนวนเงิน</th></tr></thead><tbody>'+(bankRowsHtml||noRowsTpl)+'</tbody></table></div>'+
     '<div style="text-align:right;font-size:12.5px;font-weight:700;padding:6px 8px;border-top:1px solid var(--border);margin-bottom:16px">รวมแบงค์ที่ยังไม่พบใน SAP (ทั้งหมด): '+fmtFull(bankSum)+'</div>'+
-    '<div style="background:'+checksumBg+';border:1px solid '+checksumBorder+';border-radius:10px;padding:10px 14px;font-size:13px">เช็คยอดเต็ม: '+fmtFull(sapSum)+' &minus; '+fmtFull(bankSum)+' = <b>'+fmtFull(diff)+'</b> — '+checksumNote+'</div>';
+    '<div style="background:'+checksumBg+';border:1px solid '+checksumBorder+';border-radius:10px;padding:10px 14px;font-size:13px">เช็คยอดเต็ม: '+fmtFull(sapSum)+' &minus; '+fmtFull(bankSum)+' = <b>'+fmtFull(diff)+'</b> — '+checksumNote+'</div>'+
+    bkSelBarHtml();
   dmRegisterSimple('bkDiffDetail',title,[
     {label:'ฝั่ง',get:function(r){return r.side;}},
     {label:'วันที่',get:function(r){return r.date||'—';}},
@@ -3993,6 +4001,230 @@ async function bkConfirmGroups(btnId){
     BK_DETAIL_REOPEN={type:'diff',kind:BK_GROUPS.kind,expectedDiff:BK_GROUPS.expected};
     bkShowDiffDetail(BK_GROUPS.kind,BK_GROUPS.expected);
   }catch(e){if(btn){btn.disabled=false;btn.textContent='เกิดข้อผิดพลาด — กดลองใหม่';}console.error(e);}
+}
+// ============================================================================
+// ตัวช่วยในหน้าต่าง "ส่วนต่างรับเข้า/จ่ายออก" (27 ต.ค. 2569): สรุปรายวัน · ค้นหา "ตัดออกไม่เกิน 4 รายการแล้วยอดวันตรง" · ติ๊กเลือกหลายรายการแล้วยืนยันทีเดียว
+// ===========================================================================
+function bkAttr(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+// ตารางสรุปรายวัน: SAP/แบงค์ (จำนวน+ยอด) ส่วนต่างรายวัน และส่วนต่างสะสม — ให้เห็นว่าส่วนต่างเกิดวันไหน
+function bkDailyPanelHtml(sapRows,bankRows){
+  var days={};
+  var add=function(r,side){var dk=dateKey(r.date||'');if(!dk)return;var d=days[dk]=days[dk]||{dk:dk,date:r.date,sn:0,ss:0,bn:0,bs:0};if(side==='s'){d.sn++;d.ss+=Math.round((r.amt||0)*100);}else{d.bn++;d.bs+=Math.round((r.amt||0)*100);}};
+  sapRows.forEach(function(r){add(r,'s');});bankRows.forEach(function(r){add(r,'b');});
+  var ks=Object.keys(days).sort();
+  if(ks.length<2)return '';
+  var cum=0;
+  var trs=ks.map(function(k){
+    var d=days[k],df=d.ss-d.bs;cum+=df;
+    var zero=d.sn&&d.bn&&df===0;
+    var cl=zero?'var(--green)':(df===0?'var(--muted)':'var(--gold2)');
+    return '<tr'+(zero?' style="background:rgba(76,175,125,0.08)"':'')+'><td style="font-size:12px">'+bkDiffEsc(d.date||k)+(zero?' <span style="color:var(--green);font-size:11px">&#10003; ตรง</span>':'')+'</td>'+
+      '<td class="right" style="font-size:12px">'+(d.sn?d.sn+' &middot; '+fmtFull(d.ss/100):'—')+'</td>'+
+      '<td class="right" style="font-size:12px">'+(d.bn?d.bn+' &middot; '+fmtFull(d.bs/100):'—')+'</td>'+
+      '<td class="right" style="font-size:12px;font-weight:600;color:'+cl+'">'+fmtFull(df/100)+'</td>'+
+      '<td class="right" style="font-size:12px;color:var(--muted)">'+fmtFull(cum/100)+'</td>'+
+      '<td style="text-align:right"><button class="hbtn" style="padding:3px 10px;font-size:11.5px" onclick="bkSelDay(\''+k+'\')">เลือกวันนี้</button></td></tr>';
+  }).join('');
+  return '<details open style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:8px 14px;margin-bottom:16px"><summary style="font-size:13px;font-weight:700;cursor:pointer;color:var(--text2)">&#128197; สรุปรายวัน — ส่วนต่างเกิดวันไหน ('+ks.length+' วัน) <span style="font-weight:400;font-size:11.5px;color:var(--muted)">เฉพาะรายการที่ยังไม่มีเบาะแส/ยังไม่ยืนยัน</span></summary>'+
+    '<div style="overflow:auto;max-height:240px;margin-top:6px"><table style="width:100%"><thead><tr><th>วันที่</th><th style="text-align:right">SAP (รายการ &middot; ยอด)</th><th style="text-align:right">แบงค์ (รายการ &middot; ยอด)</th><th style="text-align:right">ส่วนต่าง SAP&minus;แบงค์</th><th style="text-align:right">ส่วนต่างสะสม</th><th></th></tr></thead><tbody>'+trs+'</tbody></table></div></details>';
+}
+// หาชุดรายการ (1–kmax รายการ) ที่ผลรวมเท่ากับ target (หน่วยสตางค์) — คืน {sols:[[idx..]], capped}
+function bkExcSolve(c,target,kmax,maxSol,deadline){
+  var n=c.length,sols=[],i,j,k,l,stop=false;
+  var cap=function(){return stop||sols.length>=maxSol;};
+  for(i=0;i<n&&!cap();i++)if(c[i]===target)sols.push([i]);
+  if(kmax<2)return {sols:sols,capped:cap()};
+  var pm=new Map();
+  for(i=0;i<n;i++)for(j=i+1;j<n;j++){var s=c[i]+c[j];if(s>target)continue;var a=pm.get(s);if(!a)pm.set(s,a=[]);a.push([i,j]);}
+  var a2=pm.get(target);if(a2)for(i=0;i<a2.length&&!cap();i++)sols.push(a2[i].slice());
+  if(kmax<3||cap())return {sols:sols,capped:cap()};
+  for(l=0;l<n&&!cap();l++){
+    if(deadline&&Date.now()>deadline){stop=true;break;}
+    var a3=pm.get(target-c[l]);if(!a3)continue;
+    for(i=0;i<a3.length&&!cap();i++)if(a3[i][1]<l)sols.push([a3[i][0],a3[i][1],l]);
+  }
+  if(kmax<4||cap())return {sols:sols,capped:cap()};
+  var cnt=0;
+  pm.forEach(function(lst1,s1){
+    var lst2=pm.get(target-s1);if(!lst2||cap())return;
+    for(var x=0;x<lst1.length&&!cap();x++)for(var y=0;y<lst2.length&&!cap();y++){
+      if(lst1[x][1]<lst2[y][0])sols.push([lst1[x][0],lst1[x][1],lst2[y][0],lst2[y][1]]);
+      if(((++cnt)&8191)===0&&deadline&&Date.now()>deadline)stop=true;
+    }
+  });
+  return {sols:sols,capped:cap()};
+}
+// λ = จำนวนชุดที่ "ผลรวมบังเอิญตรง" ที่คาดไว้ (ประมาณด้วยการแจกแจงปกติของผลรวมย่อย k รายการ) — ต่ำ = ไม่น่าบังเอิญ
+function bkExcLambda(c,t,kmax){
+  var n=c.length;if(n<2)return 0;
+  var m=0,v=0,i;c.forEach(function(x){m+=x;});m/=n;c.forEach(function(x){v+=(x-m)*(x-m);});v/=n;
+  var lam=0,comb=1;
+  for(var k=1;k<=kmax&&k<n;k++){
+    comb=comb*(n-k+1)/k;
+    var mu=k*m,vk=k*v*(n-k)/(n-1);if(vk<=0)continue;
+    var sg=Math.sqrt(vk),z=(t-mu)/sg;
+    lam+=comb*Math.exp(-z*z/2)/(sg*2.5066);
+  }
+  return lam;
+}
+// ต่อวัน: ถ้าตัดรายการออกจากฝั่งที่ยอดมากกว่า ≤ kmax รายการแล้วยอดวันตรงกัน → เสนอเป็นข้อเสนอ
+function bkFindDayExclusions(sapRows,bankRows,kmax){
+  kmax=kmax||4;
+  var days={},dl=Date.now()+2500,out=[],skipped=0;
+  sapRows.forEach(function(r){if(!r.key)return;var dk=dateKey(r.date||'');if(!dk)return;(days[dk]=days[dk]||{s:[],b:[],date:r.date}).s.push(r);});
+  bankRows.forEach(function(r){if(!r.key)return;var dk=dateKey(r.date||'');if(!dk)return;(days[dk]=days[dk]||{s:[],b:[],date:r.date}).b.push(r);});
+  Object.keys(days).sort().forEach(function(dk){
+    var d=days[dk];if(!d.s.length||!d.b.length)return;
+    var T=0,B=0;d.s.forEach(function(r){T+=Math.round(r.amt*100);});d.b.forEach(function(r){B+=Math.round(r.amt*100);});
+    var diff=T-B;if(diff===0)return;
+    var side=diff>0?'sap':'bank',big=diff>0?d.s:d.b,small=diff>0?d.b:d.s,tgt=Math.abs(diff);
+    if(big.length>200){skipped++;return;}
+    if(Date.now()>dl){skipped++;return;}
+    var idxs=[],cs=[];big.forEach(function(r,i){var c=Math.round(r.amt*100);if(c>0){idxs.push(i);cs.push(c);}});
+    if(!cs.length)return;
+    var r=bkExcSolve(cs,tgt,kmax,60,dl);
+    // ต้องเหลืออย่างน้อย 1 รายการฝั่งที่ตัด ไม่งั้นไม่ใช่การจับคู่
+    r.sols=r.sols.filter(function(ix){return ix.length<big.length;});
+    if(!r.sols.length)return;
+    var sigs={};
+    r.sols.forEach(function(ix){sigs[ix.map(function(i){return cs[i];}).sort(function(a,b){return a-b;}).join(',')]=ix;});
+    var nsig=Object.keys(sigs).length;
+    // ใช้ชุดที่ตัดน้อยรายการที่สุดก่อน
+    var best=r.sols.slice().sort(function(a,b){return a.length-b.length;})[0];
+    var bestSig=best.map(function(i){return cs[i];}).sort(function(a,b){return a-b;}).join(',');
+    // รายการซ้ำยอดเดียวกันในฝั่งนั้น (เลือกตัวไหนก็ได้ผลรวมเท่ากัน) → ระบุตัวที่ตัดไม่ได้แน่ชัด
+    var cntAll={};cs.forEach(function(x){cntAll[x]=(cntAll[x]||0)+1;});
+    var cntSel={};best.forEach(function(i){cntSel[cs[i]]=(cntSel[cs[i]]||0)+1;});
+    var dupChoice=Object.keys(cntSel).some(function(x){return cntAll[x]>cntSel[x];});
+    var lam=bkExcLambda(cs,tgt,kmax);
+    var exSet={};best.forEach(function(i){exSet[idxs[i]]=true;});
+    out.push({dk:dk,date:d.date,side:side,diff:diff,
+      excluded:big.filter(function(r,i){return exSet[i];}),kept:big.filter(function(r,i){return !exSet[i];}),other:small,
+      k:best.length,nsig:nsig,capped:r.capped,dupChoice:dupChoice,lambda:lam,poolSize:cs.length,
+      sure:(nsig===1&&!r.capped&&!dupChoice&&lam<0.02)});
+  });
+  out.skipped=skipped;
+  return out;
+}
+var BK_EXC={kind:'',expected:0,list:[]};
+function bkExcPanelHtml(kind,expectedDiff,sapRows,bankRows){
+  var list=bkFindDayExclusions(sapRows,bankRows,4);
+  BK_EXC={kind:kind,expected:expectedDiff,list:list};
+  if(!list.length)return '';
+  var rows=list.map(function(g,gi){
+    var sideTxt=g.side==='sap'?'SAP':'แบงค์';
+    var exH=g.excluded.map(function(r){return '<tr><td style="font-size:11.5px;color:var(--muted);width:90px">'+bkDiffEsc(r.date||'')+'</td><td style="font-size:11.5px">'+bkDiffEsc(g.side==='sap'?((r.memo||'')+(r.bpName?(' — '+r.bpName):'')):(r.desc||''))+'</td><td class="right" style="font-size:11.5px;width:120px;color:var(--gold2)">'+fmtFull(r.amt)+'</td></tr>';}).join('');
+    var warn=g.nsig>1?' <span style="font-size:11px;color:var(--gold2)">&#9888;&#65039; มี '+g.nsig+' แบบที่ตัดแล้วตรง (กำกวม) — ตรวจก่อนติ๊ก</span>':
+      (g.dupChoice?' <span style="font-size:11px;color:var(--gold2)">&#9888;&#65039; มีรายการยอดซ้ำกัน ระบุตัวที่ตัดไม่ได้แน่ชัด — ตรวจก่อนติ๊ก</span>':
+      (g.lambda<0.02?' <span style="font-size:11px;color:var(--green)">&#10003; ความมั่นใจสูง</span>':' <span style="font-size:11px;color:var(--gold2)" title="ฝั่งนี้มี '+g.poolSize+' รายการ ผลรวมบังเอิญตรงได้">&#9888;&#65039; ผลรวมอาจบังเอิญตรง — ตรวจก่อนติ๊ก</span>'));
+    return '<div style="padding:7px 0;border-top:1px solid rgba(255,255,255,0.06)">'+
+      '<label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer"><input type="checkbox" class="bkExcChk" value="'+gi+'"'+(g.sure?' checked':'')+' style="margin-top:3px">'+
+      '<span><b>'+bkDiffEsc(g.date||g.dk)+'</b> &nbsp;ตัด '+sideTxt+' '+g.k+' รายการ ('+fmtFull(Math.abs(g.diff)/100)+') แล้วยอดวันตรงกัน &nbsp;<span style="font-size:11.5px;color:var(--muted)">(ยืนยันที่เหลือ SAP '+(g.side==='sap'?g.kept.length:g.other.length)+' รายการ = แบงค์ '+(g.side==='sap'?g.other.length:g.kept.length)+' รายการ)</span>'+warn+'</span></label>'+
+      '<details style="margin:4px 0 0 24px"><summary style="font-size:11.5px;color:var(--muted);cursor:pointer">ดูรายการที่ตัดออก (ไม่ยืนยัน — ไว้ตามต่อ)</summary><table style="width:100%;margin-top:4px"><tbody>'+exH+'</tbody></table></details></div>';
+  }).join('');
+  return '<div style="background:rgba(212,168,67,0.08);border:1px solid var(--gold);border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:16px">'+
+    '<div style="font-weight:700;color:var(--gold2);margin-bottom:6px">&#127919; ยอดรายวันจะตรงถ้าตัดออกไม่เกิน 4 รายการ ('+list.length+' วัน)</div>'+
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">เหมาะกับวันที่รายการเกือบตรงกันทั้งหมด เหลือแค่ 1–4 รายการที่ไม่มีคู่ — ปุ่มยืนยันจะยืนยันรายการที่เหลือทั้งสองฝั่ง ส่วนรายการที่ตัดออกจะไม่ถูกยืนยัน (ยังค้างให้ตามต่อ) ติ๊กไว้ให้เฉพาะวันที่มีชุดเดียวและความมั่นใจสูง</div>'+
+    rows+
+    (list.skipped?'<div style="font-size:11.5px;color:var(--gold2);margin-top:6px">ข้าม '+list.skipped+' วัน (รายการมากเกิน 200 หรือคำนวณไม่ทัน)</div>':'')+
+    '<div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button id="bkExcBtn" onclick="bkConfirmExc(\'bkExcBtn\')" style="background:linear-gradient(135deg,var(--gold),#F0CB72);color:#08131f;border:none;padding:7px 16px;border-radius:7px;font-weight:700;cursor:pointer;font-family:\'Sarabun\',sans-serif;font-size:12.5px">ยืนยันวันที่ติ๊กไว้ (ยกเว้นรายการที่ตัดออก)</button>'+
+    '<button class="hbtn" onclick="document.querySelectorAll(\'.bkExcChk\').forEach(function(c){c.checked=true;})">ติ๊กทั้งหมด</button><button class="hbtn" onclick="document.querySelectorAll(\'.bkExcChk\').forEach(function(c){c.checked=false;})">ล้างที่ติ๊ก</button></div></div>';
+}
+async function bkConfirmExc(btnId){
+  var btn=document.getElementById(btnId);
+  var sel=[].slice.call(document.querySelectorAll('.bkExcChk:checked')).map(function(c){return BK_EXC.list[+c.value];}).filter(Boolean);
+  if(!sel.length){if(btn)btn.textContent='ยังไม่ได้ติ๊กวันใด';return;}
+  if(btn){btn.disabled=true;btn.textContent='กำลังบันทึก…';}
+  try{
+    var items=[],seen={};
+    sel.forEach(function(g){
+      var note='ยืนยันทั้งวัน '+(g.date||g.dk)+' (ยกเว้น '+g.k+' รายการ'+(g.side==='sap'?' SAP':'แบงค์')+' ที่ตัดออกแล้วยอดตรง)';
+      var add=function(side,key){var k=side+'|'+key;if(!key||seen[k]||manualMatchFor(side,key))return;seen[k]=1;items.push({side:side,docNo:key,status:'matched',note:note});};
+      var bigSide=g.side==='sap'?'bkSapLeg':'bkTxn',smallSide=g.side==='sap'?'bkTxn':'bkSapLeg';
+      g.kept.forEach(function(r){add(bigSide,r.key);});g.other.forEach(function(r){add(smallSide,r.key);});
+    });
+    if(!items.length){if(btn){btn.disabled=false;btn.textContent='ไม่มีรายการให้ยืนยันแล้ว (อาจยืนยันไปก่อนหน้านี้)';}return;}
+    var res=await saveManualMatchBatch(items,function(done,total){if(btn)btn.textContent='กำลังบันทึก '+done+'/'+total+'…';});
+    if(!res.success){if(btn){btn.disabled=false;btn.textContent='บันทึกไม่สำเร็จ ('+(res.error||'')+') — กดลองใหม่';}return;}
+    G.manualMatch=G.manualMatch||{};
+    items.forEach(function(it){G.manualMatch[it.side+'|'+it.docNo]={status:'matched',note:it.note};});
+    bkRefreshAfterConfirm();
+    BK_DETAIL_REOPEN={type:'diff',kind:BK_EXC.kind,expectedDiff:BK_EXC.expected};
+    bkShowDiffDetail(BK_EXC.kind,BK_EXC.expected);
+  }catch(e){if(btn){btn.disabled=false;btn.textContent='เกิดข้อผิดพลาด — กดลองใหม่';}console.error(e);}
+}
+// ---------- ติ๊กเลือกหลายรายการ (ช่อง .bkSelChk ในตาราง SAP/แบงค์) + แถบยืนยันที่ลอยอยู่ด้านล่าง ----------
+var BK_SEL_LAST=null;
+function bkSelBoxes(){return [].slice.call(document.querySelectorAll('#modalBody .bkSelChk'));}
+function bkSelClick(ev,el){
+  try{
+    if(ev&&ev.shiftKey&&BK_SEL_LAST&&BK_SEL_LAST!==el&&BK_SEL_LAST.closest('table')===el.closest('table')){
+      var all=[].slice.call(el.closest('table').querySelectorAll('.bkSelChk'));
+      var a=all.indexOf(BK_SEL_LAST),b=all.indexOf(el);
+      if(a>=0&&b>=0){var lo=Math.min(a,b),hi=Math.max(a,b);for(var i=lo;i<=hi;i++)all[i].checked=el.checked;}
+    }
+    BK_SEL_LAST=el;
+  }catch(e){}
+  bkSelUpdate();
+}
+function bkSelAll(side,on){
+  bkSelBoxes().forEach(function(c){if(c.getAttribute('data-side')===side)c.checked=!!on;});
+  bkSelUpdate();
+}
+function bkSelDay(dk){
+  bkSelBoxes().forEach(function(c){if(c.getAttribute('data-dk')===dk&&c.getAttribute('data-strict')==='1')c.checked=true;});
+  bkSelUpdate();
+}
+function bkSelClear(){bkSelBoxes().forEach(function(c){c.checked=false;});BK_SEL_LAST=null;bkSelUpdate();}
+function bkSelSummary(){
+  var s={sn:0,ss:0,bn:0,bs:0};
+  bkSelBoxes().forEach(function(c){if(!c.checked)return;var v=+c.getAttribute('data-cents')||0;if(c.getAttribute('data-side')==='sap'){s.sn++;s.ss+=v;}else{s.bn++;s.bs+=v;}});
+  s.diff=s.ss-s.bs;return s;
+}
+function bkSelUpdate(){
+  var bar=document.getElementById('bkSelBar');if(!bar)return;
+  var s=bkSelSummary(),n=s.sn+s.bn;
+  bar.style.display=n?'flex':'none';
+  var info=document.getElementById('bkSelInfo');
+  if(info){
+    var dz=s.sn&&s.bn&&s.diff===0;
+    info.innerHTML='เลือกแล้ว <b>'+n+'</b> รายการ &nbsp;|&nbsp; SAP '+s.sn+' รายการ <b>'+fmtFull(s.ss/100)+'</b> &nbsp;|&nbsp; แบงค์ '+s.bn+' รายการ <b>'+fmtFull(s.bs/100)+'</b> &nbsp;|&nbsp; ส่วนต่าง <b style="color:'+(s.diff===0?'var(--green)':'var(--gold2)')+'">'+fmtFull(s.diff/100)+'</b>'+(dz?' &#9989; ตรงกัน':'');
+  }
+}
+async function bkSelConfirm(status){
+  var btnM=document.getElementById('bkSelBtnM'),btnU=document.getElementById('bkSelBtnU');
+  var s=bkSelSummary();
+  var picks=bkSelBoxes().filter(function(c){return c.checked;});
+  if(!picks.length)return;
+  if(status==='matched'&&s.diff!==0){
+    var msg='ยอดที่เลือก SAP '+fmtFull(s.ss/100)+' กับแบงค์ '+fmtFull(s.bs/100)+' ต่างกัน '+fmtFull(s.diff/100)+' บาท\nต้องการยืนยันว่า "ตรงกัน" ทั้ง '+picks.length+' รายการหรือไม่?';
+    if(!window.confirm(msg))return;
+  }
+  var note=(status==='matched'?'ยืนยันหลายรายการพร้อมกัน':'ยืนยันว่าไม่ตรง (เลือกหลายรายการ)')+' — SAP '+s.sn+' รายการ '+fmtFull(s.ss/100)+' / แบงค์ '+s.bn+' รายการ '+fmtFull(s.bs/100);
+  var items=[],seen={};
+  picks.forEach(function(c){
+    var side=c.getAttribute('data-side')==='sap'?'bkSapLeg':'bkTxn',key=decodeURIComponent(c.getAttribute('data-key')||'');
+    var k=side+'|'+key;if(!key||seen[k])return;seen[k]=1;items.push({side:side,docNo:key,status:status,note:note});
+  });
+  if(!items.length)return;
+  [btnM,btnU].forEach(function(b){if(b)b.disabled=true;});
+  var lab=status==='matched'?btnM:btnU;
+  try{
+    var res=await saveManualMatchBatch(items,function(done,total){if(lab)lab.textContent='กำลังบันทึก '+done+'/'+total+'…';});
+    if(!res.success){[btnM,btnU].forEach(function(b){if(b)b.disabled=false;});if(lab)lab.textContent='บันทึกไม่สำเร็จ ('+(res.error||'')+') — กดลองใหม่';return;}
+    G.manualMatch=G.manualMatch||{};
+    items.forEach(function(it){G.manualMatch[it.side+'|'+it.docNo]={status:it.status,note:it.note};});
+    var ctx=BK_DETAIL_REOPEN;
+    bkRefreshAfterConfirm();
+    if(ctx&&ctx.type==='diff'){BK_DETAIL_REOPEN=ctx;bkShowDiffDetail(ctx.kind,ctx.expectedDiff);}
+  }catch(e){[btnM,btnU].forEach(function(b){if(b)b.disabled=false;});if(lab)lab.textContent='เกิดข้อผิดพลาด — กดลองใหม่';console.error(e);}
+}
+function bkSelBarHtml(){
+  return '<div id="bkSelBar" style="display:none;position:sticky;bottom:0;z-index:5;margin-top:14px;background:#1c2f45;border:1px solid var(--gold);border-radius:10px;padding:10px 14px;gap:10px;align-items:center;flex-wrap:wrap;box-shadow:0 -6px 18px rgba(0,0,0,0.45)">'+
+    '<div id="bkSelInfo" style="flex:1;min-width:260px;font-size:12.5px"></div>'+
+    '<button id="bkSelBtnM" onclick="bkSelConfirm(\'matched\')" style="background:linear-gradient(135deg,var(--green),#7FD9A8);color:#08131f;border:none;padding:7px 16px;border-radius:7px;font-weight:700;cursor:pointer;font-family:\'Sarabun\',sans-serif;font-size:12.5px">&#9989; ยืนยันตรงกัน</button>'+
+    '<button id="bkSelBtnU" onclick="bkSelConfirm(\'unmatched\')" style="background:rgba(224,92,92,0.18);color:var(--red);border:1px solid var(--red);padding:7px 16px;border-radius:7px;font-weight:700;cursor:pointer;font-family:\'Sarabun\',sans-serif;font-size:12.5px">&#10060; ยืนยันว่าไม่ตรง</button>'+
+    '<button class="hbtn" onclick="bkSelClear()">ล้างที่เลือก</button></div>';
 }
 // บันทึกการยืนยันหลายรายการในคำขอเดียว (Apps Script action 'saveManualMatchBatch', ล็อกกันเขียนชนกัน)
 // ถ้า Apps Script ยังเป็นเวอร์ชันเก่า (ไม่รู้จัก action) จะถอยไปบันทึกทีละรายการแบบเรียงลำดับ (ช้ากว่า แต่ไม่เขียนทับกัน)
