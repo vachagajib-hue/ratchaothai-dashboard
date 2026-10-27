@@ -465,7 +465,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 </div>
 <div class="recon-section" id="reconSapMonthlySection" style="display:none">
 <div class="recon-section-title">&#128202; เทียบยอด SAP vs Bank แยกรายเดือน</div>
-<div style="font-size:11px;color:var(--muted);margin-bottom:8px">เขียว = ตรงกัน (ต่างกันไม่เกิน 1 บาท) &nbsp;·&nbsp; แดง = ต้องตรวจสอบ &nbsp;·&nbsp; <i style="opacity:.7">ตัวเอียงจาง</i> = SAP เดือนนั้นไม่มีรายการเคลื่อนไหว ยกยอดจากเดือนก่อนมาแสดง &nbsp;·&nbsp; — = ยังไม่มีข้อมูลในช่วงนั้น</div>
+<div style="font-size:11px;color:var(--muted);margin-bottom:8px">เขียว = ตรงกัน (ต่างกันไม่เกิน 1 บาท) &nbsp;·&nbsp; แดง = ต้องตรวจสอบ &nbsp;·&nbsp; <i style="opacity:.7">ตัวเอียงจาง</i> = SAP เดือนนั้นไม่มีรายการเคลื่อนไหว ยกยอดจากเดือนก่อนมาแสดง &nbsp;·&nbsp; — = ยังไม่มีข้อมูลในช่วงนั้น &nbsp;·&nbsp; <b>กดตัวเลขสีแดงในแถวส่วนต่างของแต่ละบัญชี</b> เพื่อเปิดสมุดบัญชีธนาคารเดือนนั้น</div>
 <div id="reconSapMonthlyWrap" style="overflow-x:auto"></div>
 </div>
 <div class="recon-section">
@@ -556,6 +556,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <span id="bkAcctSearchHint" style="font-size:11px;color:var(--muted)"></span>
 <span style="font-size:12px;color:var(--muted);font-weight:600;margin-left:8px">เดือน/ปี:</span>
 <select id="bkYmSel" class="filter-select" onchange="bkRender()"></select>
+<button class="hbtn hbtn-gold" id="bkBackRecon" style="display:none" onclick="bkBackToRecon()">&#8592; กลับตารางเทียบยอด</button>
 <button class="hbtn" onclick="bkOpenReportFilter()">&#128269; ตัวกรองรายงาน (หลายบัญชี/หลายเดือน)</button>
 <button class="hbtn hbtn-gold" onclick="bkOpenIncomingFilter()">&#128229; รายงานเงินรับเข้าจริง (เฉพาะ Incoming)</button>
 <button class="hbtn" onclick="bkReplacedReport()">&#8505;&#65039; รายการยกเลิกแล้วออกใหม่</button>
@@ -4691,6 +4692,28 @@ function bkGotoLedger(code,ym){
   y.value=ym;bkRender();
   try{a.scrollIntoView({block:'center'});}catch(e){}
 }
+// เปิดสมุดบัญชีธนาคารจากตารางเทียบยอดรายเดือน (กดที่ส่วนต่างสีแดง) — เปิดบัญชี+เดือนที่กดตรง ๆ
+// ถ้าเดือนนั้นไม่มีรายการ SAP ในสมุดบัญชี (ส่วนต่างยกมาจากเดือนก่อน) ให้เปิดเดือนล่าสุดที่มีรายการก่อนหน้า พร้อมข้อความแจ้ง
+function bkOpenFromRecon(code,ym){
+  switchTab(8);
+  var yms=bkAvailableYm(code),target=ym,note='';
+  if(yms.indexOf(ym)<0){
+    var prev=yms.filter(function(y){return y<ym;});
+    if(prev.length){target=prev[prev.length-1];note='เดือน '+ymLabelThai(ym)+' ไม่มีรายการ SAP ในบัญชีนี้ (ส่วนต่างยกมาจากเดือนก่อน) — เปิดเดือนล่าสุดที่มีรายการแทน: '+ymLabelThai(target);}
+    else{note='บัญชีนี้ยังไม่มีรายการ SAP ในสมุดบัญชีก่อนเดือน '+ymLabelThai(ym);}
+  }
+  var a=document.getElementById('bkAcctSel'),y=document.getElementById('bkYmSel');
+  var q=document.getElementById('bkAcctSearch');if(q&&q.value){q.value='';try{bkAcctFilter('');}catch(e){}}
+  if(a){a.value=code;bkPopulateYm();if(y&&yms.indexOf(target)>=0){y.value=target;bkRender();}}
+  var bb=document.getElementById('bkBackRecon');if(bb)bb.style.display='';
+  var h=document.getElementById('bkAcctSearchHint');
+  if(h){h.textContent=note;h.style.color=note?'var(--gold2)':'var(--muted)';}
+  try{window.scrollTo(0,0);}catch(e){}
+}
+function bkBackToRecon(){
+  switchTab(5);
+  setTimeout(function(){var el=document.getElementById('reconSapMonthlySection');if(el&&el.scrollIntoView)el.scrollIntoView({block:'start'});},50);
+}
 function bkDiffToggle(tr){tr.classList.toggle('open');var n=tr.nextElementSibling;if(n)n.classList.toggle('show');}
 function bkDiffAll(open){
   document.querySelectorAll('#bkDiffTbl tr.bkd-main').forEach(function(t){t.classList.toggle('open',open);var n=t.nextElementSibling;if(n)n.classList.toggle('show',open);});
@@ -6792,13 +6815,17 @@ function renderRecon(){
       var totBank=cmpMonths.map(function(ym,i){var any=false,t=0;acctPairs.forEach(function(p){if(p.bankVals[i]!==null){t+=p.bankVals[i];any=true;}});return any?t:null;});
       var totDiff=cmpMonths.map(function(ym,i){return totSap[i]!==null&&totBank[i]!==null?totBank[i]-totSap[i]:null;});
       function sapCellC(carry){return function(v,i){return (carry&&carry[i]&&v!==null)?'<td class="right" style="opacity:.6;font-style:italic" title="เดือนนี้ไม่มีรายการเคลื่อนไหวใน SAP — ยกยอดจากเดือนก่อน">'+fmtFull(v)+'</td>':sapCell(v);};}
+      function diffCellGo(code,yms){return function(v,i){
+        if(v===null||Math.abs(v)<1)return diffCell(v);
+        return '<td class="right red" style="cursor:pointer;text-decoration:underline dotted" title="กดเพื่อเปิดสมุดบัญชีธนาคารของบัญชีนี้ เดือน '+yms[i]+'" onclick="bkOpenFromRecon(\''+code+'\',\''+yms[i]+'\')">'+fmtFull(v)+'</td>';
+      };}
       function sapCell(v){return v===null?'<td class="right" style="color:var(--muted)">—</td>':'<td class="right">'+fmtFull(v)+'</td>';}
       function diffCell(v){return v===null?'<td class="right" style="color:var(--muted)">—</td>':'<td class="right '+(Math.abs(v)<1?'green':'red')+'">'+fmtFull(v)+'</td>';}
       var html='<table><thead><tr><th>บัญชี</th><th>ประเภท</th>'+cmpLbls.map(function(l){return '<th style="text-align:right">'+l+'</th>';}).join('')+'</tr></thead><tbody>';
       html+=acctPairs.map(function(p){
         return '<tr><td rowspan="3" style="font-size:11px;color:var(--muted);vertical-align:top;padding-top:8px">'+p.name+'</td><td style="font-size:11px;color:var(--blue)">SAP</td>'+p.sapVals.map(sapCellC(p.sapCarry)).join('')+'</tr>'+
         '<tr><td style="font-size:11px;color:var(--teal)">Bank</td>'+p.bankVals.map(sapCell).join('')+'</tr>'+
-        '<tr style="border-bottom:1px solid var(--border)"><td style="font-size:11px;color:var(--gold2);font-weight:600">ส่วนต่าง</td>'+p.diffVals.map(diffCell).join('')+'</tr>';
+        '<tr style="border-bottom:1px solid var(--border)"><td style="font-size:11px;color:var(--gold2);font-weight:600">ส่วนต่าง</td>'+p.diffVals.map(diffCellGo(p.code,cmpMonths)).join('')+'</tr>';
       }).join('');
       html+='<tr style="border-top:2px solid var(--border)"><td rowspan="3" style="font-weight:700;padding-top:8px">รวมทุกบัญชี</td><td style="font-size:11px;color:var(--blue);font-weight:700">SAP</td>'+totSap.map(sapCell).join('')+'</tr>'+
         '<tr><td style="font-size:11px;color:var(--teal);font-weight:700">Bank</td>'+totBank.map(sapCell).join('')+'</tr>'+
@@ -7731,6 +7758,7 @@ function switchTab(i){
   if(i===7){try{renderNet();}catch(e){}}
   if(i===2){try{renderApCat();}catch(e){}}
   if(i===8){try{bkPopulate();}catch(e){console.error(e);}}
+  var bbk=document.getElementById('bkBackRecon');if(bbk&&i!==8)bbk.style.display='none';
   var fb=document.querySelector('.filter-bar');if(fb)fb.style.display=((i===9||i===10||i===11)?'none':'');
   if(i===9){try{dueEnter();}catch(e){console.error(e);}}
   if(i===10){try{mxEnter();}catch(e){console.error(e);}}
