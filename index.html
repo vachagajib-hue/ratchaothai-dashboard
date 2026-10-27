@@ -560,6 +560,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <button class="hbtn" onclick="bkOpenReportFilter()">&#128269; ตัวกรองรายงาน (หลายบัญชี/หลายเดือน)</button>
 <button class="hbtn hbtn-gold" onclick="bkOpenIncomingFilter()">&#128229; รายงานเงินรับเข้าจริง (เฉพาะ Incoming)</button>
 <button class="hbtn" onclick="bkReplacedReport()">&#8505;&#65039; รายการยกเลิกแล้วออกใหม่</button>
+<button class="hbtn" onclick="bkConfirmedReport()">&#128203; รายการที่ยืนยันเอง</button>
 <button class="hbtn hbtn-gold" style="margin-left:auto" onclick="bkAllBanksUnmatchedReport()">&#128203; รายงานยังไม่พบใน SAP (ทุกธนาคาร)</button>
 </div>
 <div class="kpi-row" id="bkKpiRow"></div>
@@ -4255,7 +4256,7 @@ function bkDirData(kind){
   var sapStrict=sapRows.filter(function(r){return !r.hint&&!r.ov;}),bankStrict=bankRows.filter(function(r){return !r.hint&&!r.ov;});
   var mkIt=function(r){return {amt:r.amt,ov:r.ov,fee:!!(r.hint&&bkHintIsFee(r.hint)),hint:(r.hint&&!bkHintIsFee(r.hint))?(r.hint.dates||['x']):null};};
   var br=bkBreakFromItems(sapRows.map(mkIt),bankRows.map(mkIt));
-  return {sapRows:sapRows,bankRows:bankRows,sapSum:sapSum,bankSum:bankSum,diff:sapSum-bankSum,rem:bkRemOf(sapSum-bankSum,br),
+  return {sapRows:sapRows,bankRows:bankRows,sapSum:sapSum,bankSum:bankSum,diff:sapSum-bankSum,rem:bkRemOf(sapSum-bankSum,br),br:br,
     sapStrict:sapStrict,bankStrict:bankStrict,sapPool:pool(sapRows),bankPool:pool(bankRows)};
 }
 // sapRows/bankRows = สระทั้งหมด (แต่ละรายการมี _st = ยังต้องตรวจ) — เก็บเฉพาะกลุ่มที่มีรายการ "ยังต้องตรวจ" อย่างน้อย 1 รายการ
@@ -4380,7 +4381,75 @@ function bkDirStripHtml(curKind){
       '<div style="font-size:11.5px;color:var(--muted);line-height:1.6">ส่วนต่างตามสูตร (SAP−แบงค์) <b style="color:var(--text)">'+fmtFull(d.diff)+'</b> &middot; ต้องตรวจสอบจริงตามการ์ด '+remTxt+'<br>รายการที่ยังไม่มีเบาะแสและไม่ได้ยืนยัน: SAP '+d.sapStrict.length+' · แบงค์ '+d.bankStrict.length+'<br>หักล้างเป็นกลุ่มได้ SAP '+cl+' · แบงค์ '+cb+' &rarr; <b style="color:var(--gold2)">เหลือตรวจเอง SAP '+r.leftSap.length+' · แบงค์ '+r.leftBank.length+'</b> (ยอดสุทธิของรายการเหล่านี้ '+fmtFull(resid/100)+')</div>'+
       (isCur?'':'<button class="hbtn" style="margin-top:6px" onclick="bkShowDiffDetail(\''+k+'\','+(Math.round(d.diff*100)/100)+')">เปิดดู'+(k==='in'?'ขารับ':'ขาจ่าย')+'</button>')+'</div>';
   });
-  return '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">'+cells.join('')+'</div>';
+  return '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px">'+cells.join('')+'</div><div style="margin-bottom:14px"><button class="hbtn" onclick="bkConfirmedReport()">&#128203; ดูรายการที่ยืนยันเอง (ตรวจย้อนว่าส่วนต่างถูกเคลียร์ด้วยอะไร)</button></div>';
+}
+// ============================================================================
+// รายงาน "รายการที่ยืนยันเอง" ของบัญชี+เดือนที่เลือก (27 ต.ค. 2569) — ตรวจย้อนว่าส่วนต่างที่หายไปจากการ์ดมาจากการยืนยันอะไรบ้าง
+// แยกต่อขา (รับ/จ่าย): ส่วนต่างตามสูตร = ยืนยันเอง + ค่าธรรมเนียมที่ระบบจับคู่ + หักล้างฝั่งเดียว(ระบบถือว่าเคลียร์) + รอแก้วันที่ + ต้องตรวจสอบจริง
+// และรายการยืนยันจัดเป็นชุดตามหมายเหตุ (ยืนยันพร้อมกันจะมีหมายเหตุเดียวกัน) บอกว่าชุดไหนยืนยันฝั่งเดียวหรือยอดสองฝั่งไม่เท่ากัน
+// ===========================================================================
+function bkConfirmedReport(){
+  if(!BK_STATE.acctCode||!BK_STATE.ym){alert('กรุณาเลือกบัญชีและเดือนในหน้าสมุดบัญชีธนาคารก่อน');return;}
+  var acctInfo=bkAccounts().find(function(a){return a.code===BK_STATE.acctCode;})||{};
+  var title='รายการที่ยืนยันเอง — '+(acctInfo.name||BK_STATE.acctCode)+' ('+ymLabelThai(BK_STATE.ym)+')';
+  var flat=[],html='';
+  var sec=[{k:'in',label:'&#11014;&#65039; ขารับ (เงินเข้า)',txt:'ขารับ'},{k:'out',label:'&#11015;&#65039; ขาจ่าย (เงินออก)',txt:'ขาจ่าย'}];
+  sec.forEach(function(S){
+    var d=bkDirData(S.k),br=d.br;
+    var sapOv=d.sapRows.filter(function(r){return r.ov;}),bankOv=d.bankRows.filter(function(r){return r.ov;});
+    var cSap=0,cBank=0,bSap=0,bBank=0;
+    sapOv.forEach(function(r){if(r.ov.status==='matched')cSap+=r.amt;else bSap+=r.amt;});
+    bankOv.forEach(function(r){if(r.ov.status==='matched')cBank+=r.amt;else bBank+=r.amt;});
+    var confNet=cSap-cBank,feeNet=br.okNet-confNet;
+    var lines=[
+      ['ยืนยันเองว่า "ตรงกัน" (SAP '+fmtFull(cSap)+' − แบงค์ '+fmtFull(cBank)+')',confNet,''],
+      ['ค่าธรรมเนียมที่ระบบจับคู่ให้',feeNet,'ระบบจับเอง ไม่ได้มาจากการยืนยัน'],
+      ['หักล้างฝั่งเดียวอัตโนมัติ ('+br.absN+' รายการ)',br.absNet,'ระบบถือว่ารายการที่ยังไม่ได้ยืนยันของอีกฝั่งเคลียร์แล้วในวงเงินส่วนเกินของการยืนยันฝั่งเดียว — ยังไม่ได้ผูกเป็นรายใบ'],
+      ['รอแก้วันที่ ('+br.dateN+' รายการ)',br.dateNet,'ยอดตรงแต่คนละวันที่'],
+      ['ต้องตรวจสอบจริง',d.rem,(br.badN?('รวม "ยืนยันว่าไม่ตรง" '+br.badN+' รายการ '+fmtFull(br.badNet)):'')]
+    ];
+    var tot=0;lines.forEach(function(l){tot+=l[1];});
+    var recon='<table style="width:100%;margin-bottom:10px"><tbody>'+lines.map(function(l){
+      var hi=(l[0].indexOf('หักล้างฝั่งเดียว')===0&&Math.abs(l[1])>=0.01);
+      return '<tr'+(hi?' style="background:rgba(212,168,67,0.12)"':'')+'><td style="font-size:12px">'+l[0]+(l[2]?'<div style="font-size:10.5px;color:var(--muted)">'+bkDiffEsc(l[2])+'</div>':'')+'</td><td class="right" style="width:150px;font-size:12.5px;font-weight:600;color:'+(Math.abs(l[1])<0.01?'var(--muted)':(hi?'var(--gold2)':'var(--text)'))+'">'+fmtFull(l[1])+'</td></tr>';}).join('')+
+      '<tr style="border-top:2px solid var(--border)"><td style="font-size:12.5px;font-weight:700">รวม = ส่วนต่างตามสูตร (SAP − แบงค์)</td><td class="right" style="font-weight:700">'+fmtFull(tot)+'</td></tr></tbody></table>'+
+      (Math.abs(tot-d.diff)>=0.02?'<div style="font-size:11.5px;color:var(--red)">&#9888;&#65039; ผลรวมไม่ตรงกับส่วนต่างตามสูตร '+fmtFull(d.diff)+' — แจ้งทีมพัฒนา</div>':'');
+    // จัดชุดตามหมายเหตุ+สถานะ
+    var groups={};
+    function addG(side,r){
+      var st=r.ov.status==='matched'?'matched':'unmatched';
+      var key=st+'||'+(r.ov.note||'(ไม่มีหมายเหตุ)');
+      var g=groups[key]=groups[key]||{note:r.ov.note||'(ไม่มีหมายเหตุ)',status:st,sap:[],bank:[],s:0,b:0};
+      if(side==='sap'){g.sap.push(r);g.s+=r.amt;}else{g.bank.push(r);g.b+=r.amt;}
+      flat.push({dir:S.txt,note:g.note,status:st==='matched'?'ตรงกัน':'ไม่ตรง',side:side==='sap'?'SAP':'แบงค์',date:r.date||'',desc:side==='sap'?((r.memo||'')+(r.bpName?(' — '+r.bpName):'')):(r.desc||''),amt:r.amt});
+    }
+    sapOv.forEach(function(r){addG('sap',r);});bankOv.forEach(function(r){addG('bank',r);});
+    var gl=Object.keys(groups).map(function(k){var g=groups[k];g.diff=g.s-g.b;g.one=g.st==='unmatched'?false:(!g.sap.length||!g.bank.length);return g;});
+    gl.forEach(function(g){g.one=(g.status==='matched')&&(!g.sap.length||!g.bank.length);g.mis=(g.status==='matched')&&g.sap.length&&g.bank.length&&Math.abs(g.diff)>=0.01;});
+    gl.sort(function(a,b){return (b.one?1:0)-(a.one?1:0)||Math.abs(b.diff)-Math.abs(a.diff)||(b.sap.length+b.bank.length)-(a.sap.length+a.bank.length);});
+    var oneN=gl.filter(function(g){return g.one;}).length,misN=gl.filter(function(g){return g.mis;}).length;
+    function listRows(g){
+      var all=g.sap.map(function(r){return {s:'SAP',r:r,t:(r.memo||'')+(r.bpName?(' — '+r.bpName):'')};}).concat(g.bank.map(function(r){return {s:'แบงค์',r:r,t:r.desc||''};}));
+      all.sort(function(a,b){return dateKey(a.r.date||'').localeCompare(dateKey(b.r.date||''));});
+      var shown=all.slice(0,150);
+      return '<table style="width:100%;margin-top:4px"><tbody>'+shown.map(function(x){return '<tr><td style="font-size:11px;color:var(--muted);width:50px">'+x.s+'</td><td style="font-size:11px;color:var(--muted);width:90px">'+bkDiffEsc(x.r.date||'')+'</td><td style="font-size:11px">'+bkDiffEsc(x.t)+'</td><td class="right" style="font-size:11px;width:120px">'+fmtFull(x.r.amt)+'</td></tr>';}).join('')+'</tbody></table>'+(all.length>shown.length?'<div style="font-size:11px;color:var(--muted)">แสดง '+shown.length+' จาก '+all.length+' รายการ (ดูครบใน Excel/PDF)</div>':'');
+    }
+    var gHtml=gl.length?gl.map(function(g){
+      var flag=g.status==='unmatched'?'<span style="color:var(--red);font-size:11px">&#10060; ยืนยันว่าไม่ตรง</span>':(g.one?'<span style="color:var(--gold2);font-size:11px">&#9888;&#65039; ยืนยันฝั่งเดียว ('+(g.sap.length?'SAP':'แบงค์')+'เท่านั้น)</span>':(g.mis?'<span style="color:var(--gold2);font-size:11px">&#9888;&#65039; สองฝั่งยอดไม่เท่ากัน</span>':'<span style="color:var(--green);font-size:11px">&#10003; สองฝั่งยอดเท่ากัน</span>'));
+      return '<div style="padding:7px 0;border-top:1px solid rgba(255,255,255,0.06)"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div style="font-size:12px;flex:1;min-width:260px">'+bkDiffEsc(g.note)+' '+flag+'</div>'+
+        '<div style="font-size:11.5px;color:var(--muted);text-align:right">SAP '+g.sap.length+' · '+fmtFull(g.s)+' &nbsp;|&nbsp; แบงค์ '+g.bank.length+' · '+fmtFull(g.b)+' &nbsp;|&nbsp; ต่าง <b style="color:'+(Math.abs(g.diff)<0.01?'var(--green)':'var(--gold2)')+'">'+fmtFull(g.diff)+'</b></div></div>'+
+        '<details style="margin:3px 0 0 14px"><summary style="font-size:11px;color:var(--muted);cursor:pointer">ดูรายการ</summary>'+listRows(g)+'</details></div>';
+    }).join(''):'<div style="font-size:12px;color:var(--muted);padding:6px 0">— ไม่มีรายการที่ยืนยันเองในขานี้ —</div>';
+    html+='<div style="border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:14px"><div style="font-size:14px;font-weight:700;margin-bottom:8px">'+S.label+'</div>'+recon+
+      '<div style="font-size:12.5px;font-weight:700;margin:8px 0 2px">ชุดการยืนยัน ('+gl.length+' ชุด'+(oneN?' · <span style="color:var(--gold2)">ฝั่งเดียว '+oneN+'</span>':'')+(misN?' · <span style="color:var(--gold2)">ยอดไม่เท่ากัน '+misN+'</span>':'')+')</div>'+gHtml+'</div>';
+  });
+  dmRegisterSimple('bkConfirmedRpt',title,[
+    {label:'ขา',get:function(r){return r.dir;}},{label:'ชุดการยืนยัน (หมายเหตุ)',get:function(r){return r.note;}},{label:'สถานะ',get:function(r){return r.status;}},
+    {label:'ฝั่ง',get:function(r){return r.side;}},{label:'วันที่',get:function(r){return r.date;}},{label:'รายละเอียด',get:function(r){return r.desc;}},
+    {label:'จำนวนเงิน',right:true,get:function(r){return fmtFull(r.amt);}}
+  ],flat);
+  openModal('📋 '+title,dmExportBtns('bkConfirmedRpt')+
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">ใช้ตรวจย้อนว่าตัวเลข "ต้องตรวจสอบจริง" ของการ์ดเป็น 0.00 ได้เพราะอะไร — แถวสีทองคือส่วนที่ระบบถือว่าเคลียร์โดยไม่มีหลักฐานระดับรายใบ ควรตรวจชุดที่เป็น "ยืนยันฝั่งเดียว" หรือ "ยอดไม่เท่ากัน" ก่อน</div>'+html);
 }
 // บันทึกการยืนยันหลายรายการในคำขอเดียว (Apps Script action 'saveManualMatchBatch', ล็อกกันเขียนชนกัน)
 // ถ้า Apps Script ยังเป็นเวอร์ชันเก่า (ไม่รู้จัก action) จะถอยไปบันทึกทีละรายการแบบเรียงลำดับ (ช้ากว่า แต่ไม่เขียนทับกัน)
