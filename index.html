@@ -465,7 +465,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 </div>
 <div class="recon-section" id="reconSapMonthlySection" style="display:none">
 <div class="recon-section-title">&#128202; เทียบยอด SAP vs Bank แยกรายเดือน</div>
-<div style="font-size:11px;color:var(--muted);margin-bottom:8px">เขียว = ตรงกัน (ต่างกันไม่เกิน 1 บาท) &nbsp;·&nbsp; แดง = ต้องตรวจสอบ &nbsp;·&nbsp; <i style="opacity:.7">ตัวเอียงจาง</i> = SAP เดือนนั้นไม่มีรายการเคลื่อนไหว ยกยอดจากเดือนก่อนมาแสดง &nbsp;·&nbsp; — = ยังไม่มีข้อมูลในช่วงนั้น &nbsp;·&nbsp; <b>กดตัวเลขสีแดงในแถวส่วนต่างของแต่ละบัญชี</b> เพื่อเปิดสมุดบัญชีธนาคารเดือนนั้น</div>
+<div style="font-size:11px;color:var(--muted);margin-bottom:8px">เขียว = ตรงกัน (ต่างกันไม่เกิน 1 บาท) &nbsp;·&nbsp; แดง = ต้องตรวจสอบ &nbsp;·&nbsp; <i style="opacity:.7">ตัวเอียงจาง</i> = SAP เดือนนั้นไม่มีรายการเคลื่อนไหว ยกยอดจากเดือนก่อนมาแสดง &nbsp;·&nbsp; — = ยังไม่มีข้อมูลในช่วงนั้น &nbsp;·&nbsp; <b>กดตัวเลขสีแดงในแถวส่วนต่างของแต่ละบัญชี</b> เพื่อเปิดสมุดบัญชีธนาคารเดือนนั้น<br><b>ส่วนต่าง</b> = ยอดคงเหลือแบงค์ − SAP (ตัวเลขดิบ) &nbsp;·&nbsp; <b>อธิบายแล้ว</b> = ส่วนต่างสะสมที่มีรายการตรวจ/ยืนยัน/จับคู่แล้ว หรือรอแก้ไขวันที่ รองรับ (ตัวเลขเดียวกับการ์ดส่วนต่างในสมุดบัญชี) &nbsp;·&nbsp; <b>ยังอธิบายไม่ได้</b> = ส่วนต่าง − อธิบายแล้ว (เหลือง = ส่วนต่างดิบที่อธิบายครบแล้ว) &nbsp;·&nbsp; รายการที่ยืนยันเองถูกตัดสินโดยผู้ใช้ ควรสุ่มตรวจความถูกต้อง</div>
 <div id="reconSapMonthlyWrap" style="overflow-x:auto"></div>
 </div>
 <div class="recon-section">
@@ -7282,23 +7282,11 @@ function renderRecon(){
       var totBank=cmpMonths.map(function(ym,i){var any=false,t=0;acctPairs.forEach(function(p){if(p.bankVals[i]!==null){t+=p.bankVals[i];any=true;}});return any?t:null;});
       var totDiff=cmpMonths.map(function(ym,i){return totSap[i]!==null&&totBank[i]!==null?totBank[i]-totSap[i]:null;});
       function sapCellC(carry){return function(v,i){return (carry&&carry[i]&&v!==null)?'<td class="right" style="opacity:.6;font-style:italic" title="เดือนนี้ไม่มีรายการเคลื่อนไหวใน SAP — ยกยอดจากเดือนก่อน">'+fmtFull(v)+'</td>':sapCell(v);};}
-      function diffCellGo(code,yms){return function(v,i){
-        if(v===null||Math.abs(v)<1)return diffCell(v);
-        return '<td class="right red" style="cursor:pointer;text-decoration:underline dotted" title="กดเพื่อเปิดสมุดบัญชีธนาคารของบัญชีนี้ เดือน '+yms[i]+'" onclick="bkOpenFromRecon(\''+code+'\',\''+yms[i]+'\')">'+fmtFull(v)+'</td>';
-      };}
       function sapCell(v){return v===null?'<td class="right" style="color:var(--muted)">—</td>':'<td class="right">'+fmtFull(v)+'</td>';}
       function diffCell(v){return v===null?'<td class="right" style="color:var(--muted)">—</td>':'<td class="right '+(Math.abs(v)<1?'green':'red')+'">'+fmtFull(v)+'</td>';}
-      var html='<table><thead><tr><th>บัญชี</th><th>ประเภท</th>'+cmpLbls.map(function(l){return '<th style="text-align:right">'+l+'</th>';}).join('')+'</tr></thead><tbody>';
-      html+=acctPairs.map(function(p){
-        return '<tr><td rowspan="3" style="font-size:11px;color:var(--muted);vertical-align:top;padding-top:8px">'+p.name+'</td><td style="font-size:11px;color:var(--blue)">SAP</td>'+p.sapVals.map(sapCellC(p.sapCarry)).join('')+'</tr>'+
-        '<tr><td style="font-size:11px;color:var(--teal)">Bank</td>'+p.bankVals.map(sapCell).join('')+'</tr>'+
-        '<tr style="border-bottom:1px solid var(--border)"><td style="font-size:11px;color:var(--gold2);font-weight:600">ส่วนต่าง</td>'+p.diffVals.map(diffCellGo(p.code,cmpMonths)).join('')+'</tr>';
-      }).join('');
-      html+='<tr style="border-top:2px solid var(--border)"><td rowspan="3" style="font-weight:700;padding-top:8px">รวมทุกบัญชี</td><td style="font-size:11px;color:var(--blue);font-weight:700">SAP</td>'+totSap.map(sapCell).join('')+'</tr>'+
-        '<tr><td style="font-size:11px;color:var(--teal);font-weight:700">Bank</td>'+totBank.map(sapCell).join('')+'</tr>'+
-        '<tr><td style="font-size:11px;color:var(--gold2);font-weight:700">ส่วนต่าง</td>'+totDiff.map(diffCell).join('')+'</tr>';
-      html+='</tbody></table>';
-      document.getElementById('reconSapMonthlyWrap').innerHTML=html;
+      RECON_CMP={months:cmpMonths,lbls:cmpLbls,pairs:acctPairs,totSap:totSap,totBank:totBank,totDiff:totDiff,sapCellC:sapCellC,sapCell:sapCell,diffCell:diffCell};
+      reconCmpDraw();
+      reconExplStart();
     } else {
       document.getElementById('reconSapMonthlySection').style.display='none';
     }
@@ -7311,6 +7299,118 @@ function renderRecon(){
   }
 }
 
+// ============================================================================
+// ตารางเทียบยอด SAP vs Bank รายเดือน: แยก "อธิบายแล้ว" ออกจาก "ยังอธิบายไม่ได้" (27 ต.ค. 2569)
+// ส่วนต่างยอดคงเหลือ (แบงค์ − SAP) ในตารางนี้เป็นตัวเลขดิบ ไม่รู้เรื่องรายการที่ผู้ใช้ตรวจ/ยืนยัน/จับคู่แล้วในสมุดบัญชี
+// จึงขึ้นแดงทั้งที่การ์ด KPI ในสมุดบัญชีเป็น 0.00 — ที่นี่ใช้ตรรกะเดียวกับ bkFilteredDiffSummary (bkDiffItems + bkBreakFromItems)
+// คำนวณรายเดือนแล้วสะสม: ส่วนต่างสะสม = อธิบายแล้วสะสม + ยังอธิบายไม่ได้ (ไม่แก้การคำนวณเดิม ไม่เขียนข้อมูลใดๆ)
+// ===========================================================================
+var RECON_CMP=null;
+var RECON_EXPL={state:'idle',done:0,total:0,cells:{},token:0};
+// คืน null ถ้าเดือนนั้นไม่มีรายการ SAP หรือไม่มีสเตทเมนท์ — มิฉะนั้น {expl: ผลต่าง SAP−แบงค์ ที่อธิบายแล้ว (เงินเข้า−เงินออก), nOk, nDate, nBad}
+function reconExplCompute(code,name,ym){
+  var acctInfo=bkAccounts().find(function(a){return a.code===code;})||{code:code,name:name};
+  var allLegs=(G.sapAllBankLegs&&G.sapAllBankLegs[code])||[];
+  var rows=allLegs.filter(function(l){return bkYmOf(l.date)===ym;});
+  // เดือนที่ไม่มีรายการ SAP แต่มีสเตทเมนท์ ก็ต้องคำนวณ (รายการแบงค์ที่ยืนยันแล้วช่วยหักล้างรายการค้างจากเดือนก่อน)
+  var bankStats=bkBankSideStats(acctInfo.name||name||'',ym);
+  if(!bankStats||!bankStats.hasMonthData)return null;
+  var sortedRows=rows.slice().sort(function(a,b){
+    var ka=dateKey(a.date),kb=dateKey(b.date);
+    if(ka!==kb)return ka<kb?-1:1;
+    return (parseInt(a.tid,10)||0)-(parseInt(b.tid,10)||0);
+  });
+  var revInfo=bkDetectReversals(sortedRows);
+  var det=bkDiffItems(acctInfo,ym,sortedRows,revInfo);
+  var brI=bkBreakFromItems(det.inSap,det.inBank),brO=bkBreakFromItems(det.outSap,det.outBank);
+  var okI=bkClearedNet(brI)+brI.dateNet,okO=bkClearedNet(brO)+brO.dateNet;
+  return {expl:okI-okO,nOk:brI.okN+brI.absN+brO.okN+brO.absN,nDate:brI.dateN+brO.dateN,nBad:brI.badN+brO.badN};
+}
+function reconExplStart(){
+  var C=RECON_CMP;if(!C)return;
+  var E=RECON_EXPL;E.token++;var tk=E.token;E.cells={};E.done=0;
+  var jobs=[];
+  C.pairs.forEach(function(p){
+    // เฉพาะบัญชีที่มีส่วนต่างอย่างน้อย 1 เดือน (ไม่ต้องคำนวณบัญชีที่ตรงกันทุกเดือน)
+    if(!p.diffVals.some(function(v){return v!==null&&Math.abs(v)>=1;}))return;
+    C.months.forEach(function(ym,i){jobs.push({p:p,ym:ym});});
+  });
+  E.total=jobs.length;
+  if(!jobs.length){E.state='done';reconCmpDraw();return;}
+  E.state='run';reconCmpDraw();
+  var k=0;
+  (function step(){
+    if(E.token!==tk)return;
+    var t0=Date.now();
+    while(k<jobs.length&&Date.now()-t0<30){
+      var j=jobs[k++];
+      try{E.cells[j.p.code+'|'+j.ym]=reconExplCompute(j.p.code,j.p.name,j.ym);}catch(e){console.error('reconExplCompute',j.p.code,j.ym,e);E.cells[j.p.code+'|'+j.ym]=null;E.err=(E.err||0)+1;}
+      E.done=k;
+    }
+    var st=document.getElementById('reconExplStatus');
+    if(k<jobs.length){if(st)st.textContent='กำลังคำนวณส่วนที่อธิบายแล้ว… '+k+'/'+jobs.length;setTimeout(step,0);}
+    else{E.state='done';reconCmpDraw();}
+  })();
+}
+function reconCmpDraw(){
+  var C=RECON_CMP;if(!C)return;
+  var E=RECON_EXPL,show=E.state==='done';
+  var months=C.months,n=months.length;
+  var calc={};
+  C.pairs.forEach(function(p){
+    var cum=0,expArr=[],unArr=[],tips=[],any=false;
+    months.forEach(function(ym,i){
+      var c=show?E.cells[p.code+'|'+ym]:null;
+      if(c){cum+=c.expl;any=true;}
+      var d=p.diffVals[i];
+      if(d===null){expArr.push(null);unArr.push(null);tips.push('');return;}
+      var ex=-cum;                    // แบงค์ − SAP (เครื่องหมายเดียวกับแถวส่วนต่าง)
+      expArr.push(ex);unArr.push(d-ex);
+      tips.push(c?('เดือนนี้: ตรวจ/ยืนยัน/จับคู่แล้ว '+c.nOk+' รายการ'+(c.nDate?' · รอแก้ไขวันที่ '+c.nDate+' รายการ':'')+(c.nBad?' · ยืนยันว่าไม่ตรง '+c.nBad+' รายการ (ยังนับเป็นยังอธิบายไม่ได้)':'')):'');
+    });
+    calc[p.code]={exp:expArr,un:unArr,tips:tips,any:any};
+  });
+  function goCell(code,v,i,cls,title){
+    if(v===null)return '<td class="right" style="color:var(--muted)">—</td>';
+    if(Math.abs(v)<1)return '<td class="right green"'+(title?' title="'+bkAttr(title)+'"':'')+'>'+fmtFull(v)+'</td>';
+    return '<td class="right '+(cls||'red')+'" style="cursor:pointer;text-decoration:underline dotted" title="'+bkAttr(title||('กดเพื่อเปิดสมุดบัญชีธนาคารของบัญชีนี้ เดือน '+months[i]))+'" onclick="bkOpenFromRecon(\''+code+'\',\''+months[i]+'\')">'+fmtFull(v)+'</td>';
+  }
+  var html='<table><thead><tr><th>บัญชี</th><th>ประเภท</th>'+C.lbls.map(function(l){return '<th style="text-align:right">'+l+'</th>';}).join('')+'</tr></thead><tbody>';
+  var totExp=months.map(function(){return null;}),totUn=months.map(function(){return null;}),anyExp=false;
+  html+=C.pairs.map(function(p){
+    var k=calc[p.code];
+    var withExp=show&&p.diffVals.some(function(v){return v!==null&&Math.abs(v)>=1;});
+    if(withExp){anyExp=true;months.forEach(function(ym,i){if(k.exp[i]!==null){totExp[i]=(totExp[i]||0)+k.exp[i];totUn[i]=(totUn[i]||0)+k.un[i];}});}
+    // ส่วนต่างดิบ: ถ้าอธิบายครบแล้ว (ยังอธิบายไม่ได้ ≈ 0) ใช้สีเหลืองแทนแดง
+    var rawCells=p.diffVals.map(function(v,i){
+      if(v===null||Math.abs(v)<1)return v===null?'<td class="right" style="color:var(--muted)">—</td>':'<td class="right green">'+fmtFull(v)+'</td>';
+      if(withExp&&Math.abs(k.un[i])<1)return '<td class="right" style="color:var(--gold2);cursor:pointer;text-decoration:underline dotted" title="อธิบายครบแล้วด้วยรายการที่ตรวจ/ยืนยัน/จับคู่แล้ว — กดเพื่อเปิดสมุดบัญชี" onclick="bkOpenFromRecon(\''+p.code+'\',\''+months[i]+'\')">'+fmtFull(v)+'</td>';
+      return goCell(p.code,v,i,'red');
+    }).join('');
+    var rs=withExp?5:3;
+    var out='<tr><td rowspan="'+rs+'" style="font-size:11px;color:var(--muted);vertical-align:top;padding-top:8px">'+p.name+'</td><td style="font-size:11px;color:var(--blue)">SAP</td>'+p.sapVals.map(C.sapCellC(p.sapCarry)).join('')+'</tr>'+
+      '<tr><td style="font-size:11px;color:var(--teal)">Bank</td>'+p.bankVals.map(C.sapCell).join('')+'</tr>'+
+      '<tr'+(withExp?'':' style="border-bottom:1px solid var(--border)"')+'><td style="font-size:11px;color:var(--gold2);font-weight:600">ส่วนต่าง</td>'+rawCells+'</tr>';
+    if(withExp){
+      out+='<tr><td style="font-size:11px;color:var(--muted)" title="ส่วนต่างสะสมที่อธิบายได้ด้วยรายการที่ตรวจ/ยืนยัน/จับคู่แล้ว และรอแก้ไขวันที่ (ตรรกะเดียวกับการ์ด KPI ในสมุดบัญชี)">อธิบายแล้ว</td>'+k.exp.map(function(v,i){return v===null?'<td class="right" style="color:var(--muted)">—</td>':'<td class="right" style="color:var(--muted)" title="'+bkAttr(k.tips[i])+'">'+(Math.abs(v)<0.005?'—':fmtFull(v))+'</td>';}).join('')+'</tr>'+
+        '<tr style="border-bottom:1px solid var(--border)"><td style="font-size:11px;color:var(--gold2);font-weight:700">ยังอธิบายไม่ได้</td>'+k.un.map(function(v,i){return goCell(p.code,v,i,'red','ส่วนต่าง − อธิบายแล้ว · กดเพื่อเปิดสมุดบัญชีเดือน '+months[i]);}).join('')+'</tr>';
+    }
+    return out;
+  }).join('');
+  var rsT=anyExp?5:3;
+  html+='<tr style="border-top:2px solid var(--border)"><td rowspan="'+rsT+'" style="font-weight:700;padding-top:8px">รวมทุกบัญชี</td><td style="font-size:11px;color:var(--blue);font-weight:700">SAP</td>'+C.totSap.map(C.sapCell).join('')+'</tr>'+
+    '<tr><td style="font-size:11px;color:var(--teal);font-weight:700">Bank</td>'+C.totBank.map(C.sapCell).join('')+'</tr>'+
+    '<tr><td style="font-size:11px;color:var(--gold2);font-weight:700">ส่วนต่าง</td>'+C.totDiff.map(C.diffCell).join('')+'</tr>';
+  if(anyExp){
+    html+='<tr><td style="font-size:11px;color:var(--muted);font-weight:700">อธิบายแล้ว</td>'+totExp.map(function(v){return v===null?'<td class="right" style="color:var(--muted)">—</td>':'<td class="right" style="color:var(--muted)">'+(Math.abs(v)<0.005?'—':fmtFull(v))+'</td>';}).join('')+'</tr>'+
+      '<tr><td style="font-size:11px;color:var(--gold2);font-weight:700">ยังอธิบายไม่ได้</td>'+totUn.map(function(v){return C.diffCell(v);}).join('')+'</tr>';
+  }
+  html+='</tbody></table>';
+  var st='';
+  if(E.state==='run')st='กำลังคำนวณส่วนที่อธิบายแล้ว… '+E.done+'/'+E.total;
+  else if(E.state==='done'&&E.err)st='⚠️ คำนวณส่วนที่อธิบายแล้วไม่สำเร็จ '+E.err+' เดือน — ตัวเลขอาจไม่ครบ (ดู Console)';
+  document.getElementById('reconSapMonthlyWrap').innerHTML='<div id="reconExplStatus" style="font-size:11px;color:var(--gold2);min-height:14px;margin-bottom:4px">'+st+'</div>'+html;
+}
 // PDF Reader - max_tokens 48000 (extended output beta) + robust JSON recovery
 var pdfFiles=[],pdfReading=false;
 var BK_COLORS={BBL:'#0A4FA0',KBANK:'#1E8449',TTB:'#1A5C8A',KTB:'#0066A1',SCB:'#4A1A8C',KKP:'#D97706',BANK:'#5B8FF9'};
