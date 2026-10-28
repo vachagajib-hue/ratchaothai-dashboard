@@ -1284,14 +1284,21 @@ async function loadAllData(opts){
             var createdByName=ix15CreatedByName>=0?String(r[ix15CreatedByName]||'').trim():'';
             var origin=ix15Origin>=0?String(r[ix15Origin]||'').trim():'';
             var docRef=ix15DocRef>=0?String(r[ix15DocRef]==null?'':r[ix15DocRef]).trim():'';
-            if(!jGroups[tid])jGroups[tid]={legs:[],hasBP:false,accts:{}};
+            if(!jGroups[tid])jGroups[tid]={legs:[],hasBP:false,accts:{},refs:[]};
             jGroups[tid].legs.push({acct:acct,date:date,debit:debit,credit:credit,bpName:bpName,memo:memo});
             if(bpName)jGroups[tid].hasBP=true;
             if(acct.indexOf('111')===0)jGroups[tid].accts[acct]=true;
             if(acct && acct.indexOf('111')===0){
               if(!sapAllBankLegs[acct])sapAllBankLegs[acct]=[];
-              sapAllBankLegs[acct].push({date:date,debit:debit,credit:credit,tid:tid,bpName:bpName,memo:memo,createdByName:createdByName,origin:origin,docRef:docRef});
+              var _leg={date:date,debit:debit,credit:credit,tid:tid,bpName:bpName,memo:memo,createdByName:createdByName,origin:origin,docRef:docRef};
+              sapAllBankLegs[acct].push(_leg);jGroups[tid].refs.push(_leg);
             }
+          });
+          // บรรทัดฝั่งธนาคารของใบจ่าย SAP มักไม่มีชื่อคู่ค้า (BP อยู่บรรทัดเจ้าหนี้ของ JE เดียวกัน) — เก็บเป็น jeBp ไว้ใช้จับคู่ชื่อกับใบโอนธนาคาร (ไม่กระทบ bpName เดิม)
+          Object.keys(jGroups).forEach(function(tid){
+            var jg=jGroups[tid],nm={},names=[];
+            jg.legs.forEach(function(l){if(l.bpName&&!nm[l.bpName]){nm[l.bpName]=1;names.push(l.bpName);}});
+            if(names.length)jg.refs.forEach(function(l){if(!l.bpName)l.jeBp=names.slice(0,12).join(' / ');});
           });
           Object.keys(jGroups).forEach(function(tid){
             var jg=jGroups[tid];
@@ -4608,6 +4615,26 @@ function kbMatchBatchesToBank(batches,bankDebits,opts){
       members.forEach(function(x){res[x.key]={bankIdx:d.i,bankKey:d.key,bankDk:d.dk,bankCents:d.cents,how:'many',group:members.map(function(y){return y.key;}),ambiguous:hits.length>1};});
     });
   });
+  // รอบ 3: รวมหลาย batch ที่วันมีผลต่างกัน (เช่น ธนาคารลงบัญชีวันทำการถัดไป) — ต้องมีคำตอบเดียวเท่านั้นจึงไม่ติดธง
+  var rest3=cand.filter(function(b){return !res[b.key];});
+  if(rest3.length>=2){
+    bankDebits.forEach(function(d){
+      if(used[d.i])return;
+      var cs=rest3.filter(function(b){return !res[b.key]&&b.cOk<d.cents&&inWin(b,d);});
+      if(cs.length<2||cs.length>14)return;
+      var n=cs.length,hits=[];
+      for(var m=3;m<(1<<n);m++){
+        if((m&(m-1))===0)continue;
+        var s=0;
+        for(var j=0;j<n;j++)if(m&(1<<j)){s+=cs[j].cOk;if(s>d.cents)break;}
+        if(s===d.cents){hits.push(m);if(hits.length>3)break;}
+      }
+      if(!hits.length)return;
+      var members=[];for(var j2=0;j2<n;j2++)if(hits[0]&(1<<j2))members.push(cs[j2]);
+      used[d.i]=1;
+      members.forEach(function(x){res[x.key]={bankIdx:d.i,bankKey:d.key,bankDk:d.dk,bankCents:d.cents,how:'many',group:members.map(function(y){return y.key;}),ambiguous:hits.length>1};});
+    });
+  }
   return {byBatch:res,usedBank:used};
 }
 // ---------- ชั้น 2: ผู้รับรายคน ↔ รายการจ่ายใน SAP ----------
@@ -4615,6 +4642,12 @@ function kbNormName(s){
   s=String(s||'').toLowerCase();
   s=s.replace(/\(มหาชน\)/g,'').replace(/ห้างหุ้นส่วนจำกัด|ห้างหุ้นส่วน|บริษัท|บจก\.?|บมจ\.?|หจก\.?|จำกัด|มหาชน|นางสาว|น\.ส\.?|นาย|นาง|ร้าน|คุณ|co\.?,?\s*ltd\.?|company|limited|ltd\.?/g,'');
   return s.replace(/[\s.,\-()\/_'"“”]/g,'');
+}
+function kbNameScoreMulti(a,bp){
+  if(!bp)return -1;
+  var best=0;
+  String(bp).split(' / ').forEach(function(p){var x=kbNameScore(a,p);if(x>best)best=x;});
+  return best;
 }
 function kbNameScore(a,b){
   a=kbNormName(a);b=kbNormName(b);
@@ -4640,16 +4673,16 @@ function kbMatchRowsToSap(batch,legs,used,opts){
     if(!c.length){left.push(r);return;}
     var best=null,bs=null;
     c.forEach(function(l){
-      var sc=kbNameScore(r.payee,l.bp||'')*100-Math.min(99,Math.abs(kbDayNum(l.dk)-bd));
+      var ns=kbNameScoreMulti(r.payee,l.bp),sc=(ns<0?0.5:ns)*100-Math.min(99,Math.abs(kbDayNum(l.dk)-bd));
       if(bs==null||sc>bs){bs=sc;best=l;}
     });
     used[best.key]=1;
-    pairs.push({row:r,legs:[best],nameScore:kbNameScore(r.payee,best.bp||''),kind:'1:1'});
+    pairs.push({row:r,legs:[best],nameScore:kbNameScoreMulti(r.payee,best.bp),kind:'1:1'});
   });
   // ผู้รับรายเดียวกันจ่ายหลายใบ SAP รวมเป็นรายการโอนเดียว (หรือกลับกัน) — ต้องชื่อตรงอย่างน้อยระดับ 2
   var left2=[];
   left.forEach(function(r){
-    var cs=pool.filter(function(l){return !used[l.key]&&kbNameScore(r.payee,l.bp||'')>=2&&l.cents<r.cents;});
+    var cs=pool.filter(function(l){return !used[l.key]&&kbNameScoreMulti(r.payee,l.bp)>=2&&l.cents<r.cents;});
     var hit=null;
     if(cs.length>=2&&cs.length<=14){
       var n=cs.length;
@@ -4660,7 +4693,7 @@ function kbMatchRowsToSap(batch,legs,used,opts){
         if(s===r.cents)hit=sel;
       }
     }
-    if(hit){hit.forEach(function(l){used[l.key]=1;});pairs.push({row:r,legs:hit,nameScore:kbNameScore(r.payee,hit[0].bp||''),kind:'1:N'});}
+    if(hit){hit.forEach(function(l){used[l.key]=1;});pairs.push({row:r,legs:hit,nameScore:kbNameScoreMulti(r.payee,hit[0].bp),kind:'1:N'});}
     else left2.push(r);
   });
   var left3=[];
@@ -4670,8 +4703,8 @@ function kbMatchRowsToSap(batch,legs,used,opts){
     var rs=byPayee[k];
     if(rs.length<2){left3.push(rs[0]);return;}
     var tot=rs.reduce(function(s,x){return s+x.cents;},0);
-    var l=pool.filter(function(l){return !used[l.key]&&l.cents===tot&&kbNameScore(rs[0].payee,l.bp||'')>=2;})[0];
-    if(l){used[l.key]=1;rs.forEach(function(x){pairs.push({row:x,legs:[l],nameScore:kbNameScore(x.payee,l.bp||''),kind:'N:1',shared:true});});}
+    var l=pool.filter(function(l){return !used[l.key]&&l.cents===tot&&kbNameScoreMulti(rs[0].payee,l.bp)>=2;})[0];
+    if(l){used[l.key]=1;rs.forEach(function(x){pairs.push({row:x,legs:[l],nameScore:kbNameScoreMulti(x.payee,l.bp),kind:'N:1',shared:true});});}
     else rs.forEach(function(x){left3.push(x);});
   });
   var sumRows=rows.reduce(function(s,r){return s+r.cents;},0);
@@ -4749,7 +4782,7 @@ function kbCompute(){
       if(!(l.credit>0)||l.debit>0||rev[i])return;
       var ov=manualMatchFor('bkSapLeg',sk[i]);
       if(ov&&ov.status!=='matched')return;
-      out.legs.push({key:sk[i],dk:dateKey(l.date),cents:Math.round(l.credit*100),bp:l.bpName||'',memo:l.memo||'',tid:l.tid,docRef:l.docRef||'',ov:ov});
+      out.legs.push({key:sk[i],dk:dateKey(l.date),cents:Math.round(l.credit*100),bp:l.bpName||l.jeBp||'',memo:l.memo||'',tid:l.tid,docRef:l.docRef||'',ov:ov});
     });
   }
   // ชั้น 1
@@ -4810,7 +4843,7 @@ function kbItemsFor(batchKeys){
     if(r)r.pairs.forEach(function(p){p.legs.forEach(function(l){
       var kk='bkSapLeg|'+l.key;if(seen[kk])return;seen[kk]=1;
       if(l.ov){skipped.sap++;return;}
-      items.push({side:'bkSapLeg',docNo:l.key,status:'matched',note:note+(p.nameScore===0?' [จับคู่ด้วยยอดเท่านั้น]':'')});
+      items.push({side:'bkSapLeg',docNo:l.key,status:'matched',note:note+(p.nameScore===0?' [ชื่อไม่ตรง]':(p.nameScore<0?' [SAP ไม่มีชื่อ จับด้วยยอด]':''))});
     });});
   });
   return {items:items,skipped:skipped};
@@ -4860,13 +4893,19 @@ function kbDetailHtml(k){
     var p=mapRow.get(x),sap;
     if(x.st!=='ok')sap='<span style="color:var(--muted)">'+kbEsc(x.stText)+(x.reason?(' — '+kbEsc(x.reason)):'')+'</span>';
     else if(x.cents==null)sap='<span style="color:var(--muted)">ยอดถูกปิดบัง (เงินเดือน)</span>';
-    else if(p){var l=p.legs[0];sap='<span style="color:'+(p.nameScore>=2?'var(--green)':'var(--gold2)')+'">'+(p.nameScore>=2?'&#10003;':'&#9888;')+'</span> '+kbEsc(l.bp||'(ไม่มีชื่อคู่ค้า)')+' · '+kbEsc(kbKeyToDmy(l.dk))+(p.kind!=='1:1'?(' · '+p.kind+' '+p.legs.length+' ใบ'):'')+(l.docRef?(' · '+kbEsc(l.docRef)):'')+(l.ov?' <span style="color:var(--muted)">(ยืนยันแล้ว)</span>':'');}
+    else if(p){var l=p.legs[0];sap='<span style="color:'+(p.nameScore>=2?'var(--green)':(p.nameScore<0?'var(--muted)':'var(--gold2)'))+'">'+(p.nameScore>=2?'&#10003;':(p.nameScore<0?'&#8211;':'&#9888;'))+'</span> '+kbEsc(l.bp||'(SAP ไม่มีชื่อคู่ค้า — จับด้วยยอด+วันที่)')+' · '+kbEsc(kbKeyToDmy(l.dk))+(p.kind!=='1:1'?(' · '+p.kind+' '+p.legs.length+' ใบ'):'')+(l.docRef?(' · '+kbEsc(l.docRef)):'')+(l.ov?' <span style="color:var(--muted)">(ยืนยันแล้ว)</span>':'');}
     else sap='<span style="color:var(--red)">ไม่พบใน SAP</span>';
     return '<tr><td style="font-size:11px;color:var(--muted);width:34px">'+x.seq+'</td><td style="font-size:11.5px">'+kbEsc(x.payee||'—')+'</td><td class="right" style="font-size:11.5px;width:120px">'+(x.cents==null?'—':kbMoney(x.cents))+'</td><td style="font-size:11.5px">'+sap+'</td></tr>';
   }).join('');
   var cand='';
   if(b._cand&&b._cand.length)cand='<div style="font-size:11.5px;margin:4px 0;color:var(--gold2)">ตัวเลือกรายการตัดบัญชีของยอดเงินเดือน (ยังไม่จับคู่ให้ — เทียบยอดรวมกับฝ่ายบุคคล): '+b._cand.map(function(d){return kbEsc(kbKeyToDmy(d.dk))+' '+kbMoney(d.cents);}).join(' · ')+'</div>';
-  return '<div style="margin:6px 0 4px 24px">'+cand+'<table style="width:100%"><thead><tr><th>#</th><th>ผู้รับ</th><th style="text-align:right">จำนวนเงิน</th><th>รายการใน SAP</th></tr></thead><tbody>'+trs+'</tbody></table></div>';
+  var near='';
+  if(!b._bank&&!b.unknownAmt&&b.kind==='ok'){
+    var lo=kbShiftKey(b.dk<b.effk?b.dk:b.effk,-3),hi2=kbShiftKey(b.effk>b.dk?b.effk:b.dk,7),used2=KB.res.L1.usedBank;
+    var nd=KB.res.debits.filter(function(d){return !used2[d.i]&&d.dk>=lo&&d.dk<=hi2;}).sort(function(x,y){return Math.abs(x.cents-b.cOk)-Math.abs(y.cents-b.cOk);}).slice(0,6);
+    near='<div style="font-size:11.5px;margin:4px 0;color:var(--gold2)">ไม่พบรายการตัดบัญชียอด '+kbMoney(b.cOk)+' ในช่วง '+kbKeyToDmy(lo)+' – '+kbKeyToDmy(hi2)+' · รายการตัดบัญชีที่ใกล้ที่สุด (ยังไม่ถูกใช้): '+(nd.length?nd.map(function(d){return kbKeyToDmy(d.dk)+' '+kbMoney(d.cents)+' ('+(d.cents>=b.cOk?'+':'')+kbMoney(d.cents-b.cOk)+')'+(d.desc?' '+kbEsc(String(d.desc).slice(0,28)):'');}).join(' · '):'ไม่มีเลย — สเตทเมนท์ช่วงนี้อาจยังไม่ได้โหลด')+'</div>';
+  }
+  return '<div style="margin:6px 0 4px 24px">'+near+cand+'<table style="width:100%"><thead><tr><th>#</th><th>ผู้รับ</th><th style="text-align:right">จำนวนเงิน</th><th>รายการใน SAP</th></tr></thead><tbody>'+trs+'</tbody></table></div>';
 }
 function kbChip(txt,color){return '<span style="display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:600;background:rgba(255,255,255,0.06);color:'+color+'">'+txt+'</span>';}
 function kbBatchRow(b){
@@ -4878,7 +4917,7 @@ function kbBatchRow(b){
   else bankChip=kbChip('ไม่พบก้อนแบงค์ยอดนี้','var(--red)');
   if(r&&KB.res.legs&&KB.res.legs.length){
     var lack=r.sumRows-r.sumSap;
-    sapChip=kbChip('SAP '+r.pairs.length+'/'+r.nRows+' ใบ'+(r.left.length?(' · ขาด '+r.left.length+' ใบ '+kbMoney(lack)):'')+(r.weak?(' · '+r.weak+' ใบจับด้วยยอดอย่างเดียว'):''),r.complete&&!r.weak?'var(--green)':'var(--gold2)');
+    sapChip=kbChip('SAP '+r.pairs.length+'/'+r.nRows+' ใบ'+(r.left.length?(' · ขาด '+r.left.length+' ใบ '+kbMoney(lack)):'')+(r.weak?(' · ชื่อไม่ตรง '+r.weak+' ใบ'):'')+(r.unnamedPairs?(' · SAP ไม่มีชื่อ '+r.unnamedPairs+' ใบ'):''),r.complete&&!r.weak?'var(--green)':'var(--gold2)');
   }else sapChip='';
   var canSel=!!m;
   return '<div style="padding:7px 0;border-top:1px solid rgba(255,255,255,0.06)"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
