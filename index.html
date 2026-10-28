@@ -4754,6 +4754,8 @@ function kbNameScoreMulti(a,bp){
     // ใบบันทึกบัญชีไม่มีชื่อคู่ค้า — ถ้าหมายเหตุกล่าวถึงชื่อผู้รับ (ตรงทั้งชื่อ หรือ 6 ตัวอักษรแรก) ถือว่าชื่อตรง ไม่งั้นไม่รู้ชื่อ (จับด้วยยอด)
     var mn=kbNormName(String(bp).slice(KB_JE.length)),pn=kbNormName(a);
     if(pn.length>=4&&(mn.indexOf(pn)>=0||mn.indexOf(pn.slice(0,6))>=0))return 2;
+    // หมายเหตุระบุผู้รับเป็นคนอื่นชัดเจน (เช่น "โอนเงิน … เข้าบัญชี คุณพงษ์ศักดิ์ …") แต่ไม่ตรงกับผู้รับรายนี้ → ชื่อขัดกัน ต้องตรวจ
+    if(/(เข้าบัญชี|โอนให้|จ่ายให้|จ่ายคืน)\s*(คุณ|นาย|นางสาว|นาง|น\.ส\.|บจก|บริษัท|บ\.|หจก|ห้างหุ้นส่วน)/.test(String(bp).slice(KB_JE.length)))return 0;
     return -1;
   }
   var best=0;
@@ -4770,6 +4772,35 @@ function kbNameScore(a,b){
   return 0;
 }
 // batch: ผล kbBuildBatches · legs: [{key,dk,cents,bp,memo,tid}] (เฉพาะรายการจ่ายออก ยังไม่ถูกยืนยัน/กลับรายการ) · used: {legKey:1} (แก้ไขในที่)
+// ---- บริบทข้าม batch: ป้องกัน "ผู้รับที่ไม่มีใบ SAP ชื่อตรงเลย" ไปแย่งใบ SAP ยอดเดียวกันจากผู้รับที่มีประวัติใน SAP ----
+// (เช่น คุณสิริญญา 100,000 กับ คุณพงษ์ศักดิ์ 100,000 วันเดียวกัน SAP มีใบเดียวที่ชื่อบัตรเครดิต — ต้องให้คนที่มีประวัติใน SAP ก่อน)
+var KB_CTX={legs:[],byCents:{},known:{}};
+function kbCtxBuild(batches,legs){
+  KB_CTX={legs:legs||[],byCents:{},known:{}};
+  (batches||[]).forEach(function(b){
+    if(b.kind!=='ok'||b.unknownAmt)return;
+    b.rows.forEach(function(r){if(r.st==='ok'&&r.cents!=null&&r.cents>0)(KB_CTX.byCents[r.cents]=KB_CTX.byCents[r.cents]||[]).push({row:r,batch:b});});
+  });
+}
+function kbPayeeKnown(payee){
+  var k=kbNormName(payee);if(!k)return false;
+  if(KB_CTX.known[k]!=null)return KB_CTX.known[k];
+  var v=KB_CTX.legs.some(function(l){return l.bp&&l.bp!==KB_NONPAY&&l.bp.indexOf(KB_JE)!==0&&kbNameScoreMulti(payee,l.bp)>=2;});
+  KB_CTX.known[k]=v;return v;
+}
+function kbBatchWinHas(b,dn){return dn>=kbDayNum(b.dk)-30&&dn<=kbDayNum(b.effk>b.dk?b.effk:b.dk)+10;}
+// ใบ SAP l (ชื่อไม่ตรงกับผู้รับ r และ r ไม่มีประวัติชื่อใน SAP) ถูกแย่งโดยแถวอื่นยอดเท่ากันที่มีประวัติใน SAP แต่ไม่มีใบชื่อตรงของตัวเองหรือไม่
+function kbContestedAway(r,l,batch){
+  var arr=KB_CTX.byCents[l.cents];if(!arr||arr.length<2)return false;
+  if(kbNameScoreMulti(r.payee,l.bp)!==0)return false;
+  if(kbPayeeKnown(r.payee))return false;
+  var dn=kbDayNum(l.dk);
+  return arr.some(function(q){
+    if(q.row===r||!kbBatchWinHas(q.batch,dn)||!kbPayeeKnown(q.row.payee))return false;
+    // ถ้า q มีใบ SAP ชื่อตรงยอดเดียวกันของตัวเองอยู่แล้ว ก็ไม่ต้องใช้ใบนี้
+    return !KB_CTX.legs.some(function(x){return x.cents===l.cents&&x.key!==l.key&&kbBatchWinHas(q.batch,kbDayNum(x.dk))&&kbNameScoreMulti(q.row.payee,x.bp)>=2;});
+  });
+}
 function kbMatchRowsToSap(batch,legs,used,opts){
   opts=opts||{};var before=opts.before==null?30:opts.before,after=opts.after==null?10:opts.after;
   var rows=batch.rows.filter(function(r){return r.st==='ok'&&r.cents!=null&&r.cents>0;});
@@ -4803,8 +4834,9 @@ function kbMatchRowsToSap(batch,legs,used,opts){
   order=order.filter(function(r){return !claimed.has(r);});
   order.forEach(function(r){
     var c0=(byAmt[r.cents]||[]).filter(function(l){return !used[l.key];});
-    var c=c0.filter(function(l){return npOk(r,l);});
-    if(!c.length){left.push(r);if(c0.length)npRows.push({row:r,leg:c0[0]});return;}
+    var c1=c0.filter(function(l){return npOk(r,l);});
+    var c=c1.filter(function(l){return ovBatch(l)===batch.batch||!kbContestedAway(r,l,batch);});
+    if(!c.length){left.push(r);if(c0.length&&!c1.length)npRows.push({row:r,leg:c0[0]});return;}
     var best=null,bs=null;
     c.forEach(function(l){
       var ns=kbNameScoreMulti(r.payee,l.bp),sc=(ns<0?0.5:ns)*100-Math.min(99,Math.abs(kbDayNum(l.dk)-bd))+(l.ov?(ovBatch(l)===batch.batch?200:-150):0);
@@ -4950,6 +4982,7 @@ function kbCompute(){
   units.forEach(function(u){var raw=out.L1.byBatch[u.key]||null;u._ms=raw?(raw.split?raw.parts:[raw]):[];u._bank=u._ms[0]||null;(ubB[u.batchKey]=ubB[u.batchKey]||[]).push(u);uByKey[u.key]=u;});
   var bByKey={};out.batches.forEach(function(b){bByKey[b.key]=b;});
   // ชั้น 2 เรียงตามวันที่ ใช้ SAP แต่ละรายการได้ครั้งเดียว
+  kbCtxBuild(out.batches,out.legs);
   var runL2=function(){
   var used={};out.L2={};
   out.batches.filter(function(b){return b.kind==='ok'&&!b.unknownAmt;}).sort(function(a,b){return a.dk<b.dk?-1:a.dk>b.dk?1:(a.batch<b.batch?-1:1);}).forEach(function(b){
@@ -4957,7 +4990,7 @@ function kbCompute(){
   });
   };
   runL2();
-  if(kbLearnAliases(out))runL2(); // เรียนรู้คู่ชื่อจากรายการที่ยืนยันแล้ว แล้วจับใหม่
+  if(kbLearnAliases(out)){kbCtxBuild(out.batches,out.legs);runL2();} // เรียนรู้คู่ชื่อจากรายการที่ยืนยันแล้ว แล้วจับใหม่
   // ความพร้อมยืนยัน
   out.batches.forEach(function(b){
     var r=out.L2[b.key];
