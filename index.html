@@ -4844,6 +4844,21 @@ function kbMatchRowsToSap(batch,legs,used,opts){
     else rs.forEach(function(x){left3.push(x);});
   });
   var sumRows=rows.reduce(function(s,r){return s+r.cents;},0);
+  // SAP บันทึกจ่ายรวมทั้ง batch เป็นใบเดียว (เช่น เงินเดือน/เจ้าหนี้เงินเดือนค้างจ่าย — ยอดรวมของไฟล์โอน ไม่แตกรายคน)
+  // ถ้ายังมีแถวที่หาคู่ไม่ได้ ≥2 แถว และมีรายการ SAP ที่ยังไม่ถูกใช้ ยอดเท่ากับยอดรวมทั้ง batch พอดี → จับทั้ง batch กับรายการนั้น
+  // (ยกเลิกคู่รายแถวที่บังเอิญจับได้ เพราะยอดรวมตรงทั้งก้อนเป็นหลักฐานที่แรงกว่า)
+  if(left3.length>=2&&rows.length>=2){
+    var pairedLegs={};pairs.forEach(function(p){p.legs.forEach(function(l){pairedLegs[l.key]=1;});});
+    var lc=pool.filter(function(l){return l.cents===sumRows&&(!used[l.key]||pairedLegs[l.key])&&npOk(rows[0],l);});
+    if(lc.length){
+      lc.sort(function(a,b){var oa=a.ov?(ovBatch(a)===batch.batch?-1:1):0,ob2=b.ov?(ovBatch(b)===batch.batch?-1:1):0;if(oa!==ob2)return oa-ob2;return Math.abs(kbDayNum(a.dk)-bd)-Math.abs(kbDayNum(b.dk)-bd);});
+      var LG=lc[0];
+      pairs.forEach(function(p){p.legs.forEach(function(l){delete used[l.key];});});
+      used[LG.key]=1;
+      pairs=rows.map(function(x){return {row:x,legs:[LG],nameScore:-1,kind:'LUMP',shared:true,lump:true,amb:lc.length>1};});
+      left3=[];npRows=[];
+    }
+  }
   var legSeen={},sumSap=0;
   pairs.forEach(function(p){if(p.shared){var k=p.legs[0].key;if(legSeen[k])return;legSeen[k]=1;sumSap+=p.legs[0].cents;}else p.legs.forEach(function(l){sumSap+=l.cents;});});
   var weak=pairs.filter(function(p){return p.nameScore===0;}).length,risk=pairs.filter(function(p){return p.risk;}).length;
@@ -5021,7 +5036,9 @@ function kbMismatchList(batchKeys){
   var out=[];
   batchKeys.forEach(function(k){
     var b=KB.res.batches.filter(function(x){return x.key===k;})[0];if(!b||!b._sap)return;
+    var lumpDone=false;
     b._sap.pairs.forEach(function(p){
+      if(p.lump){if(!lumpDone){lumpDone=true;out.push({batch:b.batch,payee:'ทั้ง batch '+b._sap.pairs.length+' แถว',vendor:kbLegName(p.legs[0]),doc:p.legs[0].docRef||'',amt:p.legs[0].cents,risk:false,why:'SAP บันทึกรวมยอดทั้ง batch เป็นใบเดียว (ยอดตรงทั้งก้อน)'});}return;}
       if(p.nameScore!==0)return;
       out.push({batch:b.batch,payee:p.row.payee,vendor:kbLegName(p.legs[0]),doc:p.legs[0].docRef||'',amt:p.row.cents,risk:!!p.risk,why:p.riskWhy||''});
     });
@@ -5144,7 +5161,7 @@ function kbDetailHtml(k){
     var p=mapRow.get(x),sap;
     if(x.st!=='ok')sap='<span style="color:var(--muted)">'+kbEsc(x.stText)+(x.reason?(' — '+kbEsc(x.reason)):'')+'</span>';
     else if(x.cents==null)sap='<span style="color:var(--muted)">ยอดถูกปิดบัง (เงินเดือน)</span>';
-    else if(p){var l=p.legs[0];sap='<span style="color:'+(p.risk?'var(--red)':(p.nameScore>=2?'var(--green)':(p.nameScore<0?'var(--muted)':'var(--gold2)')))+'">'+(p.nameScore>=2?'&#10003;':(p.nameScore<0?'&#8211;':'&#9888;'))+'</span> '+kbEsc(kbLegName(l)||'(SAP ไม่มีชื่อคู่ค้า — จับด้วยยอด+วันที่)')+' · '+kbEsc(kbKeyToDmy(l.dk))+(p.kind==='N:1'?(' · ผู้รับเดียวกันหลายรายการ SAP จ่ายใบเดียว '+kbMoney(l.cents)+(p.amb?' ⚠ มีรายการ SAP ยอดเดียวกันหลายใบ':'')):(p.kind!=='1:1'?(' · '+p.kind+' '+p.legs.length+' ใบ'):''))+(l.docRef?(' · '+kbEsc(l.docRef)):'')+(l.ov?' <span style="color:var(--muted)">(ยืนยันแล้ว)</span>':'')+kbAliasBtn(x,p,l);}
+    else if(p){var l=p.legs[0];sap='<span style="color:'+(p.risk?'var(--red)':(p.nameScore>=2?'var(--green)':(p.nameScore<0?'var(--muted)':'var(--gold2)')))+'">'+(p.nameScore>=2?'&#10003;':(p.nameScore<0?'&#8211;':'&#9888;'))+'</span> '+kbEsc(kbLegName(l)||'(SAP ไม่มีชื่อคู่ค้า — จับด้วยยอด+วันที่)')+' · '+kbEsc(kbKeyToDmy(l.dk))+(p.kind==='LUMP'?(' · SAP บันทึกจ่ายรวมทั้ง batch เป็นใบเดียว '+kbMoney(l.cents)):p.kind==='N:1'?(' · ผู้รับเดียวกันหลายรายการ SAP จ่ายใบเดียว '+kbMoney(l.cents)+(p.amb?' ⚠ มีรายการ SAP ยอดเดียวกันหลายใบ':'')):(p.kind!=='1:1'?(' · '+p.kind+' '+p.legs.length+' ใบ'):''))+(l.docRef?(' · '+kbEsc(l.docRef)):'')+(l.ov?' <span style="color:var(--muted)">(ยืนยันแล้ว)</span>':'')+kbAliasBtn(x,p,l);}
     else{
       var npH=(r&&r.npRows||[]).filter(function(q){return q.row===x;})[0];
       sap='<span style="color:var(--red)">ไม่พบใน SAP</span>'+(npH?' <span style="color:var(--gold2);font-size:11px">· มี '+kbEsc(kbLegName(npH.leg))+' ยอดตรง ('+kbEsc(kbKeyToDmy(npH.leg.dk))+') แต่ไม่ใช่ใบจ่ายเงิน จึงไม่นำมาจับคู่ — รอบันทึกใบจ่ายใน SAP</span>':'');
