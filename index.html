@@ -4573,6 +4573,7 @@ function kbBuildBatches(rows){
 }
 // หน่วยจับก้อนแบงค์ = (batch, วันที่รายการมีผล): ธนาคารตัดบัญชีตามวันมีผลของแต่ละแถว
 // batch เดียวอาจมีหลายวันมีผล (เช่น 30/04 · 01/05 · 02/05) จึงเป็นหลายก้อนในสเตทเมนท์
+var KB_OWN_BANK='069'; // รหัสธนาคารเกียรตินาคิน (ธนาคารของบัญชีต้นทาง)
 function kbBuildUnits(batches){
   var out=[];
   batches.forEach(function(b){
@@ -4580,10 +4581,14 @@ function kbBuildUnits(batches){
     var m={};
     b.rows.forEach(function(r){
       if(r.st!=='ok'||r.cents==null)return;
-      var u=m[r.effk]=m[r.effk]||{key:b.key+'|'+r.effk,batchKey:b.key,batch:b.batch,dk:b.dk,effk:r.effk,file:b.file,kind:'ok',unknownAmt:false,cOk:0,nOk:0};
+      var u=m[r.effk]=m[r.effk]||{key:b.key+'|'+r.effk,batchKey:b.key,batch:b.batch,dk:b.dk,effk:r.effk,file:b.file,kind:'ok',unknownAmt:false,cOk:0,nOk:0,kC:0,kN:0,oC:0,oN:0};
       u.cOk+=r.cents;u.nOk++;
+      if(r.payeeBank===KB_OWN_BANK){u.kC+=r.cents;u.kN++;}else{u.oC+=r.cents;u.oN++;}
     });
-    Object.keys(m).sort().forEach(function(e){if(m[e].cOk>0)out.push(m[e]);});
+    Object.keys(m).sort().forEach(function(e){var u=m[e];if(u.cOk<=0)return;
+      // ผู้รับธนาคารเดียวกับบัญชีต้นทาง (เกียรตินาคิน) ธนาคารตัดแยกก้อนจากผู้รับต่างธนาคาร
+      u.parts=(u.kC>0&&u.oC>0)?[{tag:'oth',cOk:u.oC,nOk:u.oN},{tag:'kkp',cOk:u.kC,nOk:u.kN}]:null;
+      out.push(u);});
   });
   return out;
 }
@@ -4591,7 +4596,7 @@ function kbBuildUnits(batches){
 // bankDebits: [{i,key,dk,cents,desc}]   คืน {byBatch:{batchKey:{bankIdx,...}}, usedBank:{idx:1}}
 function kbMatchBatchesToBank(batches,bankDebits,opts){
   opts=opts||{};var win=opts.win==null?3:opts.win;
-  var used={},res={};
+  var used=opts.used?Object.assign({},opts.used):{},res={};
   var cand=batches.filter(function(b){return b.kind==='ok'&&!b.unknownAmt&&b.cOk>0;});
   var inWin=function(b,d){return d.dk>=(b.dk<b.effk?b.dk:b.effk)&&d.dk<=kbShiftKey(b.effk>b.dk?b.effk:b.dk,win);};
   // 1:1
@@ -4651,6 +4656,28 @@ function kbMatchBatchesToBank(batches,bankDebits,opts){
       used[d.i]=1;
       members.forEach(function(x){res[x.key]={bankIdx:d.i,bankKey:d.key,bankDk:d.dk,bankCents:d.cents,how:'many',group:members.map(function(y){return y.key;}),ambiguous:hits.length>1};});
     });
+  }
+  return {byBatch:res,usedBank:used};
+}
+// จับหน่วยกับบรรทัดหัก: รอบแรกทั้งหน่วย รอบสอง (เฉพาะหน่วยที่ยังไม่พบและมีผู้รับทั้ง 069 และธนาคารอื่น)
+// แยกเป็น 2 ก้อนย่อยตามธนาคารปลายทาง — ธนาคารตัดผู้รับธนาคารเดียวกันแยกบรรทัด ต้องพบครบทั้ง 2 ก้อนจึงนับว่าพบ
+function kbMatchUnits(units,debits){
+  var A=kbMatchBatchesToBank(units,debits);
+  var res=A.byBatch,used=A.usedBank,subs=[],par={},sub2par={};
+  units.forEach(function(u){
+    if(res[u.key]||!u.parts)return;
+    var ss=u.parts.map(function(p){var k=u.key+'#'+p.tag;sub2par[k]=u.key;return {key:k,batchKey:u.batchKey,batch:u.batch,dk:u.dk,effk:u.effk,file:u.file,kind:'ok',unknownAmt:false,cOk:p.cOk,nOk:p.nOk,tag:p.tag};});
+    par[u.key]=ss;subs=subs.concat(ss);
+  });
+  if(subs.length){
+    var B=kbMatchBatchesToBank(subs,debits,{used:used});
+    Object.keys(par).forEach(function(pk){
+      var ss=par[pk],ms=ss.map(function(sx){return B.byBatch[sx.key];});
+      if(ms.every(Boolean)){
+        res[pk]={split:true,parts:ms.map(function(m,i){var o={};Object.keys(m).forEach(function(k){o[k]=m[k];});o.split=true;o.part=ss[i].tag;o.group=m.group.map(function(g){return sub2par[g]||g;});return o;})};
+      }else ms.forEach(function(m){if(m&&m.how==='one')delete B.usedBank[m.bankIdx];});
+    });
+    used=B.usedBank;
   }
   return {byBatch:res,usedBank:used};
 }
@@ -4804,9 +4831,9 @@ function kbCompute(){
   }
   // ชั้น 1 — จับเป็นหน่วย (batch × วันที่มีผล) แล้วรวมกลับเป็นระดับ batch
   var units=kbBuildUnits(out.batches);out.units=units;
-  out.L1=kbMatchBatchesToBank(units,out.debits);
+  out.L1=kbMatchUnits(units,out.debits);
   var ubB={},uByKey={};
-  units.forEach(function(u){u._bank=out.L1.byBatch[u.key]||null;(ubB[u.batchKey]=ubB[u.batchKey]||[]).push(u);uByKey[u.key]=u;});
+  units.forEach(function(u){var raw=out.L1.byBatch[u.key]||null;u._ms=raw?(raw.split?raw.parts:[raw]):[];u._bank=u._ms[0]||null;(ubB[u.batchKey]=ubB[u.batchKey]||[]).push(u);uByKey[u.key]=u;});
   var bByKey={};out.batches.forEach(function(b){bByKey[b.key]=b;});
   // ชั้น 2 เรียงตามวันที่ ใช้ SAP แต่ละรายการได้ครั้งเดียว
   var used={};
@@ -4818,7 +4845,7 @@ function kbCompute(){
     var r=out.L2[b.key];
     b._units=ubB[b.key]||[];b._sap=r||null;
     var seenL={};b._banks=[];
-    b._units.forEach(function(u){var m=u._bank;if(m&&!seenL[m.bankIdx]){seenL[m.bankIdx]=1;b._banks.push(m);}});
+    b._units.forEach(function(u){(u._ms||[]).forEach(function(m){if(!seenL[m.bankIdx]){seenL[m.bankIdx]=1;b._banks.push(m);}});});
     b._bankOk=b._units.length>0&&b._units.every(function(u){return u._bank;});
     b._bank=b._banks[0]||null;
     b._amb=b._banks.some(function(m){return m.ambiguous;});
@@ -4858,7 +4885,7 @@ function kbItemsFor(batchKeys){
   batchKeys.forEach(function(k){
     var b=R.batches.filter(function(x){return x.key===k;})[0];if(!b||!b._banks||!b._banks.length)return;
     var r=b._sap,bsum=b._banks.reduce(function(t,m){return t+m.bankCents;},0);
-    var note='KKBIZ batch '+b.batch+(b.file?' ('+b.file+')':'')+' — โอน '+(r?r.nRows:b.nOk)+' รายการ '+kbMoney(b.cOk)+' ↔ ก้อนแบงค์ '+b._banks.map(function(m){return kbKeyToDmy(m.bankDk)+' '+kbMoney(m.bankCents);}).join(' + ')+(b._bankOk?'':' (ยังไม่พบก้อนครบทุกวันมีผล)')+(b._banks.some(function(m){return m.how==='many';})?' (บางก้อนรวมหลายส่วน)':'');
+    var note='KKBIZ batch '+b.batch+(b.file?' ('+b.file+')':'')+' — โอน '+(r?r.nRows:b.nOk)+' รายการ '+kbMoney(b.cOk)+' ↔ ก้อนแบงค์ '+b._banks.map(function(m){return kbKeyToDmy(m.bankDk)+' '+kbMoney(m.bankCents);}).join(' + ')+(b._bankOk?'':' (ยังไม่พบก้อนครบทุกวันมีผล)')+(b._banks.some(function(m){return m.how==='many';})?' (บางก้อนรวมหลายส่วน)':'')+(b._banks.some(function(m){return m.split;})?' (ธนาคารแยกหักผู้รับเกียรตินาคิน/ต่างธนาคาร)':'');
     b._banks.forEach(function(m){
       var kk='bkTxn|'+m.bankKey;if(seen[kk])return;seen[kk]=1;
       var d=R.debits[m.bankIdx];
@@ -4935,6 +4962,12 @@ function kbDetailHtml(k){
       var nd=KB.res.debits.filter(function(d){return !used2[d.i]&&d.dk>=lo&&d.dk<=hi2;}).sort(function(x,y){return Math.abs(x.cents-u.cOk)-Math.abs(y.cents-u.cOk);}).slice(0,5);
       near+='<div style="font-size:11.5px;margin:4px 0;color:var(--gold2)">ไม่พบรายการตัดบัญชียอด '+kbMoney(u.cOk)+' (รายการมีผล '+kbKeyToDmy(u.effk)+' · '+u.nOk+' ราย) ในช่วง '+kbKeyToDmy(lo)+' – '+kbKeyToDmy(hi2)+' · ใกล้ที่สุด (ยังไม่ถูกใช้): '+(nd.length?nd.map(function(d){return kbKeyToDmy(d.dk)+' '+kbMoney(d.cents)+' ('+(d.cents>=u.cOk?'+':'')+kbMoney(d.cents-u.cOk)+')'+(d.desc?' '+kbEsc(String(d.desc).slice(0,24)):'');}).join(' · '):'ไม่มีเลย — สเตทเมนท์ช่วงนี้อาจยังไม่ได้โหลด')+'</div>';
     });
+    b._units.forEach(function(u){
+      if(!u.parts)return;
+      var pt=u.parts.map(function(q){return (q.tag==='kkp'?'ผู้รับเกียรตินาคิน ':'ผู้รับต่างธนาคาร ')+kbMoney(q.cOk)+' ('+q.nOk+' ราย)';}).join(' + ');
+      if(u._ms&&u._ms.length>1)near+='<div style="font-size:11.5px;margin:4px 0;color:var(--green)">ธนาคารแยกหัก 2 ก้อน (มีผล '+kbKeyToDmy(u.effk)+'): '+u._ms.map(function(m){return (m.part==='kkp'?'เกียรตินาคิน':'ต่างธนาคาร')+' '+kbKeyToDmy(m.bankDk)+' '+kbMoney(m.bankCents);}).join(' + ')+'</div>';
+      else if(!u._bank)near+='<div style="font-size:11.5px;margin:4px 0;color:var(--muted)">ถ้าธนาคารแยกหักตามธนาคารปลายทาง ต้องพบ 2 ก้อน: '+pt+' — ยังพบไม่ครบทั้งคู่</div>';
+    });
     if(b._units.length>1)near='<div style="font-size:11.5px;margin:4px 0;color:var(--muted)">batch นี้มีหลายวันที่รายการมีผล ธนาคารตัดเป็นก้อนแยกตามวันมีผล: '+b._units.map(function(u){return kbKeyToDmy(u.effk)+' '+kbMoney(u.cOk)+' ('+u.nOk+' ราย)'+(u._bank?' ✓':' ✗');}).join(' · ')+'</div>'+near;
   }
   return '<div style="margin:6px 0 4px 24px">'+near+cand+'<table style="width:100%"><thead><tr><th>#</th><th>ผู้รับ</th><th style="text-align:right">จำนวนเงิน</th><th>รายการใน SAP</th></tr></thead><tbody>'+trs+'</tbody></table></div>';
@@ -4947,7 +4980,7 @@ function kbBatchRow(b){
   else if(!KB.res.debits.length)bankChip=kbChip('ไม่มีสเตทเมนท์','var(--muted)');
   else{
     var parts=[];
-    b._banks.forEach(function(m){parts.push(kbChip('พบก้อนแบงค์ '+kbEsc(kbKeyToDmy(m.bankDk))+' · '+kbMoney(m.bankCents)+(m.how==='many'?(' (รวม '+m.group.length+' ส่วน)'):'')+(m.ambiguous?' ⚠ คู่ได้หลายแบบ':''),m.ambiguous?'var(--gold2)':'var(--green)'));});
+    b._banks.forEach(function(m){parts.push(kbChip('พบก้อนแบงค์ '+kbEsc(kbKeyToDmy(m.bankDk))+' · '+kbMoney(m.bankCents)+(m.part?(m.part==='kkp'?' (ผู้รับเกียรตินาคิน)':' (ผู้รับต่างธนาคาร)'):'')+(m.how==='many'?(' (รวม '+m.group.length+' ส่วน)'):'')+(m.ambiguous?' ⚠ คู่ได้หลายแบบ':''),m.ambiguous?'var(--gold2)':'var(--green)'));});
     var miss=b._units.filter(function(u){return !u._bank;});
     if(miss.length)parts.push(kbChip(b._units.length===1?'ไม่พบก้อนแบงค์ยอดนี้':('ไม่พบก้อน '+miss.map(function(u){return kbKeyToDmy(u.effk).slice(0,5)+' '+kbMoney(u.cOk);}).join(', ')),'var(--red)'));
     bankChip=parts.join(' ');
@@ -5038,6 +5071,7 @@ function kbRender(){
       if(x.st!=='ok')return;
       var p=pm.get(x);
       var un=b._units.filter(function(u){return u.effk===x.effk;})[0],ub=un&&un._bank;
+      if(un&&un._ms&&un._ms.length>1){var want=(x.payeeBank===KB_OWN_BANK)?'kkp':'oth';ub=un._ms.filter(function(m){return m.part===want;})[0]||ub;}
       flat.push({d:kbKeyToDmy(b.dk),eff:kbKeyToDmy(x.effk),batch:b.batch,file:b.file,payee:x.payee||'(เงินเดือน)',amt:x.cents,
         bank:ub?(kbKeyToDmy(ub.bankDk)+' '+kbMoney(ub.bankCents)):(b.unknownAmt?'ยอดปิดบัง':'ไม่พบ'),
         sap:p?((p.legs[0].bp||'-')+' '+kbKeyToDmy(p.legs[0].dk)+(p.legs[0].docRef?(' '+p.legs[0].docRef):'')):(x.cents==null?'ยอดปิดบัง':'ไม่พบใน SAP')});
