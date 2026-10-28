@@ -4426,8 +4426,11 @@ function bkConfirmedReport(){
     var groups={};
     function addG(side,r){
       var st=r.ov.status==='matched'?'matched':'unmatched';
-      var key=st+'||'+(r.ov.note||'(ไม่มีหมายเหตุ)');
-      var g=groups[key]=groups[key]||{note:r.ov.note||'(ไม่มีหมายเหตุ)',status:st,sap:[],bank:[],s:0,b:0};
+      // หมายเหตุที่ต่อท้ายด้วย [SAP ไม่มีชื่อ จับด้วยยอด]/[ชื่อไม่ตรง] ใส่เฉพาะฝั่ง SAP — ตัดออกตอนจัดชุด เพื่อให้ฝั่ง SAP และแบงค์ของ batch เดียวกันอยู่ชุดเดียวกัน
+      var rawNote=r.ov.note||'(ไม่มีหมายเหตุ)',sfxM=rawNote.match(/\s*\[(SAP ไม่มีชื่อ จับด้วยยอด|ชื่อไม่ตรง)\]\s*$/),baseNote=sfxM?rawNote.slice(0,sfxM.index):rawNote;
+      var key=st+'||'+baseNote;
+      var g=groups[key]=groups[key]||{note:baseNote,status:st,sap:[],bank:[],s:0,b:0,sfx:{}};
+      if(sfxM)g.sfx[sfxM[1]]=1;
       if(side==='sap'){g.sap.push(r);g.s+=r.amt;}else{g.bank.push(r);g.b+=r.amt;}
       flat.push({dir:S.txt,note:g.note,status:st==='matched'?'ตรงกัน':'ไม่ตรง',side:side==='sap'?'SAP':'แบงค์',date:r.date||'',desc:side==='sap'?((r.memo||'')+(r.bpName?(' — '+r.bpName):'')):(r.desc||''),amt:r.amt});
     }
@@ -4444,7 +4447,7 @@ function bkConfirmedReport(){
     }
     var gHtml=gl.length?gl.map(function(g){
       var flag=g.status==='unmatched'?'<span style="color:var(--red);font-size:11px">&#10060; ยืนยันว่าไม่ตรง</span>':(g.one?'<span style="color:var(--gold2);font-size:11px">&#9888;&#65039; ยืนยันฝั่งเดียว ('+(g.sap.length?'SAP':'แบงค์')+'เท่านั้น)</span>':(g.mis?'<span style="color:var(--gold2);font-size:11px">&#9888;&#65039; สองฝั่งยอดไม่เท่ากัน</span>':'<span style="color:var(--green);font-size:11px">&#10003; สองฝั่งยอดเท่ากัน</span>'));
-      return '<div style="padding:7px 0;border-top:1px solid rgba(255,255,255,0.06)"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div style="font-size:12px;flex:1;min-width:260px">'+bkDiffEsc(g.note)+' '+flag+'</div>'+
+      return '<div style="padding:7px 0;border-top:1px solid rgba(255,255,255,0.06)"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div style="font-size:12px;flex:1;min-width:260px">'+bkDiffEsc(g.note)+(Object.keys(g.sfx).length?' <span style="color:var(--muted)">'+bkDiffEsc(Object.keys(g.sfx).map(function(x){return '['+x+']';}).join(' '))+'</span>':'')+' '+flag+'</div>'+
         '<div style="font-size:11.5px;color:var(--muted);text-align:right">SAP '+g.sap.length+' · '+fmtFull(g.s)+' &nbsp;|&nbsp; แบงค์ '+g.bank.length+' · '+fmtFull(g.b)+' &nbsp;|&nbsp; ต่าง <b style="color:'+(Math.abs(g.diff)<0.01?'var(--green)':'var(--gold2)')+'">'+fmtFull(g.diff)+'</b></div></div>'+
         '<details style="margin:3px 0 0 14px"><summary style="font-size:11px;color:var(--muted);cursor:pointer">ดูรายการ</summary>'+listRows(g)+'</details></div>';
     }).join(''):'<div style="font-size:12px;color:var(--muted);padding:6px 0">— ไม่มีรายการที่ยืนยันเองในขานี้ —</div>';
