@@ -4718,17 +4718,35 @@ function kbLegName(l){
   if(String(l.bp||'').indexOf(KB_JE)===0)return 'ใบบันทึกบัญชี: '+String(l.bp).slice(KB_JE.length);
   return l.bp||'';
 }
-// คู่ชื่อ "ชื่อผู้รับใน KKBIZ ↔ ชื่อ vendor ใน SAP" ที่ผู้ใช้ยืนยันว่าถูกต้อง (เช่น ซันนี่ ↔ ทีดี-เอ็กซ์) เก็บใน MANUAL_MATCH ด้าน kbAlias
+// คู่ชื่อ "ชื่อผู้รับใน KKBIZ ↔ ชื่อ vendor ใน SAP" — ระบบเรียนรู้เองจากรายการที่ยืนยันแล้ว (kbLearnAliases) ไม่ต้องกดจำ
+// ถ้ายืนยันผิดแล้วกด "ล้างการยืนยัน" คู่นั้นจะหายไปเอง
 function kbAliasKey(a,b){return kbNormName(a)+'~'+kbNormName(b);}
-function kbAliasRebuild(){
-  var m={};
-  Object.keys(G.manualMatch||{}).forEach(function(k){
-    if(k.indexOf('kbAlias|')!==0)return;var v=G.manualMatch[k];
-    if(v&&v.status==='matched')m[k.slice(8)]=1;
-  });
-  window.__kbAlias=m;
+function kbAliasRebuild(){window.__kbAlias={};}
+function kbAliasHit(a,p){var m=window.__kbAlias;if(!m)return false;var na=kbNormName(a),nb=kbNormName(p);return !!(na&&(m[na+'~*']||(nb&&m[na+'~'+nb])));}
+function kbTypeConflict(payee,bp){
+  // ผู้รับเป็นบริษัท/ห้าง แต่ใบ SAP เป็นชื่อบุคคลล้วน — ความเสี่ยงจับผิดสูง
+  if(!/^\s*(บจก|หจก|บมจ|บริษัท|ห้างหุ้นส่วน)/.test(String(payee||'')))return false;
+  var names=String(bp||'').split(' / ').filter(Boolean);
+  return names.length>0&&names.every(function(x){return /^\s*(นาย|นาง|นางสาว|น\.ส\.)/.test(x);});
 }
-function kbAliasHit(a,p){var m=window.__kbAlias;if(!m)return false;var na=kbNormName(a),nb=kbNormName(p);return !!(na&&nb&&m[na+'~'+nb]);}
+function kbLearnAliases(out){
+  var m=window.__kbAlias||(window.__kbAlias={}),n=0,per={};
+  out.batches.forEach(function(b){
+    var r=out.L2[b.key];if(!r)return;
+    r.pairs.forEach(function(p){
+      if(p.nameScore!==0)return;
+      var l=p.legs[0];if(!l||!l.ov||l.ov.status!=='matched')return;
+      var mo=/KKBIZ batch (\S+)/.exec(l.ov.note||'');if(!mo||mo[1]!==b.batch)return;
+      var nm=String(l.bp||'');if(!nm||nm===KB_NONPAY||nm.indexOf(KB_JE)===0||nm.indexOf(' / ')>=0)return;
+      var pn=kbNormName(p.row.payee),vn=kbNormName(nm);if(!pn||!vn)return;
+      if(!m[pn+'~'+vn]){m[pn+'~'+vn]=1;n++;}
+      (per[pn]=per[pn]||{})[vn]=1;
+    });
+  });
+  // ผู้รับที่เคยยืนยันกับ vendor ต่างกัน ≥3 ราย = ตัวแทนจ่าย (เช่น พนักงานโอนต่อให้ผู้ขาย) — ไม่เตือนชื่ออีก
+  Object.keys(per).forEach(function(pn){if(Object.keys(per[pn]).length>=3&&!m[pn+'~*']){m[pn+'~*']=1;n++;}});
+  return n>0;
+}
 function kbNameScoreMulti(a,bp){
   if(bp===KB_NONPAY)return /รถเจาะไทย/.test(String(a||''))?-1:0;
   if(!bp)return -1;
@@ -4793,7 +4811,9 @@ function kbMatchRowsToSap(batch,legs,used,opts){
       if(bs==null||sc>bs){bs=sc;best=l;}
     });
     used[best.key]=1;
-    pairs.push({row:r,legs:[best],nameScore:kbNameScoreMulti(r.payee,best.bp),kind:'1:1'});
+    var nsB=kbNameScoreMulti(r.payee,best.bp),why='';
+    if(nsB===0){if(kbTypeConflict(r.payee,best.bp))why='ผู้รับเป็นบริษัท แต่ใบ SAP เป็นชื่อบุคคล';else if(c.length>1)why='มีใบ SAP ยอดเดียวกันหลายใบ จับด้วยยอดอาจผิดใบ';}
+    pairs.push({row:r,legs:[best],nameScore:nsB,kind:'1:1',risk:!!why,riskWhy:why});
   });
   // ผู้รับรายเดียวกันจ่ายหลายใบ SAP รวมเป็นรายการโอนเดียว (หรือกลับกัน) — ต้องชื่อตรงอย่างน้อยระดับ 2
   var left2=[];
@@ -4826,8 +4846,8 @@ function kbMatchRowsToSap(batch,legs,used,opts){
   var sumRows=rows.reduce(function(s,r){return s+r.cents;},0);
   var legSeen={},sumSap=0;
   pairs.forEach(function(p){if(p.shared){var k=p.legs[0].key;if(legSeen[k])return;legSeen[k]=1;sumSap+=p.legs[0].cents;}else p.legs.forEach(function(l){sumSap+=l.cents;});});
-  var weak=pairs.filter(function(p){return p.nameScore===0;}).length;
-  return {pairs:pairs,left:left3,npRows:npRows.filter(function(q){return left3.indexOf(q.row)>=0;}),nRows:rows.length,sumRows:sumRows,sumSap:sumSap,weak:weak,
+  var weak=pairs.filter(function(p){return p.nameScore===0;}).length,risk=pairs.filter(function(p){return p.risk;}).length;
+  return {pairs:pairs,left:left3,npRows:npRows.filter(function(q){return left3.indexOf(q.row)>=0;}),nRows:rows.length,sumRows:sumRows,sumSap:sumSap,weak:weak,risk:risk,
     complete:left3.length===0&&rows.length>0,ambN:pairs.filter(function(p){return p.amb;}).length,
     unnamedPairs:pairs.filter(function(p){return !p.legs.some(function(l){return l.bp;});}).length};
 }
@@ -4915,10 +4935,14 @@ function kbCompute(){
   units.forEach(function(u){var raw=out.L1.byBatch[u.key]||null;u._ms=raw?(raw.split?raw.parts:[raw]):[];u._bank=u._ms[0]||null;(ubB[u.batchKey]=ubB[u.batchKey]||[]).push(u);uByKey[u.key]=u;});
   var bByKey={};out.batches.forEach(function(b){bByKey[b.key]=b;});
   // ชั้น 2 เรียงตามวันที่ ใช้ SAP แต่ละรายการได้ครั้งเดียว
-  var used={};
+  var runL2=function(){
+  var used={};out.L2={};
   out.batches.filter(function(b){return b.kind==='ok'&&!b.unknownAmt;}).sort(function(a,b){return a.dk<b.dk?-1:a.dk>b.dk?1:(a.batch<b.batch?-1:1);}).forEach(function(b){
     out.L2[b.key]=kbMatchRowsToSap(b,out.legs,used);
   });
+  };
+  runL2();
+  if(kbLearnAliases(out))runL2(); // เรียนรู้คู่ชื่อจากรายการที่ยืนยันแล้ว แล้วจับใหม่
   // ความพร้อมยืนยัน
   out.batches.forEach(function(b){
     var r=out.L2[b.key];
@@ -4928,13 +4952,13 @@ function kbCompute(){
     b._bankOk=b._units.length>0&&b._units.every(function(u){return u._bank;});
     b._bank=b._banks[0]||null;
     b._amb=b._banks.some(function(m){return m.ambiguous;});
-    b.sure=!!(b._bankOk&&r&&r.complete&&r.weak===0&&!r.ambN&&!b._amb);
+    b.sure=!!(b._bankOk&&r&&r.complete&&r.risk===0&&!r.ambN&&!b._amb);
     b._done=!!(b._bankOk&&b._banks.every(function(m){return out.debits[m.bankIdx]&&out.debits[m.bankIdx].ov;})&&r&&r.pairs.length&&r.pairs.every(function(p){return p.legs.every(function(l){return l.ov;});}));
   });
   // ก้อนที่รวมหลายหน่วยจากหลาย batch: ทุก batch ในก้อนต้องครบจึงพร้อมยืนยัน
   out.batches.forEach(function(b){
     if(!b.sure)return;
-    var ok=b._banks.every(function(m){return m.group.every(function(uk){var u=uByKey[uk],o=u&&bByKey[u.batchKey];return o&&o._sap&&o._sap.complete&&o._sap.weak===0;});});
+    var ok=b._banks.every(function(m){return m.group.every(function(uk){var u=uByKey[uk],o=u&&bByKey[u.batchKey];return o&&o._sap&&o._sap.complete&&o._sap.risk===0;});});
     if(!ok)b.sure=false;
   });
   // เงินเดือน/ยอดไม่ทราบ — เสนอรายการตัดบัญชีที่ยังไม่ถูกใช้ในวันใกล้เคียงเป็นตัวเลือก (ไม่เดาจับคู่เอง)
@@ -4992,6 +5016,40 @@ function kbSelUpdate(){
   if(btn)btn.disabled=!ks.length;
   var ub=document.getElementById('kbUnBtn');if(ub){ub.disabled=!ks.length;ub.textContent='\u21A9 ล้างการยืนยัน batch ที่ติ๊ก';}
 }
+// ตารางตรวจชื่อไม่ตรงครั้งเดียวก่อนยืนยัน — รวมทุกแถวที่ชื่อผู้รับไม่ตรงกับ vendor ใน SAP จากทุก batch ที่ติ๊ก
+function kbMismatchList(batchKeys){
+  var out=[];
+  batchKeys.forEach(function(k){
+    var b=KB.res.batches.filter(function(x){return x.key===k;})[0];if(!b||!b._sap)return;
+    b._sap.pairs.forEach(function(p){
+      if(p.nameScore!==0)return;
+      out.push({batch:b.batch,payee:p.row.payee,vendor:kbLegName(p.legs[0]),doc:p.legs[0].docRef||'',amt:p.row.cents,risk:!!p.risk,why:p.riskWhy||''});
+    });
+  });
+  out.sort(function(a,b){return (b.risk?1:0)-(a.risk?1:0);});
+  return out;
+}
+function kbReviewDialog(list){
+  return new Promise(function(resolve){
+    var old=document.getElementById('kbRvOv');if(old)old.remove();
+    var nr=list.filter(function(x){return x.risk;}).length;
+    var rows=list.map(function(x){
+      return '<tr style="'+(x.risk?'background:rgba(224,92,92,0.12)':'')+'"><td style="font-size:11px;color:var(--muted)">'+kbEsc(String(x.batch).slice(-12))+'</td><td style="font-size:12px">'+kbEsc(x.payee||'')+'</td><td style="font-size:12px">'+kbEsc(x.vendor||'')+(x.doc?' <span style="color:var(--muted)">'+kbEsc(x.doc)+'</span>':'')+'</td><td class="right" style="font-size:12px">'+kbMoney(x.amt)+'</td><td style="font-size:11px;color:var(--red)">'+kbEsc(x.why)+'</td></tr>';
+    }).join('');
+    var ov=document.createElement('div');ov.id='kbRvOv';
+    ov.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.innerHTML='<div style="background:#14263a;border:1px solid var(--gold);border-radius:12px;max-width:980px;width:100%;max-height:86vh;display:flex;flex-direction:column;padding:16px 18px;color:var(--text,#e8eef5);font-family:\'Sarabun\',sans-serif">'+
+      '<div style="font-size:15px;font-weight:700;margin-bottom:4px">ตรวจชื่อก่อนยืนยัน — ชื่อผู้รับไม่ตรงกับ vendor ใน SAP '+list.length+' แถว'+(nr?(' <span style="color:var(--red)">(ต้องดูเป็นพิเศษ '+nr+' แถว)</span>'):'')+'</div>'+
+      '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">จับคู่ด้วยยอดและวันที่ตรงกัน แต่ชื่อต่างกัน (เช่น ชื่อบัญชีรับโอนไม่ใช่ชื่อ vendor) ถ้าทุกแถวถูกต้องกดยืนยันต่อได้เลย — ระบบจะจำคู่ชื่อที่ยืนยันไว้ ครั้งหน้าไม่เตือนอีก</div>'+
+      '<div style="overflow:auto;flex:1;border:1px solid var(--border);border-radius:8px"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;font-size:11px">batch</th><th style="text-align:left;font-size:11px">ผู้รับใน KKBIZ</th><th style="text-align:left;font-size:11px">ใบใน SAP</th><th class="right" style="font-size:11px">ยอด</th><th style="text-align:left;font-size:11px">ข้อสังเกต</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+      '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px"><button id="kbRvNo" style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:7px 16px;border-radius:7px;cursor:pointer;font-family:\'Sarabun\',sans-serif">ยกเลิก</button>'+
+      '<button id="kbRvOk" style="background:linear-gradient(135deg,var(--green),#7FD9A8);color:#08131f;border:none;padding:7px 18px;border-radius:7px;font-weight:700;cursor:pointer;font-family:\'Sarabun\',sans-serif">ตรวจแล้ว ถูกต้อง · ยืนยันต่อ</button></div></div>';
+    document.body.appendChild(ov);
+    var done=function(v){ov.remove();resolve(v);};
+    document.getElementById('kbRvOk').onclick=function(){done(true);};
+    document.getElementById('kbRvNo').onclick=function(){done(false);};
+  });
+}
 async function kbConfirm(){
   var ks=kbSelectedKeys();if(!ks.length)return;
   var btn=document.getElementById('kbConfBtn');
@@ -4999,6 +5057,8 @@ async function kbConfirm(){
   if(npBlk.length){window.alert('ยืนยันไม่ได้: batch นี้มีรายการที่ SAP มีเฉพาะใบที่ไม่ใช่ใบจ่ายเงิน (เช่น โอนระหว่างบัญชี) ยอดตรงกัน\n'+npBlk.map(function(b){return b.batch+' ('+b._sap.npRows.length+' รายการ)';}).join('\n')+'\nให้บันทึกใบจ่ายเงินใน SAP ก่อน หรือเอาออกจากที่ติ๊ก');return;}
   var unsure=ks.filter(function(k){var b=KB.res.batches.filter(function(x){return x.key===k;})[0];return b&&!b.sure;}).length;
   if(unsure&&!window.confirm('ในที่เลือกมี '+unsure+' batch ที่ระบบยังไม่แน่ใจ (รายการ SAP ไม่ครบ/จับด้วยยอดอย่างเดียว/ยอดไม่เท่ากัน)\nต้องการยืนยันว่า "ตรงกัน" ต่อหรือไม่?'))return;
+  var mm=kbMismatchList(ks);
+  if(mm.length&&!(await kbReviewDialog(mm)))return;
   var pk=kbItemsFor(ks);
   if(!pk.items.length){if(btn)btn.textContent='ไม่มีรายการให้ยืนยันเพิ่ม (ยืนยันไปแล้ว)';return;}
   if(btn){btn.disabled=true;btn.textContent='กำลังบันทึก…';}
@@ -5009,7 +5069,7 @@ async function kbConfirm(){
     pk.items.forEach(function(it){G.manualMatch[it.side+'|'+it.docNo]={status:it.status,note:it.note};});
     bkRefreshAfterConfirm();
     KB.lastMsg='ยืนยันแล้ว '+ks.length+' batch · บันทึก '+pk.items.length+' รายการ'+((pk.skipped.bank||pk.skipped.sap)?(' (ข้ามที่ยืนยันไว้ก่อนหน้า: แบงค์ '+pk.skipped.bank+' · SAP '+pk.skipped.sap+')'):'');
-    kbRender();
+    kbRender({resetTicks:true});
   }catch(e){if(btn){btn.disabled=false;btn.textContent='เกิดข้อผิดพลาด — กดลองใหม่';}console.error(e);}
 }
 // ล้างการยืนยันของ batch ที่ติ๊ก — ล้างเฉพาะรายการ (แบงค์/SAP) ที่หมายเหตุขึ้นต้น "KKBIZ batch <รหัส>" ของ batch นั้น (ไม่แตะรายการที่ยืนยันด้วยมือแบบอื่น)
@@ -5041,7 +5101,7 @@ async function kbUnconfirm(){
     pk.items.forEach(function(it){delete G.manualMatch[it.side+'|'+it.docNo];});
     bkRefreshAfterConfirm();
     KB.lastMsg='ล้างการยืนยันแล้ว '+Object.keys(pk.perBatch).length+' batch · '+pk.items.length+' รายการ';
-    kbRender();
+    kbRender({resetTicks:true});
   }catch(e){if(btn){btn.disabled=false;btn.textContent='เกิดข้อผิดพลาด — กดลองใหม่';}console.error(e);}
 }
 function kbPickSure(){document.querySelectorAll('.kbChk').forEach(function(c){c.checked=c.getAttribute('data-sure')==='1';});kbSelUpdate();}
@@ -5052,36 +5112,28 @@ function kbToggleBatch(k,el){
   if(!host)return;
   if(host.getAttribute('data-ready')!=='1'){host.innerHTML=kbDetailHtml(decodeURIComponent(k));host.setAttribute('data-ready','1');}
   host.style.display=host.style.display==='none'?'block':'none';
+  KB.open=KB.open||{};KB.open[k]=host.style.display!=='none';
+}
+// วาดหน้าใหม่แล้วต้องไม่เด้งกลับขึ้นบน/ปิดรายละเอียด/ล้างที่ติ๊ก — จำตำแหน่งเลื่อน, batch ที่เปิดดู, ที่ติ๊กไว้ แล้วคืนค่า
+function kbScrollEl(){var el=document.getElementById('modalBody');while(el&&el!==document.body){try{var oy=getComputedStyle(el).overflowY;if(/(auto|scroll)/.test(oy)&&el.scrollHeight>el.clientHeight+1)return el;}catch(e){}el=el.parentElement;}return null;}
+function kbSnapshotUI(){
+  if(!document.getElementById('kbBar')){KB.open={};return null;}
+  var sc=kbScrollEl();
+  return {top:sc?sc.scrollTop:0,ticked:kbSelectedKeys(),open:Object.keys(KB.open||{}).filter(function(k){return KB.open[k];})};
+}
+function kbRestoreUI(snap,opts){
+  if(!snap){kbSelUpdate();return;}
+  if(!(opts&&opts.resetTicks)){var set={};snap.ticked.forEach(function(k){set[k]=1;});document.querySelectorAll('.kbChk').forEach(function(c){if(set[decodeURIComponent(c.value)])c.checked=true;});}
+  snap.open.forEach(function(k){var host=document.getElementById('kbDet_'+k.replace(/%/g,'_'));if(host){host.innerHTML=kbDetailHtml(decodeURIComponent(k));host.setAttribute('data-ready','1');host.style.display='block';}});
+  kbSelUpdate();
+  var sc=kbScrollEl();if(sc)sc.scrollTop=snap.top;
 }
 function kbAliasBtn(x,p,l){
   if(!l||!l.bp||l.bp===KB_NONPAY||String(l.bp).indexOf(KB_JE)===0||!x.payee)return '';
-  var enc=function(t){return encodeURIComponent(t).replace(/'/g,'%27');};
-  var a='onclick="kbAliasToggle(\''+enc(x.payee)+'\',\''+enc(l.bp)+'\',event)"';
-  var st='style="cursor:pointer;font-size:10.5px;margin-left:6px;text-decoration:underline;color:var(--gold2)"';
-  if(p.nameScore===0)return ' <a '+a+' '+st+' title="ยืนยันว่าชื่อผู้รับกับ vendor นี้คือรายเดียวกัน ครั้งหน้าไม่เตือน">&#10004; ชื่อนี้ถูกต้อง จำไว้</a>';
+  if(p.risk)return ' <span style="font-size:11px;color:var(--red);font-weight:700">ตรวจให้แน่ใจ: '+kbEsc(p.riskWhy)+'</span>';
   var hit=String(l.bp).split(' / ').some(function(q){return kbNameScore(x.payee,q)<2&&kbAliasHit(x.payee,q);});
-  if(hit)return ' <span style="font-size:10.5px;color:var(--muted)">(ตามคู่ชื่อที่จำไว้)</span> <a '+a+' '+st+' title="ให้ระบบเลิกจำคู่ชื่อนี้">ลืม</a>';
+  if(hit)return ' <span style="font-size:10.5px;color:var(--muted)">(ตามประวัติที่ยืนยันแล้ว)</span>';
   return '';
-}
-async function kbAliasToggle(pe,be,ev){
-  if(ev&&ev.stopPropagation)ev.stopPropagation();
-  var payee=decodeURIComponent(pe),bp=decodeURIComponent(be);
-  var names=String(bp).split(' / ');
-  var forget=names.some(function(q){return kbNameScore(payee,q)<2&&kbAliasHit(payee,q);});
-  var items=names.filter(function(q){return kbNameScore(payee,q)<2;}).map(function(q){
-    return {side:'kbAlias',docNo:kbAliasKey(payee,q),status:forget?'':'matched',note:payee+' \u2194 '+q};
-  });
-  if(!items.length)return;
-  var msg=forget?('เลิกจำคู่ชื่อนี้?\n"'+payee+'" \u2194 "'+bp+'"\nครั้งหน้าระบบจะเตือน "ชื่อไม่ตรง" อีก'):('ยืนยันว่าชื่อผู้รับในธนาคารกับ vendor ใน SAP นี้คือรายเดียวกัน?\n"'+payee+'" \u2194 "'+bp+'"\nระบบจะจำไว้ ครั้งหน้าจะไม่เตือน "ชื่อไม่ตรง" สำหรับคู่นี้ (ตรวจแล้วเท่านั้น — ถ้าจับผิดใบ อย่ากดยืนยันคู่นี้)');
-  if(!window.confirm(msg))return;
-  try{
-    var res=await saveManualMatchBatch(items);
-    if(!res.success){alert('บันทึกไม่สำเร็จ: '+(res.error||''));return;}
-    G.manualMatch=G.manualMatch||{};
-    items.forEach(function(it){var k=it.side+'|'+it.docNo;if(!it.status)delete G.manualMatch[k];else G.manualMatch[k]={status:it.status,note:it.note};});
-    KB.lastMsg=(forget?'เลิกจำคู่ชื่อแล้ว ':'จำคู่ชื่อแล้ว ')+payee+' \u2194 '+bp;
-    kbRender();
-  }catch(e){console.error(e);alert('เกิดข้อผิดพลาด');}
 }
 function kbDetailHtml(k){
   var b=KB.res.batches.filter(function(x){return x.key===k;})[0];if(!b)return '';
@@ -5092,7 +5144,7 @@ function kbDetailHtml(k){
     var p=mapRow.get(x),sap;
     if(x.st!=='ok')sap='<span style="color:var(--muted)">'+kbEsc(x.stText)+(x.reason?(' — '+kbEsc(x.reason)):'')+'</span>';
     else if(x.cents==null)sap='<span style="color:var(--muted)">ยอดถูกปิดบัง (เงินเดือน)</span>';
-    else if(p){var l=p.legs[0];sap='<span style="color:'+(p.nameScore>=2?'var(--green)':(p.nameScore<0?'var(--muted)':'var(--gold2)'))+'">'+(p.nameScore>=2?'&#10003;':(p.nameScore<0?'&#8211;':'&#9888;'))+'</span> '+kbEsc(kbLegName(l)||'(SAP ไม่มีชื่อคู่ค้า — จับด้วยยอด+วันที่)')+' · '+kbEsc(kbKeyToDmy(l.dk))+(p.kind==='N:1'?(' · ผู้รับเดียวกันหลายรายการ SAP จ่ายใบเดียว '+kbMoney(l.cents)+(p.amb?' ⚠ มีรายการ SAP ยอดเดียวกันหลายใบ':'')):(p.kind!=='1:1'?(' · '+p.kind+' '+p.legs.length+' ใบ'):''))+(l.docRef?(' · '+kbEsc(l.docRef)):'')+(l.ov?' <span style="color:var(--muted)">(ยืนยันแล้ว)</span>':'')+kbAliasBtn(x,p,l);}
+    else if(p){var l=p.legs[0];sap='<span style="color:'+(p.risk?'var(--red)':(p.nameScore>=2?'var(--green)':(p.nameScore<0?'var(--muted)':'var(--gold2)')))+'">'+(p.nameScore>=2?'&#10003;':(p.nameScore<0?'&#8211;':'&#9888;'))+'</span> '+kbEsc(kbLegName(l)||'(SAP ไม่มีชื่อคู่ค้า — จับด้วยยอด+วันที่)')+' · '+kbEsc(kbKeyToDmy(l.dk))+(p.kind==='N:1'?(' · ผู้รับเดียวกันหลายรายการ SAP จ่ายใบเดียว '+kbMoney(l.cents)+(p.amb?' ⚠ มีรายการ SAP ยอดเดียวกันหลายใบ':'')):(p.kind!=='1:1'?(' · '+p.kind+' '+p.legs.length+' ใบ'):''))+(l.docRef?(' · '+kbEsc(l.docRef)):'')+(l.ov?' <span style="color:var(--muted)">(ยืนยันแล้ว)</span>':'')+kbAliasBtn(x,p,l);}
     else{
       var npH=(r&&r.npRows||[]).filter(function(q){return q.row===x;})[0];
       sap='<span style="color:var(--red)">ไม่พบใน SAP</span>'+(npH?' <span style="color:var(--gold2);font-size:11px">· มี '+kbEsc(kbLegName(npH.leg))+' ยอดตรง ('+kbEsc(kbKeyToDmy(npH.leg.dk))+') แต่ไม่ใช่ใบจ่ายเงิน จึงไม่นำมาจับคู่ — รอบันทึกใบจ่ายใน SAP</span>':'');
@@ -5134,7 +5186,7 @@ function kbBatchRow(b){
   }
   if(r&&KB.res.legs&&KB.res.legs.length){
     var lack=r.sumRows-r.sumSap;
-    sapChip=kbChip('SAP '+r.pairs.length+'/'+r.nRows+' ใบ'+(r.left.length?(' · ขาด '+r.left.length+' ใบ '+kbMoney(lack)):'')+(r.weak?(' · ชื่อไม่ตรง '+r.weak+' ใบ'):'')+(r.unnamedPairs?(' · SAP ไม่มีชื่อ '+r.unnamedPairs+' ใบ'):''),r.complete&&!r.weak?'var(--green)':'var(--gold2)');
+    sapChip=kbChip('SAP '+r.pairs.length+'/'+r.nRows+' ใบ'+(r.left.length?(' · ขาด '+r.left.length+' ใบ '+kbMoney(lack)):'')+(r.weak?(' · ชื่อไม่ตรง '+r.weak+' ใบ'+(r.risk?(' (ต้องตรวจ '+r.risk+')'):'')):'')+(r.unnamedPairs?(' · SAP ไม่มีชื่อ '+r.unnamedPairs+' ใบ'):''),r.complete&&!r.risk?'var(--green)':'var(--gold2)');
   }else sapChip='';
   var canSel=!!(b._banks&&b._banks.length);
   var effs={};b._units.forEach(function(u){effs[u.effk]=1;});var effL=Object.keys(effs).sort();
@@ -5150,8 +5202,8 @@ function kbBatchRow(b){
     '<button class="hbtn" style="padding:1px 8px;font-size:11px" onclick="kbToggleBatch(\''+encodeURIComponent(b.key).replace(/'/g,'%27')+'\')">ดูรายคน</button></div>'+
     '<div id="kbDet_'+encodeURIComponent(b.key).replace(/%/g,'_')+'" style="display:none"></div></div>';
 }
-function kbRender(){
-  var body='',R;
+function kbRender(opts){
+  var body='',R,_snap=kbSnapshotUI();
   try{R=KB.res=kbCompute();}catch(e){console.error(e);R=KB.res={batches:[],warn:[]};KB.err='คำนวณไม่สำเร็จ: '+(e.message||e);}
   var up='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">'+
     '<label class="hbtn hbtn-gold" style="cursor:pointer">&#128194; เลือกไฟล์รายงาน KKBIZ (.xlsx)<input type="file" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="kbOnFiles(this)"></label>'+
@@ -5232,7 +5284,7 @@ function kbRender(){
     '<button id="kbUnBtn" onclick="kbUnconfirm()" disabled style="background:transparent;color:var(--gold2);border:1px solid var(--gold2);padding:7px 14px;border-radius:7px;font-weight:600;cursor:pointer;font-family:\'Sarabun\',sans-serif;font-size:12.5px">&#8617; ล้างการยืนยัน batch ที่ติ๊ก</button>'+
     '<button id="kbConfBtn" onclick="kbConfirm()" disabled style="background:linear-gradient(135deg,var(--green),#7FD9A8);color:#08131f;border:none;padding:7px 16px;border-radius:7px;font-weight:700;cursor:pointer;font-family:\'Sarabun\',sans-serif;font-size:12.5px">&#9989; ยืนยัน batch ที่ติ๊ก</button></div>';
   openModal('🏦 ใบโอน KKBIZ ↔ สเตทเมนท์ ↔ SAP',up+dmExportBtns('kbRpt')+sum+warn+chips+list+bad+freeD+bar);
-  kbSelUpdate();
+  kbRestoreUI(_snap,opts);
 }
 // ---- อ่านไฟล์ที่อัปโหลด (xlsx/csv) ----
 async function kbOnFiles(inp){
