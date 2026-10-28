@@ -1303,6 +1303,9 @@ async function loadAllData(opts){
           Object.keys(jGroups).forEach(function(tid){
             var jg=jGroups[tid];
             var acctCount=Object.keys(jg.accts).length;
+            // โอนระหว่าง "บัญชีธนาคาร" ของบริษัทเอง (ไม่นับเงินสด/เงินสดย่อย 1111-xx) — ใช้ในใบโอน KKBIZ ตัดสินว่าไม่ใช่การจ่ายให้ผู้รับ
+            var bankCnt=Object.keys(jg.accts).filter(function(a){return a.indexOf('1111')!==0;}).length;
+            if(!jg.hasBP&&bankCnt>=2)jg.refs.forEach(function(l){l.bankXfer=true;});
             if(!jg.hasBP && acctCount>=2){
               // ไม่มี BP ผูกเลยสักบรรทัด และแตะบัญชีเงินสด/ธนาคาร >=2 บัญชี = การโอนเงินระหว่างบัญชีภายใน
               // บริษัทเองล้วนๆ (เงินออกจากบัญชีหนึ่งเข้าอีกบัญชีหนึ่ง ไม่มีคู่ค้าภายนอกเกี่ยวข้อง)
@@ -4709,7 +4712,12 @@ function kbPayCov(){
 }
 // ตัวแทนชื่อของใบ SAP ที่ไม่ใช่ใบจ่ายเงิน: จับกับผู้รับได้ก็ต่อเมื่อเป็นการโอนเข้าบัญชีของบริษัทเอง ไม่งั้นนับว่าชื่อไม่ตรง
 var KB_NONPAY='\u0001NP';
-function kbLegName(l){return l.bp===KB_NONPAY?('ไม่ใช่ใบจ่ายเงิน (เช่น โอนระหว่างบัญชี)'+(l.docRef?(' '+l.docRef):'')):(l.bp||'');}
+var KB_JE='\u0002JE:';
+function kbLegName(l){
+  if(l.bp===KB_NONPAY)return 'โอนระหว่างบัญชีธนาคารของบริษัทเอง ไม่ใช่การจ่ายให้ผู้รับ'+(l.docRef?(' '+l.docRef):'');
+  if(String(l.bp||'').indexOf(KB_JE)===0)return 'ใบบันทึกบัญชี: '+String(l.bp).slice(KB_JE.length);
+  return l.bp||'';
+}
 // คู่ชื่อ "ชื่อผู้รับใน KKBIZ ↔ ชื่อ vendor ใน SAP" ที่ผู้ใช้ยืนยันว่าถูกต้อง (เช่น ซันนี่ ↔ ทีดี-เอ็กซ์) เก็บใน MANUAL_MATCH ด้าน kbAlias
 function kbAliasKey(a,b){return kbNormName(a)+'~'+kbNormName(b);}
 function kbAliasRebuild(){
@@ -4724,6 +4732,12 @@ function kbAliasHit(a,p){var m=window.__kbAlias;if(!m)return false;var na=kbNorm
 function kbNameScoreMulti(a,bp){
   if(bp===KB_NONPAY)return /รถเจาะไทย/.test(String(a||''))?-1:0;
   if(!bp)return -1;
+  if(String(bp).indexOf(KB_JE)===0){
+    // ใบบันทึกบัญชีไม่มีชื่อคู่ค้า — ถ้าหมายเหตุกล่าวถึงชื่อผู้รับ (ตรงทั้งชื่อ หรือ 6 ตัวอักษรแรก) ถือว่าชื่อตรง ไม่งั้นไม่รู้ชื่อ (จับด้วยยอด)
+    var mn=kbNormName(String(bp).slice(KB_JE.length)),pn=kbNormName(a);
+    if(pn.length>=4&&(mn.indexOf(pn)>=0||mn.indexOf(pn.slice(0,6))>=0))return 2;
+    return -1;
+  }
   var best=0;
   String(bp).split(' / ').forEach(function(p){var x=kbNameScore(a,p);if(x<2&&kbAliasHit(a,p))x=2;if(x>best)best=x;});
   return best;
@@ -4887,8 +4901,9 @@ function kbCompute(){
       var ov=manualMatchFor('bkSapLeg',sk[i]);
       if(ov&&ov.status!=='matched')return;
       var nm=l.bpName||l.jeBp||(l.docRef&&payName[String(l.docRef).trim()])||'';
-      var ldk=dateKey(l.date);
-      if(!nm&&l.docRef&&payCov.from&&ldk>=payCov.from&&ldk<=payCov.to)nm=KB_NONPAY;
+      // ไม่มีชื่อคู่ค้า: โอนระหว่างบัญชีธนาคารของบริษัทเอง = ไม่ใช่การจ่ายให้ผู้รับ · นอกนั้น (ใบบันทึกบัญชี/JE เช่น เบิกชดเชยเงินสดย่อย, คืนเงินยืม) = จ่ายจริง ใช้ข้อความหมายเหตุเป็นชื่อ
+      if(!nm&&l.bankXfer)nm=KB_NONPAY;
+      else if(!nm&&l.memo)nm=KB_JE+l.memo;
       if(nm)out.nNamed++;
       out.legs.push({key:sk[i],dk:dateKey(l.date),cents:Math.round(l.credit*100),bp:nm,memo:l.memo||'',tid:l.tid,docRef:l.docRef||'',ov:ov});
     });
@@ -5039,7 +5054,7 @@ function kbToggleBatch(k,el){
   host.style.display=host.style.display==='none'?'block':'none';
 }
 function kbAliasBtn(x,p,l){
-  if(!l||!l.bp||l.bp===KB_NONPAY||!x.payee)return '';
+  if(!l||!l.bp||l.bp===KB_NONPAY||String(l.bp).indexOf(KB_JE)===0||!x.payee)return '';
   var enc=function(t){return encodeURIComponent(t).replace(/'/g,'%27');};
   var a='onclick="kbAliasToggle(\''+enc(x.payee)+'\',\''+enc(l.bp)+'\',event)"';
   var st='style="cursor:pointer;font-size:10.5px;margin-left:6px;text-decoration:underline;color:var(--gold2)"';
