@@ -10290,12 +10290,14 @@ function chqDaysTo(dk){ // จำนวนวันจากวันนี้�
   return Math.round((b-a)/86400000);
 }
 function chqParse(res){
-  var cols=(res.cols||[]).map(function(c){return String(c==null?'':c).trim().toLowerCase();});
-  var off=cols[0]==='#'?1:0,ix={};
+  // ชื่อหัวคอลัมน์: ไม่สนตัวพิมพ์/ช่องว่าง/ขีดล่าง/ขีดกลาง/เครื่องหมาย (เช่น "Check Date", "CHECK_DATE" ก็อ่านได้)
+  var rawCols=(res.cols||[]).map(function(c){return String(c==null?'':c).trim();});
+  var cols=rawCols.map(function(c){return c.toLowerCase().replace(/[^a-z0-9]/g,'');});
+  var off=rawCols[0]==='#'?1:0,ix={};
   CHQ_COLS.forEach(function(n,i){var p=cols.indexOf(n);ix[n]=p>=0?p:(i+off);});
   var must=['checkdate','checkamount','bankacctno'];
   var bad=must.filter(function(n){return cols.indexOf(n)<0;});
-  if((res.rows||[]).length&&bad.length)throw new Error('หัวคอลัมน์ในชีตไม่ตรง (ไม่พบ: '+bad.join(', ')+') — ต้องวางผลลัพธ์พร้อมหัวคอลัมน์จากไฟล์ SQL Q28');
+  if((res.rows||[]).length&&bad.length)throw new Error('หัวคอลัมน์ในชีตไม่ตรง (ไม่พบ: '+bad.join(', ')+') — แถวแรกของชีตที่อ่านได้คือ: ['+rawCols.slice(0,8).map(function(c){return c||'(ว่าง)';}).join(' | ')+(rawCols.length>8?' …':'')+'] — แถวแรกต้องเป็นหัวคอลัมน์จากไฟล์ SQL Q28 (CheckKey, CheckNum, PaymentDocNum, PaymentDate, CheckDate, …) ไม่ใช่ข้อมูล/ชื่อรายงาน');
   var g=function(r,n){var v=r[ix[n]];return v==null?'':v;};
   var out=[],asOfs=[];
   (res.rows||[]).forEach(function(r){
