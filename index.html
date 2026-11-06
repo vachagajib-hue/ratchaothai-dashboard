@@ -6,6 +6,7 @@
 <title>Financial Dashboard &#8212; บริษัท รถเจาะไทย จำกัด</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
 :root{--navy:#070f1c;--navy2:#0b1626;--navy3:#243B55;--gold:#D4A843;--gold2:#F0C96B;--teal:#2BBFB3;--red:#E05C5C;--green:#4CAF7D;--blue:#5B8FF9;--purple:#A385E0;--muted:#8FA3B8;--border:rgba(255,255,255,0.08);--card:#0f1e32;--text:#E8EFF7;--text2:#B0C4D8;}
@@ -251,6 +252,26 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
   #printArea table.v2in td.t{font-weight:600;color:#0f172a;}
   #printArea table.v2in thead th{background:#EAF0F9;color:#475569;font-size:9.5px;font-weight:600;padding:3px 8px;border:0;white-space:nowrap;}
 }
+
+/* ===== ล็อกอิน Google + โหมดผู้ดู (6 พ.ย. 2569) ===== */
+#authGate{position:fixed;inset:0;z-index:100000;background:var(--bg,#0a1628);display:none;align-items:center;justify-content:center;padding:20px;}
+#authGate.show{display:flex;}
+#authGate .ag-box{width:100%;max-width:400px;background:var(--card,#101f36);border:1px solid var(--border,#1f3350);border-radius:14px;padding:28px 26px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.5);}
+#authGate .ag-logo{width:52px;height:52px;border-radius:12px;background:#e8b94a;color:#0a1628;font-weight:800;font-size:20px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;}
+#authGate .ag-co{font-size:17px;font-weight:700;color:var(--text,#e6edf6);}
+#authGate .ag-sub{font-size:12px;color:var(--muted,#8FA3B8);margin:2px 0 18px;}
+#authGate .ag-msg{font-size:13px;color:var(--text,#e6edf6);min-height:20px;margin-bottom:14px;line-height:1.5;}
+#authGate .ag-msg.err{color:#f08080;}
+#authGate .ag-btn{display:flex;justify-content:center;min-height:44px;}
+#authGate .ag-note{font-size:11px;color:var(--muted,#8FA3B8);margin-top:16px;line-height:1.5;}
+#authGate .ag-alt{margin-top:12px;display:none;}
+body.viewer-mode .recon-upload-zone,body.viewer-mode .pdf-drop-zone,
+body.viewer-mode label.hbtn:has(input[type=file]),
+body.viewer-mode [onclick*="Print"],body.viewer-mode [onclick*="Excel"],body.viewer-mode [onclick*="projExport"],
+body.viewer-mode [onclick*="pdfDownloadCSV"],body.viewer-mode [onclick*="pdfStart"],body.viewer-mode [onclick*="pdfSendToRecon"],
+body.viewer-mode [onclick*="pdfRetryOne"],body.viewer-mode [onclick*="pdfRemoveFile"],
+body.viewer-mode .tab[onclick="switchTab(6)"],body.viewer-mode #apikeyHeaderBtn,
+body.viewer-mode a[href*="docs.google.com/spreadsheets"]{display:none!important;}
 </style>
 </head>
 <body>
@@ -267,6 +288,22 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 </div>
 <button class="apikey-save-btn" onclick="saveApiKey()">&#128190; บันทึก API Key</button>
 <button class="apikey-cancel-btn" onclick="closeApiModal()">ยกเลิก</button>
+</div></div>
+<div id="authGate"><div class="ag-box">
+<div class="ag-logo">TD</div>
+<div class="ag-co">บริษัท รถเจาะไทย จำกัด</div>
+<div class="ag-sub">Financial Executive Dashboard</div>
+<div class="ag-msg" id="agMsg">กำลังเตรียมการล็อกอิน…</div>
+<div class="ag-btn" id="authBtn"></div>
+<div class="ag-alt" id="agAlt"><button class="hbtn hbtn-muted" onclick="authSwitchAccount()">ใช้บัญชี Google อื่น</button></div>
+<div class="ag-note">เข้าได้เฉพาะบัญชี Gmail ที่ผู้จัดทำอนุญาตไว้<br>ล็อกอินครั้งเดียว เบราว์เซอร์จะจำให้ ไม่ต้องจำรหัสผ่าน</div>
+</div></div>
+<div class="apikey-modal" id="adminModal">
+<div class="apikey-box">
+<div class="apikey-title">&#128100; บัญชีที่ใช้งาน</div>
+<div class="apikey-sub" id="adminInfo"></div>
+<button class="apikey-save-btn" onclick="authSwitchAccount()">สลับ/ออกจากระบบ</button>
+<button class="apikey-cancel-btn" onclick="closeAdminModal()">ปิด</button>
 </div></div>
 <div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
 <div class="modal">
@@ -293,6 +330,7 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 <button class="hbtn dq-chip dq-busy" id="dqChip" onclick="dqOpen()">⏳ กำลังตรวจข้อมูล</button>
 <div><span class="live-dot"></span><span class="live-text" id="liveText">กำลังโหลด…</span></div>
 <div class="date-badge" id="dateBadge">&#128197; —</div>
+<button class="hbtn hbtn-muted" id="adminHeaderBtn" onclick="openAdminModal()" style="display:none" title="บัญชีที่ใช้งานอยู่">&#128100; —</button>
 <button class="hbtn hbtn-gold" id="apikeyHeaderBtn" onclick="openApiModal()"><span class="apikey-indicator notset" id="apikeyDot"></span><span id="apikeyBtnText">API Key</span></button>
 <a class="hbtn hbtn-green" href="https://docs.google.com/spreadsheets/d/1n5f-YtXaLaiU0PNMd8gzN_Xm5olqat5BOIUAbMOrUXw" target="_blank" rel="noopener">&#128202; Google Sheet</a>
 <button class="hbtn hbtn-muted" onclick="loadAllData()">&#128260; รีเฟรช</button>
@@ -717,8 +755,162 @@ function updateApiDot(){
   if(dot)dot.className='apikey-indicator '+(has?'set':'notset');
   if(txt)txt.textContent=has?'API Key \u2705':'API Key';
 }
+// ===== ล็อกอิน Google + สิทธิ์ผู้ดู/ผู้จัดทำ (เพิ่ม 6 พ.ย. 2569) =====
+// Apps Script ตรวจ Google ID token กับชีต USERS: ไม่อยู่ในรายชื่อ = ไม่ได้ข้อมูล · viewer = อ่านอย่างเดียว · admin = เขียน/ดาวน์โหลดได้
+// การซ่อนปุ่มฝั่งแดชบอร์ดเป็นเพียงความสะดวก — ตัวป้องกันจริงของ "การเขียน/ลบ" และ "การอ่านโดยคนนอกรายชื่อ" อยู่ที่ Apps Script
+// ถ้า GOOGLE_CLIENT_ID ยังเป็นค่าตัวอย่าง (ขึ้นต้นด้วย __) แดชบอร์ดจะทำงานแบบเดิม (ไม่มีหน้าล็อกอิน) เพื่อไม่ให้พังระหว่างติดตั้ง
+var GOOGLE_CLIENT_ID='624302614909-1kvc31db68pfdght9gi56c4st0lcf6rn.apps.googleusercontent.com';
+var AUTH={enabled:GOOGLE_CLIENT_ID.length>10&&GOOGLE_CLIENT_ID.indexOf('__')!==0,restoring:false,token:'',email:'',role:'',exp:0,started:false,gsiInit:false,timer:null,lastRefresh:0};
+var AUTH_SKEY='ratchaothai_idtoken';
+function isViewer(){return AUTH.enabled&&AUTH.role!=='admin';}
+function isAdminOk(){return !AUTH.enabled||AUTH.role==='admin';}
+function appsBody(o){if(AUTH.enabled)o.token=AUTH.token;return JSON.stringify(o);}
+function authDecodeExp(tok){try{var p=tok.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');return JSON.parse(atob(p)).exp||0;}catch(e){return 0;}}
+function authGate(msg,isErr,showAlt){
+  var g=document.getElementById('authGate');if(!g)return;
+  g.classList.add('show');
+  var m=document.getElementById('agMsg');m.textContent=msg||'';m.className='ag-msg'+(isErr?' err':'');
+  document.getElementById('agAlt').style.display=showAlt?'block':'none';
+}
+function authHideGate(){var g=document.getElementById('authGate');if(g)g.classList.remove('show');}
+function adminGuard(){
+  if(!AUTH.enabled)return '';
+  if(!AUTH.token||AUTH.exp<=Math.floor(Date.now()/1000)){authGate('เซสชันหมดอายุ กรุณาล็อกอินอีกครั้ง',true,false);authRenderBtn();return 'เซสชันหมดอายุ กรุณาล็อกอินอีกครั้ง';}
+  if(AUTH.role!=='admin')return 'บัญชี '+AUTH.email+' เป็นผู้ดูอย่างเดียว ไม่มีสิทธิ์บันทึก/อัปโหลดข้อมูล';
+  return '';
+}
+// คืน true ถ้าเซิร์ฟเวอร์ปฏิเสธเพราะสิทธิ์/ล็อกอิน (แล้วจัดการหน้าจอให้)
+function adminFail(data){
+  var e=String((data&&data.error)||'');
+  if(/^login required/i.test(e)){authExpired(e.replace(/^login required:\s*/i,''));return true;}
+  if(/^forbidden/i.test(e))return true;
+  return false;
+}
+function authExpired(why){
+  AUTH.token='';AUTH.exp=0;try{sessionStorage.removeItem(AUTH_SKEY);}catch(e){}
+  authGate((why||'เซสชันหมดอายุ')+' — กรุณาล็อกอินอีกครั้ง',true,false);authRenderBtn();
+}
+function updateAdminBadge(){
+  var b=document.getElementById('adminHeaderBtn');if(!b)return;
+  if(!AUTH.enabled||!AUTH.email){b.style.display='none';return;}
+  b.style.display='';
+  b.innerHTML=(AUTH.role==='admin'?'&#128275; ผู้จัดทำ':'&#128065; ผู้ดู')+' · '+AUTH.email.split('@')[0];
+  b.className='hbtn '+(AUTH.role==='admin'?'hbtn-green':'hbtn-muted');
+  document.body.classList.toggle('viewer-mode',isViewer());
+}
+function openAdminModal(){
+  var m=document.getElementById('adminModal'),i=document.getElementById('adminInfo');if(!m||!i)return;
+  i.innerHTML='บัญชี: <b>'+(AUTH.email||'—')+'</b><br>สิทธิ์: <b>'+(AUTH.role==='admin'?'ผู้จัดทำ (แก้ไข/อัปโหลด/ดาวน์โหลดได้)':'ผู้ดู (ดูข้อมูลอย่างเดียว)')+'</b>';
+  m.classList.add('open');
+}
+function closeAdminModal(){var m=document.getElementById('adminModal');if(m)m.classList.remove('open');}
+// ---- Google Identity Services ----
+function authRenderBtn(){
+  try{
+    var el=document.getElementById('authBtn');if(!el||!window.google||!google.accounts)return;
+    el.innerHTML='';
+    google.accounts.id.renderButton(el,{theme:'filled_blue',size:'large',text:'signin_with',shape:'pill',locale:'th',width:280});
+  }catch(e){console.error('authRenderBtn',e);}
+}
+function authInitGsi(){
+  if(AUTH.gsiInit)return true;
+  if(!window.google||!google.accounts||!google.accounts.id)return false;
+  google.accounts.id.initialize({client_id:GOOGLE_CLIENT_ID,callback:function(r){authOnCredential(r&&r.credential);},auto_select:true,cancel_on_tap_outside:false});
+  AUTH.gsiInit=true;return true;
+}
+async function authWhoami(tok){
+  var res=await fetch(APPS_URL,{method:'POST',mode:'cors',credentials:'omit',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action:'whoami',token:tok})});
+  return await res.json();
+}
+async function authOnCredential(tok){
+  if(!tok)return;
+  var firstTime=!AUTH.started;
+  try{
+    var wasRestoring=AUTH.restoring;AUTH.restoring=false;
+    var j=await authWhoami(tok);
+    if(!j||!j.success){
+      var e=String((j&&j.error)||'');
+      if(/Unknown action/i.test(e)){authGate('Apps Script ยังเป็นเวอร์ชันเก่า (ยังไม่ได้วางโค้ดล็อกอิน) — แจ้งผู้จัดทำ',true,false);return;}
+      AUTH.token='';AUTH.email='';AUTH.role='';updateAdminBadge();
+      var forb=/^forbidden/i.test(e);
+      authGate(e.replace(/^(forbidden|login required):\s*/i,'')||'ล็อกอินไม่สำเร็จ',true,forb);authRenderBtn();
+      return;
+    }
+    AUTH.token=tok;AUTH.email=j.email;AUTH.role=j.role;AUTH.exp=authDecodeExp(tok)||(Math.floor(Date.now()/1000)+3000);
+    try{sessionStorage.setItem(AUTH_SKEY,tok);}catch(e){}
+    updateAdminBadge();authHideGate();
+    if(!AUTH.timer)AUTH.timer=setInterval(authWatch,30000);
+    if(firstTime){AUTH.started=true;loadAllData();}
+  }catch(err){authGate('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้: '+(err&&err.message||err),true,false);}
+}
+// ต่ออายุโทเค็นเงียบ ๆ ก่อนหมดอายุ (Google ออกให้ใหม่โดยไม่ต้องกดซ้ำ ถ้าเบราว์เซอร์อนุญาต) · หมดอายุจริงแล้วยังไม่ได้ใหม่ → ขึ้นหน้าล็อกอิน
+function authWatch(){
+  if(!AUTH.enabled||!AUTH.token)return;
+  var left=AUTH.exp-Math.floor(Date.now()/1000);
+  if(left<=0){authExpired('เซสชันหมดอายุ');return;}
+  if(left<300&&Date.now()-AUTH.lastRefresh>60000){AUTH.lastRefresh=Date.now();try{if(authInitGsi())google.accounts.id.prompt();}catch(e){}}
+}
+function authSwitchAccount(){
+  closeAdminModal();
+  try{if(window.google&&google.accounts)google.accounts.id.disableAutoSelect();}catch(e){}
+  try{sessionStorage.removeItem(AUTH_SKEY);}catch(e){}
+  AUTH.token='';AUTH.exp=0;
+  authGate('เลือกบัญชี Google ที่ต้องการใช้',false,false);authRenderBtn();
+}
+// ตรวจว่า Apps Script เป็นเวอร์ชันที่รู้จักการล็อกอินหรือยัง — ถ้ายังเป็นเวอร์ชันเก่า (ตอบ Unknown action) ให้ทำงานแบบเดิมไปก่อน
+// เพื่ออัปโหลดแดชบอร์ดใหม่ขึ้น GitHub ก่อน แล้วค่อย deploy สคริปต์ใหม่ได้โดยไม่มีช่วงที่ระบบใช้ไม่ได้
+async function authProbe(){
+  try{
+    var res=await fetch(APPS_URL,{method:'POST',mode:'cors',credentials:'omit',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action:'whoami'})});
+    var j=await res.json();
+    if(j&&/Unknown action/i.test(String(j.error||'')))return 'legacy';
+  }catch(e){}
+  return 'ok';
+}
+function authStart(){
+  if(!AUTH.enabled){loadAllData();return;}
+  authGate('กำลังเตรียมการล็อกอิน…',false,false);
+  authProbe().then(function(r){
+    if(r==='legacy'){AUTH.enabled=false;authHideGate();updateAdminBadge();loadAllData();return;}
+    authBegin();
+  });
+}
+function authBegin(){
+  // ใช้โทเค็นที่ยังไม่หมดอายุของแท็บนี้ (รีเฟรชหน้าไม่ต้องล็อกอินซ้ำ)
+  try{
+    var st=sessionStorage.getItem(AUTH_SKEY);
+    if(st&&authDecodeExp(st)>Math.floor(Date.now()/1000)+120){AUTH.restoring=true;authOnCredential(st);}
+  }catch(e){}
+  var tries=0,iv=setInterval(function(){
+    tries++;
+    if(authInitGsi()){
+      clearInterval(iv);
+      if(!AUTH.token&&!AUTH.restoring){authGate('กรุณาล็อกอินด้วยบัญชี Google (Gmail)',false,false);authRenderBtn();try{google.accounts.id.prompt();}catch(e){}}
+    }else if(tries>40){clearInterval(iv);if(!AUTH.token)authGate('โหลดระบบล็อกอินของ Google ไม่สำเร็จ — ตรวจอินเทอร์เน็ต หรือปิดตัวบล็อกโฆษณาสำหรับหน้านี้แล้วรีเฟรช',true,false);}
+  },250);
+}
+// ---- กั้นการอัปโหลด/ดาวน์โหลด/พิมพ์สำหรับผู้ดู (ชั้นสำรองนอกเหนือจากการซ่อนปุ่มด้วย CSS) ----
+function viewerBlockMsg(what){try{alert('บัญชีผู้ดูไม่มีสิทธิ์'+what+' — ติดต่อผู้จัดทำ');}catch(e){}}
+(function(){
+  var _print=window.print;
+  window.print=function(){if(isViewer()){viewerBlockMsg('พิมพ์/บันทึกเป็น PDF');return;}return _print.apply(window,arguments);};
+  try{if(window.XLSX&&XLSX.writeFile){var _w=XLSX.writeFile;XLSX.writeFile=function(){if(isViewer()){viewerBlockMsg('ดาวน์โหลดไฟล์ Excel');return;}return _w.apply(this,arguments);};}}catch(e){}
+  var _ac=HTMLAnchorElement.prototype.click;
+  HTMLAnchorElement.prototype.click=function(){if(isViewer()&&this.hasAttribute('download')){viewerBlockMsg('ดาวน์โหลดไฟล์');return;}return _ac.apply(this,arguments);};
+  function blockFile(e){
+    if(!isViewer())return;
+    var t=e.target;
+    if(e.type==='drop'||(t&&t.tagName==='INPUT'&&t.type==='file')){
+      e.preventDefault();e.stopImmediatePropagation();
+      if(t&&t.value)try{t.value='';}catch(x){}
+      if(e.type!=='click')viewerBlockMsg('อัปโหลดไฟล์');
+    }
+  }
+  ['click','change','drop'].forEach(function(ev){document.addEventListener(ev,blockFile,true);});
+  document.addEventListener('dragover',function(e){if(isViewer())e.preventDefault();},true);
+})();
 document.addEventListener('click',function(e){if(e.target===document.getElementById('apikeyModal'))closeApiModal();});
-document.addEventListener('keydown',function(e){if(e.key==='Escape'){document.getElementById('modalOverlay').classList.remove('open');closeApiModal();}});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'){document.getElementById('modalOverlay').classList.remove('open');closeApiModal();closeAdminModal();}});
 
 function openModal(title,html){document.getElementById('modalTitle').textContent=title;document.getElementById('modalBody').innerHTML=html;document.getElementById('modalOverlay').classList.add('open');}
 function closeModal(e){if(!e||e.target===document.getElementById('modalOverlay'))document.getElementById('modalOverlay').classList.remove('open');}
@@ -1007,7 +1199,9 @@ async function fetchSheet(name, _attempt){
   var url=APPS_URL+'?sheet='+encodeURIComponent(name);
   var out;
   try{
-    var res=await fetch(url,{
+    var res=AUTH.enabled
+      ? await fetch(APPS_URL,{method:'POST',redirect:'follow',mode:'cors',credentials:'omit',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action:'read',sheet:name,token:AUTH.token})})
+      : await fetch(url,{
       method:'GET',
       redirect:'follow',
       mode:'cors',
@@ -1016,7 +1210,7 @@ async function fetchSheet(name, _attempt){
     });
     if(!res.ok)throw new Error('HTTP '+res.status);
     var json=await res.json();
-    if(json.error)throw new Error(json.error);
+    if(json.error){if(AUTH.enabled&&adminFail(json)){var ae=new Error(json.error);ae.noRetry=true;throw ae;}throw new Error(json.error);}
     var rows=json.rows||[];
     if(!rows.length)out={cols:[],rows:[],count:json.count};
     else{
@@ -1026,7 +1220,7 @@ async function fetchSheet(name, _attempt){
   }catch(err){
     var MAX_RETRIES=2; // ลองรวมสูงสุด 3 ครั้ง (1 ครั้งแรก + retry 2 ครั้ง)
     // "Sheet not found" = ชื่อแท็บในชีตไม่ตรง ลองซ้ำก็ไม่หาย — แจ้ง error ทันทีไม่ต้องรอ retry
-    if(attempt>=MAX_RETRIES||/Sheet not found/i.test(String(err&&err.message||err))){
+    if(attempt>=MAX_RETRIES||(err&&err.noRetry)||/Sheet not found|^forbidden|^login required/i.test(String(err&&err.message||err))){
       DQ.inflight=Math.max(0,DQ.inflight-1);
       try{dqRecFail(name,err);}catch(e){}   // บันทึกความล้มเหลวจริง (รวมชีตเสริมที่ถูก catch(optionalFallback) กลืน) ให้แถบสถานะข้อมูลแสดง
       throw err;
@@ -1928,10 +2122,11 @@ function mmClear(){
 }
 async function saveManualMatchToSheet(side,docNo,status,note){
   try{
+    var g=adminGuard();if(g)return{success:false,error:g};
     var payload={action:'saveManualMatch',side:side,docNo:docNo,status:status,note:note};
-    var res=await fetch(APPS_URL,{method:'POST',mode:'cors',credentials:'omit',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)});
+    var res=await fetch(APPS_URL,{method:'POST',mode:'cors',credentials:'omit',headers:{'Content-Type':'text/plain'},body:appsBody(payload)});
     if(!res.ok)return{success:false,error:'HTTP '+res.status};
-    var data=await res.json();
+    var data=await res.json();adminFail(data);
     if(data.success)return{success:true};
     return{success:false,error:data.error||'Apps Script returned no error detail'};
   }catch(err){return{success:false,error:err.message||String(err)};}
@@ -5462,11 +5657,12 @@ async function kbSaveSheet(){
   if(!KB.rows.length)return;
   if(btn){btn.disabled=true;btn.textContent='กำลังบันทึก…';}
   try{
+    var g0=adminGuard();if(g0)throw new Error(g0);
     var data=KB.rows.map(kbRowToSheet),total=data.length,done=0,saved=0,upd=0;
     for(var i=0;i<data.length;i+=300){
       var chunk=data.slice(i,i+300);
-      var res=await fetch(APPS_URL,{method:'POST',mode:'cors',credentials:'omit',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action:'saveKkbizTxn',rows:chunk})});
-      var j=await res.json();
+      var res=await fetch(APPS_URL,{method:'POST',mode:'cors',credentials:'omit',headers:{'Content-Type':'text/plain'},body:appsBody({action:'saveKkbizTxn',rows:chunk})});
+      var j=await res.json();adminFail(j);
       if(j.error&&/Unknown action/i.test(j.error))throw new Error('Apps Script ยังเป็นเวอร์ชันเก่า (ยังไม่รู้จัก saveKkbizTxn) — ต้องวางโค้ดใหม่แล้ว Deploy อีกครั้ง');
       if(!j.success)throw new Error(j.error||'บันทึกไม่สำเร็จ');
       saved+=j.saved||0;upd+=j.updated||0;done+=chunk.length;
@@ -5508,11 +5704,12 @@ async function kbLoadSheet(silent){
 var MM_BATCH_OK=null;
 async function saveManualMatchBatch(items,onProgress){
   if(!items||!items.length)return {success:true,saved:0,mode:'none'};
+  var g1=adminGuard();if(g1)return {success:false,error:g1};
   if(MM_BATCH_OK!==false){
     try{
-      var res=await fetch(APPS_URL,{method:'POST',mode:'cors',credentials:'omit',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action:'saveManualMatchBatch',items:items})});
+      var res=await fetch(APPS_URL,{method:'POST',mode:'cors',credentials:'omit',headers:{'Content-Type':'text/plain'},body:appsBody({action:'saveManualMatchBatch',items:items})});
       if(!res.ok)return {success:false,error:'HTTP '+res.status};
-      var data=await res.json();
+      var data=await res.json();adminFail(data);
       if(data&&data.success){MM_BATCH_OK=true;if(onProgress)onProgress(items.length,items.length);return {success:true,saved:items.length,mode:'batch'};}
       if(data&&/Unknown action/i.test(String(data.error||''))){MM_BATCH_OK=false;}
       else return {success:false,error:(data&&data.error)||'batch ไม่สำเร็จ'};
@@ -7282,7 +7479,7 @@ function renderProjectPage(){
     note+='<br>&#9888;&#65039; โหลดชีตไม่สำเร็จ (ตัวเลขที่เกี่ยวข้องจะเป็น 0):'+retry;
     PROJ.failed.forEach(function(n){
       note+='<br>&nbsp;&nbsp;&bull; <strong>'+projEsc(n)+'</strong> — สาเหตุ: <span style="color:var(--red)">'+projEsc(PROJ.failMsg[n]||'ไม่ทราบ')+'</span> '+
-        '<a href="'+APPS_URL+'?sheet='+encodeURIComponent(n)+'" target="_blank" rel="noopener" style="color:var(--blue)">[เปิดทดสอบชีตนี้]</a>';
+        (AUTH.enabled?'':'<a href="'+APPS_URL+'?sheet='+encodeURIComponent(n)+'" target="_blank" rel="noopener" style="color:var(--blue)">[เปิดทดสอบชีตนี้]</a>');
     });
   }
   Object.keys(PROJ.alias||{}).forEach(function(n){note+='<br>&#9888;&#65039; แท็บ <strong>'+projEsc(n)+'</strong> โหลดได้ แต่ชื่อแท็บในชีตมี'+projEsc(PROJ.alias[n])+' — แนะนำให้ลบชื่อแท็บแล้วพิมพ์ใหม่ให้ตรง';});
@@ -8913,6 +9110,7 @@ async function pdfSendToRecon(pdfId){
 
 async function saveBankToSheets(bank, acctNo, acctName, period, txns) {
   try {
+    var g2 = adminGuard(); if (g2) return {success:false, error:g2};
     var payload = {
       action: 'saveBankStatement',
       bank: bank,
@@ -8926,13 +9124,13 @@ async function saveBankToSheets(bank, acctNo, acctName, period, txns) {
       mode: 'cors',
       credentials: 'omit',
       headers: {'Content-Type': 'text/plain'},
-      body: JSON.stringify(payload)
+      body: appsBody(payload)
     });
     if (!res.ok) {
       console.error('saveBankToSheets HTTP error:', res.status);
       return {success:false, error:'HTTP '+res.status};
     }
-    var data = await res.json();
+    var data = await res.json(); adminFail(data);
     if (data.success) {
       console.log('Saved to Sheets:', data.saved, 'txns for', acctNo);
       return {success:true, saved:data.saved, skipped:data.skipped};
@@ -10556,7 +10754,7 @@ function chqRender(){
 
 Chart.defaults.color='#8FA3B8';Chart.defaults.font.family='Sarabun';Chart.defaults.font.size=12;
 setTimeout(updateApiDot,200);
-loadAllData();
+authStart();
 </script>
 </body>
 </html>
