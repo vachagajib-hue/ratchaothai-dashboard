@@ -155,6 +155,11 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 .dm-cal-cell.selected .dm-cal-dot{background:var(--navy);}
 .dm-cal-summary{margin-top:8px;font-size:11px;color:var(--gold2);font-weight:600;}
 .recon-bank-btn.active{background:rgba(212,168,67,0.15);border-color:var(--gold);color:var(--gold2);}
+.rp-summary{cursor:pointer;display:flex;align-items:center;gap:12px;flex-wrap:wrap;list-style:none;}
+.rp-summary::-webkit-details-marker{display:none;}
+.rp-summary::before{content:"\25B6";font-size:11px;color:var(--muted);transition:transform .15s;}
+details[open]>.rp-summary::before{transform:rotate(90deg);}
+.rp-headline{font-size:12px;font-weight:700;}
 .recon-formula-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;}
 .recon-formula-row:last-child{border:none;font-weight:700;font-size:14px;padding-top:10px;}
 .recon-status-ok{color:var(--green);font-weight:700;}.recon-status-err{color:var(--red);font-weight:700;}.recon-status-na{color:var(--muted);}
@@ -477,23 +482,6 @@ body.viewer-mode a[href*="docs.google.com/spreadsheets"]{display:none!important;
 </div>
 <div class="page" id="page5">
 <div id="bankLoadStatus" class="info-box blue" style="display:none"></div>
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
-<div class="recon-section">
-<div class="recon-section-title">&#128228; อัปโหลด Bank Statement (CSV)</div>
-<div class="recon-upload-zone" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="rHandleDrop(event)">
-<input type="file" id="rFileInput" accept=".csv,.txt" multiple onchange="rHandleFiles(this.files)">
-<div style="font-size:32px;margin-bottom:8px">&#128228;</div>
-<div style="font-size:14px;font-weight:700;color:var(--gold2);margin-bottom:4px">คลิกหรือลาก CSV มาวาง</div>
-<div style="font-size:12px;color:var(--muted)">รองรับ CSV จากทุกธนาคาร</div>
-<div id="rUploadResult"></div>
-</div>
-<div class="csv-guide"><strong>Format CSV:</strong><br>สดง 1: <code>วันที่,รายละเอียด,Debit,Credit,Balance</code><br>ชื่อไฟล์ = รหัสธนาคาร เช่น BBL_account.csv</div>
-</div>
-<div class="recon-section">
-<div class="recon-section-title">&#128203; สูตรกระทบยอด (Bank Reconciliation)</div>
-<div id="reconFormulaBox" style="font-size:13px;line-height:1.8;color:var(--text2)"></div>
-</div>
-</div>
 <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;align-items:center">
 <span style="font-size:12px;color:var(--muted);font-weight:600">เลือกธนาคาร:</span>
 <button class="recon-bank-btn active" onclick="selBank('BBL')" id="rbtn-BBL">&#127982; กรุงเทพ (BBL)</button>
@@ -531,24 +519,23 @@ body.viewer-mode a[href*="docs.google.com/spreadsheets"]{display:none!important;
 </table></div>
 </div>
 <div class="recon-section" id="reconRecPaySection" style="display:none">
-<div class="recon-section-title">&#128260; แยกส่วนต่าง: ขารับ vs ขาจ่าย</div>
+<details id="reconRecPayDetails">
+<summary class="rp-summary"><span class="recon-section-title" style="margin:0">&#128260; แยกส่วนต่างขารับ/ขาจ่าย <span class="chart-sub">(มุมมองเสริม — กดเพื่อกางดู)</span></span><span id="reconRpHeadline" class="rp-headline"></span></summary>
+<div style="margin-top:12px">
 <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
 <span style="font-size:12px;color:var(--muted);font-weight:600">ช่วงเวลา:</span>
 <select class="filter-select" id="reconRpPeriodSel" onchange="selRpPeriod(this.value)" style="font-size:12px"></select>
 <span style="font-size:10.5px;color:var(--muted)">(กรองเฉพาะตารางนี้และหน้าต่างดูรายละเอียด — ไม่กระทบยอดคงเหลือ SAP/Bank ด้านบน)</span>
 </div>
+<details class="rp-legend"><summary style="cursor:pointer;font-size:11.5px;color:var(--blue);margin-bottom:8px">&#8505;&#65039; วิธีอ่านตารางนี้</summary>
 <div style="font-size:11px;color:var(--muted);margin-bottom:8px">เทียบเฉพาะช่วงวันที่ที่มีสเตทเมนท์ธนาคารจริงของบัญชีนั้นๆ (ไม่ใช่ทั้งปี) &nbsp;·&nbsp; รายการที่ Bank มีแต่ SAP ไม่มี จะเช็คหลักฐานจริงจาก Journal Entry ใน SAP ก่อน (Q15_BANK_JOURNAL) — ถ้ามี JE ที่ไม่มีคู่ค้าผูกอยู่และแตะบัญชีธนาคาร ≥2 บัญชี ตรงกับรายการนี้ = <span style="color:var(--teal)">"โอนภายใน"</span> ยืนยันจาก SAP ทันที (ตัวเลขในวงเล็บใต้ยอด) &nbsp;·&nbsp; รายการที่ยังไม่มีหลักฐานใน SAP จะใช้วิธีเดา (heuristic) ต่อ: ต้องเป็นยอดกลม ไม่มีเศษสตางค์ (โอนภายในจริงจะไม่มีเศษ) แล้วลองจับคู่กับบัญชีธนาคารอื่นของบริษัทอัตโนมัติ (±3 วัน จำนวนเงินตรงกัน) — เจอคู่ = "โอนภายใน" เช่นกัน ไม่เจอ = <span style="color:var(--red)">"ต้องตรวจสอบ"</span> จริง (เช่น เงินกู้ยืมนอกระบบที่ยังไม่บันทึก) &nbsp;·&nbsp; <span style="color:var(--gold2)">"SAP มีแต่ไม่พบ Bank"</span> = SAP บันทึกรับ/จ่ายไว้แต่หารายการจริงในสเตทเมนท์บัญชีนี้ไม่เจอ (อาจบันทึกผิดรหัสบัญชี) &nbsp;·&nbsp; ตัวเลข 3 บรรทัดในแต่ละช่อง (โอนภายใน + ต้องตรวจสอบ − SAP มีแต่ไม่พบ) รวมกันจะเท่ากับ Bank ลบ SAP เสมอ</div>
+</details>
 <div style="overflow-x:auto"><table id="reconRecPayTbl">
 <thead><tr><th>บัญชี</th><th>ช่วงที่เทียบ</th><th style="text-align:right">SAP รับ</th><th style="text-align:right">Bank รับ</th><th style="text-align:right">ส่วนต่างรับ</th><th style="text-align:right">SAP จ่าย</th><th style="text-align:right">Bank จ่าย</th><th style="text-align:right">ส่วนต่างจ่าย</th></tr></thead>
 <tbody id="reconRecPayBody"></tbody>
 </table></div>
 </div>
-<div class="recon-section" id="reconTxnSection" style="display:none">
-<div class="recon-section-title">&#128221; รายการเดินบัญชีจาก CSV <span class="chart-sub" id="reconTxnCount"></span></div>
-<div style="overflow:auto;max-height:480px;border:1px solid var(--border);border-radius:8px"><table id="reconTxnTbl">
-<thead style="position:sticky;top:0;z-index:2;background:#0b1626"><tr><th>วันที่</th><th>รายละเอียด</th><th style="text-align:right">Debit</th><th style="text-align:right">Credit</th><th style="text-align:right">ยอดคงเหลือ</th></tr></thead>
-<tbody id="reconTxnBody"></tbody>
-</table></div>
+</details>
 </div>
 </div>
 <div class="page" id="page6">
@@ -6887,7 +6874,7 @@ function bkAllBanksUnmatchedReport(opts){
   if(!grandCount){
     bodyHtml='<div style="text-align:center;color:var(--muted);padding:28px 16px">'+
       (anyBankData?'✅ ไม่มีรายการค้าง — ทุกรายการในสเตทเมนท์ธนาคาร (CSV) ของช่วงที่เลือกกระทบยอดกับ SAP ครบแล้ว':
-      '⚠️ ไม่พบข้อมูล CSV สเตทเมนท์ธนาคารของช่วงที่เลือกในบัญชีใดเลย — กรุณาอัปโหลด CSV ก่อน (หน้า "กระทบยอดธนาคาร" หรือ "อ่าน PDF Bank")')+
+      '⚠️ ไม่พบข้อมูล CSV สเตทเมนท์ธนาคารของช่วงที่เลือกในบัญชีใดเลย — กรุณาอัปโหลดสเตทเมนท์ก่อน (แท็บ "อ่าน PDF Bank")')+
       '</div>';
   } else {
     bodyHtml='<div style="font-size:12px;color:var(--muted);margin:6px 0 12px">รวมทั้งหมด <b style="color:var(--text)">'+grandCount+' รายการ</b> &nbsp;·&nbsp; เงินเข้ารวม <b style="color:var(--green)">'+fmtFull(grandIn)+'</b> &nbsp;·&nbsp; เงินออกรวม <b style="color:var(--red)">'+fmtFull(grandOut)+'</b><br>แถวสีแดง = มีในสเตทเมนท์ธนาคารแล้ว แต่ยังหาบันทึกที่ตรงกัน (วันที่+ยอดเท่ากัน) ใน SAP ไม่พบ · แถวสีส้ม = พบยอดตรงกันใน SAP แล้ว แต่บันทึกคนละวันที่ (น่าจะแค่วันที่เอกสารกับวันที่แบงค์ตัดจริงไม่ตรงกัน ไม่ใช่รายการขาดหาย) · เฉพาะบัญชีและเดือนที่มีทั้งข้อมูล SAP และ CSV เท่านั้น</div>'+
@@ -8008,55 +7995,6 @@ function detectBank(filename){
   if(n.includes('kkp')||n.includes('kiatnakin')||n.includes('kiatn')||n.includes('phatra')||filename.includes('เกียรตินาคิน'))return 'KKP';
   return null;
 }
-function rHandleDrop(e){e.preventDefault();document.querySelector('.recon-upload-zone').classList.remove('drag');rHandleFiles(e.dataTransfer.files);}
-async function rHandleFiles(files){
-  var el=document.getElementById('rUploadResult');
-  var list=Array.from(files);
-  // Sequential processing — parallel requests can overwhelm the Apps Script
-  // endpoint and cause some saves to fail with "Failed to fetch".
-  for(var idx=0;idx<list.length;idx++){
-    var file=list[idx];
-    var tag=list.length>1?'('+(idx+1)+'/'+list.length+') ':'';
-    var bk=detectBank(file.name);
-    if(!bk){
-      el.className='upload-error';
-      el.textContent=tag+'❌ ไม่รู้จักธนาคารจากชื่อไฟล์ “'+file.name+'” — ชื่อไฟล์ต้องมีชื่อ/รหัสธนาคาร (BBL/KBANK/TTB/KTB/SCB/KKP หรือชื่อเต็ม) — กรุณาเปลี่ยนชื่อไฟล์แล้วลองอีกครั้ง';
-      continue;
-    }
-    var raw=await readFileAsText(file);
-    var lines=raw.trim().split('\n'),txns=[],lastBal=0;
-    var dlm=csvDetectDelim(raw);
-    lines.forEach(function(line,i){if(i===0)return;if(!line.trim())return;var cols=parseCSVLine(line,dlm);if(cols.length<3)return;var debit=parseFloat(cols[2]&&cols[2].replace(/[,\s]/g,''))||0,credit=parseFloat(cols[3]&&cols[3].replace(/[,\s]/g,''))||0,bal=parseFloat(cols[4]&&cols[4].replace(/[,\s]/g,''))||0;if(bal)lastBal=bal;txns.push({date:cols[0],desc:cols[1]||'',debit:debit,credit:credit,bal:bal});});
-    if(!txns.length){
-      var dgR=csvDiagnoseEmpty(raw);
-      if(dgR.kind==='empty'){
-        el.className='upload-result';
-        el.textContent=tag+'ℹ️ '+file.name+' ('+bk+') — ไฟล์ว่าง ไม่มีรายการในช่วงนี้ (บัญชีไม่มีเคลื่อนไหว) ไม่ต้องทำอะไร ไม่ได้บันทึกลงชีต';
-      } else {
-        el.className='upload-error';
-        el.textContent=tag+'❌ '+file.name+' — พบ '+dgR.n+' บรรทัดข้อมูล แต่แยกคอลัมน์ไม่ได้ ตรวจสอบ format CSV (คอลัมน์ 1: วันที่,รายละเอียด,Debit,Credit,Balance)';
-      }
-      continue;
-    }
-    // ใช้วิธีดึงเลขบัญชีแบบเดียวกับโซน CSV ในแท็บ "อ่าน PDF Bank" (csvSheetHandle)
-    // เพื่อไม่ให้ AcctNo/AcctName/Period ออกมาไม่เหมือนกันแล้วแต่ว่าอัปโหลดผ่านโซนไหน
-    var acctMatch=file.name.match(/(\d[\d\-x]{5,})/i);
-    var acctNo=acctMatch?acctMatch[1]:file.name.replace(/\.(csv|txt)$/i,'');
-    var period=txns.length?txns[0].date+'-'+txns[txns.length-1].date:'';
-    if(!RBANK_DATA[bk])RBANK_DATA[bk]={uploaded:true,accounts:[]};
-    RBANK_DATA[bk].uploaded=true;
-    RBANK_DATA[bk].period=period||RBANK_DATA[bk].period;
-    RBANK_DATA[bk].accounts.push({acctNo:acctNo,name:acctNo+' (CSV)',bal:lastBal,txns:bkOrderTxns(txns)});
-    el.className='upload-result';el.textContent=tag+'✅ '+file.name+' ('+bk+') — '+txns.length+' รายการ — กำลังบันทึกลง Google Sheets…';
-    RACTIVE=bk;document.querySelectorAll('.recon-bank-btn').forEach(function(b){b.classList.remove('active');});var btn=document.getElementById('rbtn-'+bk);if(btn)btn.classList.add('active');
-    renderRecon();
-    var res=await saveBankToSheetsRetry(bk, acctNo, acctNo+' (CSV)', period, txns.map(function(t){return{date:t.date,description:t.desc,debit:t.debit,credit:t.credit,balance:t.bal};}));
-    if(res.success){el.className='upload-result';el.textContent=tag+'✅ '+file.name+' ('+bk+') — '+txns.length+' รายการ — ✅ บันทึกลง Google Sheets แล้ว';}
-    else{el.className='upload-error';el.textContent=tag+'⚠️ '+file.name+' — อ่านไฟล์สำเร็จ แต่บันทึกลง Google Sheets ไม่สำเร็จ (ลอง 2 ครั้งแล้ว): '+(res.error||'ไม่ทราบสาเหตุ');}
-    await new Promise(function(r){setTimeout(r,300);});
-  }
-}
-
 function selBank(b){RACTIVE=b;document.querySelectorAll('.recon-bank-btn').forEach(function(x){x.classList.remove('active');});var el=document.getElementById('rbtn-'+b);if(el)el.classList.add('active');renderRecon();}
 
 function sapBankOf(name){
@@ -8256,14 +8194,6 @@ function renderRecon(){
     kpi(hasData?'teal':'gold','\ud83c\udfe6','rgba(43,191,179,0.18)','\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21 Bank',hasData?fmtKPI(bankTotal):'\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e2d\u0e31\u0e1b\u0e42\u0e2b\u0e25\u0e14',hasData?'teal':'gold',hasData?(bd.accounts.length+' \u0e1a\u0e31\u0e0d\u0e0a\u0e35 | \u0e04\u0e25\u0e34\u0e01\u0e14\u0e39\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23'):'\u0e2d\u0e31\u0e1b\u0e42\u0e2b\u0e25\u0e14 CSV \u0e2b\u0e23\u0e37\u0e2d\u0e2d\u0e48\u0e32\u0e19 PDF','reconShowBank&&reconShowBank()')+
     kpi(diff===null?'gold':Math.abs(diff||0)<1?'green':'red',diff===null?'\u2753':Math.abs(diff||0)<1?'\u2705':'\u274c','rgba(224,92,92,0.18)','\u0e2a\u0e48\u0e27\u0e19\u0e15\u0e48\u0e32\u0e07 Bank \u2212 SAP',diff===null?'\u2014':fmtKPI(diff),diff===null?'gold':Math.abs(diff||0)<1?'green':'red',diff===null?'\u0e23\u0e2d\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25 Bank':Math.abs(diff||0)<1?'\u2705 \u0e01\u0e23\u0e30\u0e17\u0e1a\u0e41\u0e25\u0e49\u0e27':'\u26a0\ufe0f \u0e04\u0e25\u0e34\u0e01\u0e14\u0e39\u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14','reconShowDiff&&reconShowDiff()');
 
-  // Formula box
-  var fb='';
-  fb+='<div class="recon-formula-row"><span>\u0e22\u0e2d\u0e14\u0e04\u0e07\u0e40\u0e2b\u0e25\u0e37\u0e2d\u0e15\u0e32\u0e21 Bank Statement</span><span>'+(hasData?sf(bankTotal):'\u2014 (\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e2d\u0e31\u0e1b\u0e42\u0e2b\u0e25\u0e14)')+'</span></div>';
-  fb+='<div class="recon-formula-row" style="padding-left:16px;color:var(--muted)"><span>(+) \u0e40\u0e0a\u0e47\u0e04\u0e04\u0e49\u0e32\u0e07\u0e19\u0e33\u0e40\u0e02\u0e49\u0e32 / \u0e40\u0e07\u0e34\u0e19\u0e23\u0e30\u0e2b\u0e27\u0e48\u0e32\u0e07\u0e17\u0e32\u0e07</span><span>\u2014 \u0e01\u0e23\u0e2d\u0e01\u0e40\u0e1e\u0e34\u0e48\u0e21\u0e40\u0e15\u0e34\u0e21</span></div>';
-  fb+='<div class="recon-formula-row" style="padding-left:16px;color:var(--muted)"><span>(-) \u0e14\u0e2d\u0e01\u0e40\u0e1a\u0e35\u0e49\u0e22\u0e23\u0e31\u0e1a / \u0e04\u0e48\u0e32\u0e18\u0e23\u0e23\u0e21\u0e40\u0e19\u0e35\u0e22\u0e21</span><span>\u2014</span></div>';
-  fb+='<div class="recon-formula-row" style="border-top:2px solid var(--border);margin-top:4px;padding-top:8px"><span>\u0e22\u0e2d\u0e14\u0e04\u0e07\u0e40\u0e2b\u0e25\u0e37\u0e2d\u0e15\u0e32\u0e21 SAP (Q03)</span><span>'+sf(sapTotal)+'</span></div>';
-  fb+='<div class="recon-formula-row"><span style="color:'+(diff===null?'var(--muted)':Math.abs(diff||0)<1?'var(--green)':'var(--red)')+'"><strong>\u0e2a\u0e48\u0e27\u0e19\u0e15\u0e48\u0e32\u0e07 = Bank \u2212 SAP</strong></span><span>'+(diff===null?'<span style="color:var(--muted)">\u2014</span>':sf(diff))+'</span></div>';
-  document.getElementById('reconFormulaBox').innerHTML=fb;
 
   // Detail table — เทียบ Bank กับ SAP "ณ วันเดียวกัน" (สิ้นเดือน จาก Q11) แทนการเทียบยอดล่าสุดของ Bank กับยอด SAP ปัจจุบัน (คนละวันที่)
   var tbody=document.getElementById('reconDetailBody');tbody.innerHTML='';
@@ -8722,6 +8652,14 @@ function renderRecon(){
       // ให้เห็นอยู่เสมอ ผู้ใช้จะได้สลับกลับไปเลือก "ทั้งหมด" หรือเดือนอื่นได้โดยไม่ต้องรีเฟรชหน้า
       document.getElementById('reconRecPayBody').innerHTML='<tr><td colspan="8" style="text-align:center;padding:16px;color:var(--muted)">ไม่มีรายการส่วนต่างในช่วงเวลาที่เลือก — ลองเลือก "ทั้งหมด" หรือเดือน/ปีอื่น</td></tr>';
     }
+    (function(){
+      var hl=document.getElementById('reconRpHeadline');if(!hl)return;
+      if(!rpRows.length){hl.style.color='var(--muted)';hl.textContent='ไม่มีรายการในช่วงเวลาที่เลือก';return;}
+      var rc=0,pc=0,n=0;
+      rpRows.forEach(function(r){var a=Math.abs(r.recCheck||0),b=Math.abs(r.payCheck||0);rc+=a;pc+=b;if(a>=1||b>=1)n++;});
+      if(rc<1&&pc<1){hl.style.color='var(--green)';hl.textContent='\u2705 ไม่มียอดต้องตรวจสอบ';}
+      else{hl.style.color='var(--red)';hl.textContent='ต้องตรวจสอบ '+n+' บัญชี · ขารับ '+fmtFull(rc)+' · ขาจ่าย '+fmtFull(pc);}
+    })();
   } else {
     rpSection.style.display='none';
   }
@@ -8749,11 +8687,6 @@ function renderRecon(){
     var cr=months.map(function(m){return allTxns.filter(function(t){return getMonth(t.date||'')===m;}).reduce(function(s,t){return s+(t.credit||0);},0)/1e6;});
     var dr=months.map(function(m){return allTxns.filter(function(t){return getMonth(t.date||'')===m;}).reduce(function(s,t){return s+(t.debit||0);},0)/1e6;});
     chartInstances['reconMonthlyBar']=new Chart(document.getElementById('reconMonthlyBar'),{type:'bar',data:{labels:mlbls,datasets:[{label:'\u0e23\u0e31\u0e1a (Credit)',data:cr,backgroundColor:'rgba(76,175,125,0.8)',borderRadius:4},{label:'\u0e08\u0e48\u0e32\u0e22 (Debit)',data:dr,backgroundColor:'rgba(224,92,92,0.8)',borderRadius:4}]},options:{plugins:{legend:{labels:{color:'#8FA3B8',boxWidth:10}}},scales:{x:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#8FA3B8'}},y:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}},afterDataLimits:function(a){if(a.max>0)a.max=a.max*1.15;}}}},plugins:[barLblPlugin]});
-    document.getElementById('reconTxnSection').style.display='block';
-    var allTxnsSorted=allTxns.slice().sort(function(x,y){return dateKey(x.date).localeCompare(dateKey(y.date));});
-    document.getElementById('reconTxnCount').textContent='('+allTxnsSorted.length+' รายการ)';
-    document.getElementById('reconTxnBody').innerHTML=allTxnsSorted.map(function(t,i){var bg=i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)';return'<tr style="background:'+bg+'"><td style="color:var(--muted);font-size:12px">'+(t.date||'\u2014')+'</td><td>'+(t.desc||'\u2014')+'</td><td class="right red">'+(t.debit?fmtFull(t.debit):'\u2014')+'</td><td class="right green">'+(t.credit?fmtFull(t.credit):'\u2014')+'</td><td class="right" style="font-weight:700">'+(t.bal?fmtFull(t.bal):'\u2014')+'</td></tr>';}).join('');
-
     // Month-end balance per account: last transaction on/before the end of
     // each month (carried forward if no transaction that month).
     document.getElementById('reconMonthlyBalSection').style.display='block';
@@ -8825,7 +8758,6 @@ function renderRecon(){
     document.getElementById('reconSapMonthlySection').style.display='none';
     // No data - show empty chart with message
     chartInstances['reconMonthlyBar']=new Chart(document.getElementById('reconMonthlyBar'),{type:'bar',data:{labels:['\u0e21.\u0e04.','\u0e01.\u0e1e.','\u0e21\u0e35.\u0e04.','\u0e40\u0e21.\u0e22.','\u0e1e.\u0e04.','\u0e21\u0e34.\u0e22.'],datasets:[{label:'\u0e23\u0e31\u0e1a (Credit)',data:[0,0,0,0,0,0],backgroundColor:'rgba(76,175,125,0.3)',borderRadius:4},{label:'\u0e08\u0e48\u0e32\u0e22 (Debit)',data:[0,0,0,0,0,0],backgroundColor:'rgba(224,92,92,0.3)',borderRadius:4}]},options:{plugins:{legend:{labels:{color:'#8FA3B8',boxWidth:10}},subtitle:{display:true,text:'\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49\u0e2d\u0e31\u0e1b\u0e42\u0e2b\u0e25\u0e14 Bank Statement \u2014 \u0e43\u0e0a\u0e49 Tab "\u0e2d\u0e48\u0e32\u0e19 PDF Bank"',color:'#8FA3B8',font:{size:12}}},scales:{x:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#8FA3B8'}},y:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#8FA3B8'},max:10}}}});
-    document.getElementById('reconTxnSection').style.display='none';
   }
 }
 
@@ -9142,8 +9074,7 @@ async function pdfSendToRecon(pdfId){
   var bk=r.bank||pf.bank;
   var acctNo=r.accountNumber||pf.file.name.replace(/\.pdf$/i,'');
   switchTab(5);selBank(bk);
-  var el=document.getElementById('rUploadResult');
-  if(el){el.className='upload-result';el.textContent='กำลังบันทึกข้อมูลจาก PDF: '+acctNo+' ('+r.txns.length+' รายการ) ลง Google Sheets…';}
+  bankSetStatus('&#9203; กำลังบันทึกข้อมูลจาก PDF: '+projEsc(acctNo)+' ('+r.txns.length+' รายการ) ลง Google Sheets…','blue');
   var res=await saveBankToSheetsRetry(bk, acctNo, r.accountName||acctNo, r.period||'', r.txns);
   if(res.success){
     if(!RBANK_DATA[bk])RBANK_DATA[bk]={uploaded:true,period:r.period,accounts:[]};
@@ -9152,10 +9083,10 @@ async function pdfSendToRecon(pdfId){
     var acctData={acctNo:acctNo,name:r.accountName||acctNo,bal:r.closingBalance||0,txns:r.txns.map(function(t){return{date:t.date,desc:t.description,debit:t.debit,credit:t.credit,bal:t.balance};})};
     var existIdx=RBANK_DATA[bk].accounts.findIndex(function(a){return a.acctNo===acctNo;});
     if(existIdx>=0)RBANK_DATA[bk].accounts[existIdx]=acctData;else RBANK_DATA[bk].accounts.push(acctData);
-    if(el){el.className='upload-result';el.textContent='✅ บันทึกข้อมูลจาก PDF: '+acctNo+' ('+r.txns.length+' รายการ) ลง Google Sheets สำเร็จ';}
+    bankSetStatus('&#9989; บันทึกข้อมูลจาก PDF: '+projEsc(acctNo)+' ('+r.txns.length+' รายการ) ลง Google Sheets สำเร็จ','blue');
     if(document.getElementById('page5').classList.contains('active'))renderRecon();
   } else {
-    if(el){el.className='upload-error';el.textContent='❌ บันทึกข้อมูลจาก PDF ไม่สำเร็จ: '+(res.error||'ไม่ทราบสาเหตุ')+' — ลองกด "ส่งไปกระทบยอด" อีกครั้ง';}
+    bankSetStatus('&#10060; บันทึกข้อมูลจาก PDF ไม่สำเร็จ: <span style="color:var(--red)">'+projEsc(String(res.error||'ไม่ทราบสาเหตุ'))+'</span> — ลองกด "ส่งไปกระทบยอด" อีกครั้ง','gold');
   }
 }
 
