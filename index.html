@@ -7051,6 +7051,62 @@ function bkDetectReversals(rows){
       break;
     }
   });
+  // รอบสุดท้าย (เพิ่ม 11 พ.ย. 2569): จับคู่ระดับ "ทั้งใบ JE" เมื่อใบกลับรายการไม่มีคำว่า Reverse ใน memo และเลขเอกสารคนละเลข
+  // เคสจริง 21 ส.ค. 2569 บัญชี 1112-10 (กสิกร 054-3-72482-3): JE 33441 (เครดิต 6 บรรทัด) ถูกยกเลิกด้วย JE 33591 (เดบิต 6 บรรทัดยอดเท่ากันทุกบรรทัด
+  // memo ที่คัดลอกมาเหมือนเดิม ไม่มีคำว่า Reverse และ DocNumber คนละเลข 260870020/021) แล้วลงใหม่ใน JE 33592 (เครดิต 6 บรรทัด ต่างกันที่ค่าธรรมเนียม 15→30)
+  // รอบเดิมจับคู่ได้เฉพาะเมื่อมีหลักฐานใน memo/DocNumber จึงไม่จับ 33441↔33591 ทำให้ใบที่ยกเลิกแล้ว (33441) ถูกจับคู่กับสเตทเมนท์แบงค์แทนใบที่ถูกต้อง (33592)
+  // กติกา (เข้มกว่าการจับทีละบรรทัดมาก เพราะเทียบทั้งใบ): เฉพาะบรรทัดที่ยังไม่ถูกจับคู่ · วันที่เดียวกัน · ≥2 บรรทัดต่อใบ · แต่ละใบเป็นฝั่งเดียว (เดบิตล้วน/เครดิตล้วน)
+  // · ชุดยอดทุกบรรทัดเท่ากันเป๊ะและตรงข้ามกัน · Origin เดียวกัน (ถ้ามีทั้งคู่) · ต่างเลข JE · ถ้ามีใบเครดิต/เดบิตหลายใบที่ชุดยอดเหมือนกัน ใช้ใบที่เลข JE น้อยสุดเป็นต้นฉบับ
+  // (ยอดสุทธิไม่เปลี่ยนไม่ว่าจับใบไหน) ใบที่ชุดยอดต่างกัน (เช่น 33592 ที่ค่าธรรมเนียมต่าง) จะไม่ถูกจับ จึงยังไปเทียบแบงค์ตามปกติ
+  (function(){
+    var jes={},keys=[];
+    rows.forEach(function(r,i){
+      var tid=String(r.tid||'').trim();if(!tid)return;
+      var k=(r.date||'')+'#'+tid;
+      if(!jes[k]){jes[k]={tid:tid,date:r.date||'',origin:String(r.origin||'').trim(),dl:[],cl:[],bad:false};keys.push(k);}
+      var je=jes[k];
+      var d=r.debit||0,c=r.credit||0;
+      if(!d&&!c)return;                       // บรรทัดศูนย์ ไม่นับ
+      if((d&&c)||flags[i]){je.bad=true;return;} // มีสองฝั่งในบรรทัดเดียว หรือถูกจับคู่ไปแล้ว → ไม่ใช้ใบนี้
+      if(d)je.dl.push(i);else je.cl.push(i);
+    });
+    var amtOf=function(i){return Math.round(Math.abs(rows[i].debit||rows[i].credit||0)*100)/100;};
+    var cand={};
+    keys.forEach(function(k){
+      var je=jes[k];
+      if(je.bad)return;
+      var side=je.dl.length&&!je.cl.length?'D':(je.cl.length&&!je.dl.length?'C':'');
+      var lines=side==='D'?je.dl:je.cl;
+      if(!side||lines.length<2)return;
+      je.side=side;je.lines=lines;
+      je.sig=lines.map(amtOf).sort(function(a,b){return a-b;}).map(function(x){return x.toFixed(2);}).join(',');
+      (cand[je.date]=cand[je.date]||{D:[],C:[]})[side].push(je);
+    });
+    var tidNum=function(je){return parseInt(je.tid,10)||0;};
+    Object.keys(cand).forEach(function(dt){
+      var Dl=cand[dt].D.sort(function(a,b){return tidNum(a)-tidNum(b);});
+      var Cl=cand[dt].C.sort(function(a,b){return tidNum(a)-tidNum(b);});
+      Dl.forEach(function(dj){
+        if(dj.used)return;
+        for(var m=0;m<Cl.length;m++){
+          var cj=Cl[m];
+          if(cj.used||cj.tid===dj.tid||cj.sig!==dj.sig)continue;
+          if(cj.origin&&dj.origin&&cj.origin!==dj.origin)continue;
+          dj.used=cj.used=true;
+          // จับคู่ทีละบรรทัดตามยอดเท่ากัน (เรียงตามลำดับแถว)
+          var pool={};
+          cj.lines.forEach(function(ci){var a=amtOf(ci).toFixed(2);(pool[a]=pool[a]||[]).push(ci);});
+          dj.lines.forEach(function(di){
+            var a=amtOf(di).toFixed(2),ci=(pool[a]||[]).shift();
+            if(ci===undefined)return;
+            pairId++;flags[di]=pairId;flags[ci]=pairId;
+            debitTotal+=rows[di].debit;creditTotal+=rows[ci].credit;
+          });
+          break;
+        }
+      });
+    });
+  })();
   return {flags:flags,pairCount:pairId,debitTotal:debitTotal,creditTotal:creditTotal};
 }
 function bkResetOpening(){
