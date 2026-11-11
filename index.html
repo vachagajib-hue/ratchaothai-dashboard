@@ -348,7 +348,7 @@ body.viewer-mode a[href*="docs.google.com/spreadsheets"]{display:none!important;
 <div class="tab" onclick="switchTab(3)">&#128202; รายรับ-รายจ่าย</div>
 <div class="tab" onclick="switchTab(4)">&#127959; Cash Flow ตามโครงการ</div>
 <div class="tab" onclick="switchTab(5)">&#127982; กระทบยอดธนาคาร</div>
-<div class="tab" onclick="switchTab(6)">&#128196; อ่าน PDF Bank</div>
+<div class="tab" onclick="switchTab(6)">&#128196; อัปโหลด Bank Statement</div>
 <div class="tab" onclick="switchTab(7)">&#9878;&#65039; หักกลบ AR/AP</div>
 <div class="tab" onclick="switchTab(8)">&#128176; สมุดบัญชีธนาคาร</div>
 <div class="tab" onclick="switchTab(9)">&#128197; รายได้-ค่าใช้จ่ายตามดิว</div>
@@ -6705,7 +6705,7 @@ function bkFilteredDiffSummary(opts){
     var skIn=skippedNoBank.reduce(function(t,x){return t+x.inn;},0),skOut=skippedNoBank.reduce(function(t,x){return t+x.out;},0);
     skipBanner='<div style="background:rgba(212,168,67,0.12);border:1px solid var(--gold);border-radius:10px;padding:10px 14px;font-size:12.5px;margin-bottom:14px"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><span>⚠️ <b>มี '+Object.keys(skAcct).length+' บัญชี ('+skippedNoBank.length+' บัญชี-เดือน) ที่ SAP มีรายการ แต่ยังไม่มีสเตทเมนท์ — ไม่ได้รวมในตารางด้านล่าง</b> (SAP สุทธิ เงินเข้า '+fmtFull(skIn)+' · เงินออก '+fmtFull(skOut)+')</span><button class="hbtn" onclick="var d=document.getElementById(\'bkSkipList\');d.style.display=d.style.display===\'none\'?\'block\':\'none\'">ดูรายชื่อบัญชี</button></div>'+
       '<div id="bkSkipList" style="display:none;margin-top:10px;overflow:auto;max-height:240px"><table class="bkd-dt" style="width:100%"><thead><tr><th>บัญชี</th><th>เดือน/ปี</th><th style="text-align:right">รายการ SAP</th><th style="text-align:right">เงินเข้า SAP สุทธิ</th><th style="text-align:right">เงินออก SAP สุทธิ</th></tr></thead><tbody>'+
-      skippedNoBank.map(function(x){return '<tr><td>'+bkDiffEsc(x.acctCode+' — '+(x.acctName||''))+'</td><td>'+ymLabelThai(x.ym)+'</td><td style="text-align:right">'+x.n+'</td><td style="text-align:right">'+fmtFull(x.inn)+'</td><td style="text-align:right">'+fmtFull(x.out)+'</td></tr>';}).join('')+'</tbody></table><div style="font-size:11px;color:var(--muted);margin-top:6px">โหลดสเตทเมนท์ที่ขาดที่เมนู "กระทบยอดธนาคาร" / "อ่าน PDF Bank" หรือดูสถานะทุกบัญชีที่ส่วน "ความครบถ้วนของสเตทเมนท์แบงค์" ด้านบนของหน้านี้</div></div></div>';
+      skippedNoBank.map(function(x){return '<tr><td>'+bkDiffEsc(x.acctCode+' — '+(x.acctName||''))+'</td><td>'+ymLabelThai(x.ym)+'</td><td style="text-align:right">'+x.n+'</td><td style="text-align:right">'+fmtFull(x.inn)+'</td><td style="text-align:right">'+fmtFull(x.out)+'</td></tr>';}).join('')+'</tbody></table><div style="font-size:11px;color:var(--muted);margin-top:6px">โหลดสเตทเมนท์ที่ขาดที่เมนู "กระทบยอดธนาคาร" / "อัปโหลด Bank Statement" หรือดูสถานะทุกบัญชีที่ส่วน "ความครบถ้วนของสเตทเมนท์แบงค์" ด้านบนของหน้านี้</div></div></div>';
   }
   var bodyHtml;
   if(!anyData){
