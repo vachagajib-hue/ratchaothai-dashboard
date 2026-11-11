@@ -588,7 +588,7 @@ body.viewer-mode a[href*="docs.google.com/spreadsheets"]{display:none!important;
 
 <div class="page" id="page8">
 <div class="info-box blue" style="margin-bottom:16px"><div class="info-box-title">&#128176; สมุดบัญชีธนาคาร</div>เลือกบัญชีธนาคาร + เดือน/ปี เพื่อดูรายการเดินบัญชีจริงจาก SAP (Q15_BANK_JOURNAL) เรียงตามวันที่พร้อมยอดคงเหลือสะสมทีละบรรทัด — ใช้กระทบยอดกับสเตทเมนท์ธนาคารได้ง่ายกว่าหน้า "กระทบยอดธนาคาร" (เฉพาะบัญชีธนาคารจริง 1112-xx/1113-xx ไม่รวมเงินสดย่อย)</div>
-<div class="recon-section" id="bkCovSection" style="margin-bottom:16px"></div>
+<details class="recon-section" id="bkCovSection" style="margin-bottom:16px"><summary class="rp-summary"><span class="recon-section-title" style="margin:0">&#128450;&#65039; ความครบถ้วนของสเตทเมนท์แบงค์ <span class="chart-sub">(กดเพื่อกางดู)</span></span><span class="rp-headline" id="bkCovHeadline"></span></summary><div id="bkCovBody" style="margin-top:12px"></div></details>
 <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px">
 <span style="font-size:12px;color:var(--muted);font-weight:600">เลือกบัญชี:</span>
 <input id="bkAcctSearch" class="filter-select" type="search" autocomplete="off" placeholder="&#128269; พิมพ์ค้นหา เช่น 72482 / กสิกร / 1113-06" style="width:230px;cursor:text" oninput="bkAcctFilter(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();bkAcctFilter(this.value,true);}">
@@ -3349,10 +3349,10 @@ function bkCovLabel(st,hasFile,bankN,n){
 function bkCovSetM(ym){BK_COV.ym=ym;BK_COV.f='all';bkCovRender();}
 function bkCovSetF(f){BK_COV.f=f;bkCovRender();}
 function bkCovRender(){
-  var el=document.getElementById('bkCovSection');
+  var el=document.getElementById('bkCovBody'),hd=document.getElementById('bkCovHeadline');
   if(!el)return;
   var months=bkCovMonths();
-  if(!months.length){el.innerHTML='<div class="recon-section-title">🗂️ ความครบถ้วนของสเตทเมนท์แบงค์</div><div style="font-size:12px;color:var(--muted)">— ยังไม่มีข้อมูล SAP (Q15) —</div>';return;}
+  if(!months.length){el.innerHTML='<div style="font-size:12px;color:var(--muted)">— ยังไม่มีข้อมูล SAP (Q15) —</div>';if(hd)hd.innerHTML='';return;}
   if(months.indexOf(BK_COV.ym)<0)BK_COV.ym=months[months.length-1];
   var ym=BK_COV.ym;
   var rows=bkAccounts().map(function(a){return bkCovStat(a,ym);});
@@ -3367,7 +3367,13 @@ function bkCovRender(){
   var body=show.map(function(r){
     return '<tr'+(r.st==='bad'||(r.st==='warn'&&r.n>0)?' class="cov-hl"':'')+'><td style="font-size:12px">'+bkDiffEsc(r.code+' — '+(r.name||''))+'</td><td class="cov-st cov-s-'+r.st+'">'+bkCovLabel(r.st,r.hasFile,r.bankN,r.n)+'</td><td class="right" style="font-size:12px">'+r.n+'</td><td class="right" style="font-size:12px">'+(r.inn?fmtFull(r.inn):'—')+'</td><td class="right" style="font-size:12px">'+(r.out?fmtFull(r.out):'—')+'</td><td class="right" style="font-size:12px">'+(r.bankN||'—')+'</td><td style="font-size:12px">'+bkDiffEsc(r.hint)+'</td></tr>';
   }).join('')||'<tr><td colspan="7" style="color:var(--muted);padding:14px">— ไม่มีรายการ —</td></tr>';
-  el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><div class="recon-section-title" style="margin-bottom:0">🗂️ ความครบถ้วนของสเตทเมนท์แบงค์</div><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'+mBtns+' <button class="hbtn" onclick="bkCovRender()" title="คำนวณใหม่">&#8635;</button></div></div>'+
+  if(hd){
+    var hdTxt=ymLabelThai(ym)+' · ';
+    if(cnt.bad||cnt.warn)hdTxt+=(cnt.bad?'<b style="color:var(--red)">ขาดสเตทเมนท์ '+cnt.bad+'</b>':'')+(cnt.bad&&cnt.warn?' · ':'')+(cnt.warn?'<b style="color:var(--gold2)">ต้องตรวจ '+cnt.warn+'</b>':'')+' บัญชี';
+    else hdTxt+='<span style="color:var(--green)">✅ ไม่มีบัญชีที่ต้องตรวจ</span>';
+    hd.innerHTML=hdTxt+' <span style="color:var(--muted)">(ครบ '+cnt.ok+'/'+rows.length+')</span>';
+  }
+  el.innerHTML='<div style="display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap;align-items:center">'+mBtns+' <button class="hbtn" onclick="bkCovRender()" title="คำนวณใหม่">&#8635;</button></div>'+
     '<div style="font-size:12.5px;margin-top:10px">มีสเตทเมนท์ครบ <b>'+cnt.ok+'</b> จาก '+rows.length+' บัญชี'+(cnt.bad?' · <b style="color:var(--red)">ขาด '+cnt.bad+' บัญชีที่ SAP มีรายการ</b>':'')+(cnt.warn?' · <b style="color:var(--gold2)">ต้องตรวจ '+cnt.warn+' บัญชี</b>':'')+'</div>'+
     '<div class="cov-bar"><i style="width:'+cnt.ok/tot*100+'%;background:var(--green)"></i><i style="width:'+cnt.warn/tot*100+'%;background:var(--gold2)"></i><i style="width:'+cnt.bad/tot*100+'%;background:var(--red)"></i><i style="width:'+cnt.mu/tot*100+'%;background:#4a5d73"></i></div>'+
     '<div class="cov-chips">'+chipHtml+'</div>'+
