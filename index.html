@@ -48,8 +48,8 @@ header{background:var(--navy2);border-bottom:2px solid var(--gold);padding:0 24p
 .hbtn-green{background:rgba(52,168,83,0.1);border-color:rgba(52,168,83,0.35);color:#4CAF7D;text-decoration:none;}.hbtn-green:hover{background:rgba(52,168,83,0.2);}
 .hbtn-muted{background:rgba(255,255,255,0.05);border-color:var(--border);color:var(--muted);}.hbtn-muted:hover{background:rgba(255,255,255,0.1);color:var(--text);}
 .apikey-indicator{width:7px;height:7px;border-radius:50%;display:inline-block;}.apikey-indicator.set{background:var(--green);}.apikey-indicator.notset{background:var(--red);}
-.tab-bar{background:var(--navy2);border-bottom:1px solid var(--border);display:flex;padding:0 24px;gap:2px;overflow-x:auto;}
-.tab{padding:13px 18px;font-size:13px;font-weight:500;color:var(--muted);border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap;transition:color 0.2s,border-color 0.2s;}
+.tab-bar{background:var(--navy2);border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;padding:0 8px;gap:0;overflow:visible;}
+.tab{padding:12px 8px;font-size:12px;font-weight:500;color:var(--muted);border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap;transition:color 0.2s,border-color 0.2s;}
 .tab:hover{color:var(--text2);}.tab.active{color:var(--gold2);border-bottom-color:var(--gold);}
 .filter-bar{background:rgba(255,255,255,0.025);border-bottom:1px solid var(--border);padding:10px 24px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
 .filter-label{font-size:12px;color:var(--muted);font-weight:600;white-space:nowrap;}
@@ -160,6 +160,11 @@ td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{
 .rp-summary::before{content:"\25B6";font-size:11px;color:var(--muted);transition:transform .15s;}
 details[open]>.rp-summary::before{transform:rotate(90deg);}
 .rp-headline{font-size:12px;font-weight:700;}
+.bk-menu{position:relative;display:inline-block;}
+.bk-menu>summary{list-style:none;cursor:pointer;}.bk-menu>summary::-webkit-details-marker{display:none;}
+.bk-menu-panel{position:absolute;top:calc(100% + 6px);left:0;z-index:40;min-width:320px;background:#0f1e32;border:1px solid var(--border);border-radius:10px;padding:6px;box-shadow:0 10px 30px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:2px;}
+.bk-menu-panel button{background:none;border:none;color:var(--text);font-family:'Sarabun',sans-serif;font-size:12.5px;text-align:left;padding:9px 12px;border-radius:7px;cursor:pointer;}
+.bk-menu-panel button:hover{background:rgba(255,255,255,.08);}
 .recon-formula-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;}
 .recon-formula-row:last-child{border:none;font-weight:700;font-size:14px;padding-top:10px;}
 .recon-status-ok{color:var(--green);font-weight:700;}.recon-status-err{color:var(--red);font-weight:700;}.recon-status-na{color:var(--muted);}
@@ -344,16 +349,16 @@ body.viewer-mode a[href*="docs.google.com/spreadsheets"]{display:none!important;
 <div class="tab-bar">
 <div class="tab active" onclick="switchTab(0)">&#127968; ภาพรวมผู้บริหาร</div>
 <div class="tab" onclick="switchTab(1)">&#128101; ลูกหนี้ (AR)</div>
-<div class="tab" onclick="switchTab(2)">&#127982; เจ้าหนี้ &amp; แผนเงิน (AP)</div>
+<div class="tab" onclick="switchTab(2)">&#127982; เจ้าหนี้ (AP)</div>
 <div class="tab" onclick="switchTab(3)">&#128202; รายรับ-รายจ่าย</div>
-<div class="tab" onclick="switchTab(4)">&#127959; Cash Flow ตามโครงการ</div>
+<div class="tab" onclick="switchTab(4)">&#127959; Cash Flow โครงการ</div>
 <div class="tab" onclick="switchTab(5)">&#127982; กระทบยอดธนาคาร</div>
-<div class="tab" onclick="switchTab(6)">&#128196; อัปโหลด Bank Statement</div>
+<div class="tab" onclick="switchTab(6)">&#128196; อัปโหลด Statement</div>
 <div class="tab" onclick="switchTab(7)">&#9878;&#65039; หักกลบ AR/AP</div>
 <div class="tab" onclick="switchTab(8)">&#128176; สมุดบัญชีธนาคาร</div>
-<div class="tab" onclick="switchTab(9)">&#128197; รายได้-ค่าใช้จ่ายตามดิว</div>
+<div class="tab" onclick="switchTab(9)">&#128197; รายได้-รายจ่ายตามดิว</div>
 <div class="tab" onclick="switchTab(10)">&#128202; ค้างจ่ายสะสมรายเดือน</div>
-<div class="tab" onclick="switchTab(11)">&#129534; เช็คจ่ายรอผ่านธนาคาร</div>
+<div class="tab" onclick="switchTab(11)">&#129534; เช็คจ่ายรอผ่าน</div>
 <div class="tab" onclick="switchTab(12)">&#129689; แผนแบ่งชำระเจ้าหนี้</div>
 </div>
 <div class="filter-bar">
@@ -494,8 +499,7 @@ body.viewer-mode a[href*="docs.google.com/spreadsheets"]{display:none!important;
 <button class="recon-bank-btn" onclick="selBank('ALL')" id="rbtn-ALL">&#128203; ทุกธนาคาร</button>
 </div>
 <div class="kpi-row" id="reconKpiRow"></div>
-<div class="recon-row-2">
-<div class="recon-section"><div class="recon-section-title">&#128202; เปรียบ SAP vs Bank</div><canvas id="reconCompareBar" style="max-height:200px"></canvas></div>
+<div class="recon-row-2" style="grid-template-columns:1fr">
 <div class="recon-section"><div class="recon-section-title">&#128202; ยอดรับ-จ่ายจาก Bank</div><canvas id="reconMonthlyBar" style="max-height:200px"></canvas></div>
 </div>
 <div class="recon-section" id="reconMonthlyBalSection" style="display:none">
@@ -588,7 +592,7 @@ body.viewer-mode a[href*="docs.google.com/spreadsheets"]{display:none!important;
 </div>
 
 <div class="page" id="page8">
-<div class="info-box blue" style="margin-bottom:16px"><div class="info-box-title">&#128176; สมุดบัญชีธนาคาร</div>เลือกบัญชีธนาคาร + เดือน/ปี เพื่อดูรายการเดินบัญชีจริงจาก SAP (Q15_BANK_JOURNAL) เรียงตามวันที่พร้อมยอดคงเหลือสะสมทีละบรรทัด — ใช้กระทบยอดกับสเตทเมนท์ธนาคารได้ง่ายกว่าหน้า "กระทบยอดธนาคาร" (เฉพาะบัญชีธนาคารจริง 1112-xx/1113-xx ไม่รวมเงินสดย่อย)</div>
+<details class="info-box blue" id="bkInfoBox" style="margin-bottom:12px"><summary class="rp-summary" style="font-weight:700;font-size:13px">&#128176; สมุดบัญชีธนาคาร <span style="font-weight:400;font-size:11.5px;opacity:.75">(วิธีใช้ — กดเพื่อกาง)</span></summary><div style="margin-top:8px">เลือกบัญชีธนาคาร + เดือน/ปี เพื่อดูรายการเดินบัญชีจริงจาก SAP (Q15_BANK_JOURNAL) เรียงตามวันที่พร้อมยอดคงเหลือสะสมทีละบรรทัด — ใช้กระทบยอดกับสเตทเมนท์ธนาคารได้ง่ายกว่าหน้า "กระทบยอดธนาคาร" (เฉพาะบัญชีธนาคารจริง 1112-xx/1113-xx ไม่รวมเงินสดย่อย)</div></details>
 <details class="recon-section" id="bkCovSection" style="margin-bottom:16px"><summary class="rp-summary"><span class="recon-section-title" style="margin:0">&#128450;&#65039; ความครบถ้วนของสเตทเมนท์แบงค์ <span class="chart-sub">(กดเพื่อกางดู)</span></span><span class="rp-headline" id="bkCovHeadline"></span></summary><div id="bkCovBody" style="margin-top:12px"></div></details>
 <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px">
 <span style="font-size:12px;color:var(--muted);font-weight:600">เลือกบัญชี:</span>
@@ -598,11 +602,13 @@ body.viewer-mode a[href*="docs.google.com/spreadsheets"]{display:none!important;
 <span style="font-size:12px;color:var(--muted);font-weight:600;margin-left:8px">เดือน/ปี:</span>
 <select id="bkYmSel" class="filter-select" onchange="bkRender()"></select>
 <button class="hbtn hbtn-gold" id="bkBackRecon" style="display:none" onclick="bkBackToRecon()">&#8592; กลับตารางเทียบยอด</button>
-<button class="hbtn" onclick="bkOpenReportFilter()">&#128269; ตัวกรองรายงาน (หลายบัญชี/หลายเดือน)</button>
-<button class="hbtn hbtn-gold" onclick="bkOpenIncomingFilter()">&#128229; รายงานเงินรับเข้าจริง (เฉพาะ Incoming)</button>
-<button class="hbtn" onclick="bkReplacedReport()">&#8505;&#65039; รายการยกเลิกแล้วออกใหม่</button>
-<button class="hbtn" onclick="bkConfirmedReport()">&#128203; รายการที่ยืนยันเอง</button>
-<button class="hbtn hbtn-gold" onclick="kbOpen()">&#127974; ใบโอน KKBIZ</button>
+<details class="bk-menu" id="bkRptMenu"><summary class="hbtn hbtn-gold">&#128209; รายงาน &#9662;</summary><div class="bk-menu-panel">
+<button onclick="bkMenuGo(bkOpenReportFilter)">&#128269; ตัวกรองรายงาน (หลายบัญชี/หลายเดือน)</button>
+<button onclick="bkMenuGo(bkOpenIncomingFilter)">&#128229; รายงานเงินรับเข้าจริง (เฉพาะ Incoming)</button>
+<button onclick="bkMenuGo(bkReplacedReport)">&#8505;&#65039; รายการยกเลิกแล้วออกใหม่</button>
+<button onclick="bkMenuGo(bkConfirmedReport)">&#128203; รายการที่ยืนยันเอง</button>
+<button onclick="bkMenuGo(kbOpen)">&#127974; ใบโอน KKBIZ</button>
+</div></details>
 <button class="hbtn hbtn-gold" style="margin-left:auto" onclick="bkAllBanksUnmatchedReport()">&#128203; รายงานยังไม่พบใน SAP (ทุกธนาคาร)</button>
 </div>
 <div class="kpi-row" id="bkKpiRow"></div>
@@ -3384,6 +3390,8 @@ function bkCovRender(){
     '<div style="overflow:auto;max-height:420px"><table><thead><tr><th>บัญชี (SAP)</th><th>สถานะสเตทเมนท์</th><th style="text-align:right">รายการ SAP</th><th style="text-align:right">เงินเข้า SAP</th><th style="text-align:right">เงินออก SAP</th><th style="text-align:right">รายการแบงค์</th><th>สิ่งที่ต้องทำ</th></tr></thead><tbody>'+body+'</tbody></table></div>'+
     '<div style="font-size:11px;color:var(--muted);margin-top:8px">คำนวณจากรายการ SAP (Q15 ไม่นับคู่กลับรายการ) ของบัญชีนั้นในเดือนที่เลือก เทียบกับสเตทเมนท์ที่โหลดจากชีต BANK_STATEMENTS · เฉพาะบัญชีธนาคาร 1112-xx / 1113-xx</div>';
 }
+function bkMenuGo(fn){var m=document.getElementById('bkRptMenu');if(m)m.open=false;try{fn();}catch(e){console.error(e);}}
+document.addEventListener('click',function(e){var m=document.getElementById('bkRptMenu');if(m&&m.open&&!m.contains(e.target))m.open=false;});
 function bkPopulate(){
   try{bkCovRender();}catch(e){console.error(e);}
   var accts=bkAccounts();
@@ -6709,7 +6717,7 @@ function bkFilteredDiffSummary(opts){
     var skIn=skippedNoBank.reduce(function(t,x){return t+x.inn;},0),skOut=skippedNoBank.reduce(function(t,x){return t+x.out;},0);
     skipBanner='<div style="background:rgba(212,168,67,0.12);border:1px solid var(--gold);border-radius:10px;padding:10px 14px;font-size:12.5px;margin-bottom:14px"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><span>⚠️ <b>มี '+Object.keys(skAcct).length+' บัญชี ('+skippedNoBank.length+' บัญชี-เดือน) ที่ SAP มีรายการ แต่ยังไม่มีสเตทเมนท์ — ไม่ได้รวมในตารางด้านล่าง</b> (SAP สุทธิ เงินเข้า '+fmtFull(skIn)+' · เงินออก '+fmtFull(skOut)+')</span><button class="hbtn" onclick="var d=document.getElementById(\'bkSkipList\');d.style.display=d.style.display===\'none\'?\'block\':\'none\'">ดูรายชื่อบัญชี</button></div>'+
       '<div id="bkSkipList" style="display:none;margin-top:10px;overflow:auto;max-height:240px"><table class="bkd-dt" style="width:100%"><thead><tr><th>บัญชี</th><th>เดือน/ปี</th><th style="text-align:right">รายการ SAP</th><th style="text-align:right">เงินเข้า SAP สุทธิ</th><th style="text-align:right">เงินออก SAP สุทธิ</th></tr></thead><tbody>'+
-      skippedNoBank.map(function(x){return '<tr><td>'+bkDiffEsc(x.acctCode+' — '+(x.acctName||''))+'</td><td>'+ymLabelThai(x.ym)+'</td><td style="text-align:right">'+x.n+'</td><td style="text-align:right">'+fmtFull(x.inn)+'</td><td style="text-align:right">'+fmtFull(x.out)+'</td></tr>';}).join('')+'</tbody></table><div style="font-size:11px;color:var(--muted);margin-top:6px">โหลดสเตทเมนท์ที่ขาดที่เมนู "กระทบยอดธนาคาร" / "อัปโหลด Bank Statement" หรือดูสถานะทุกบัญชีที่ส่วน "ความครบถ้วนของสเตทเมนท์แบงค์" ด้านบนของหน้านี้</div></div></div>';
+      skippedNoBank.map(function(x){return '<tr><td>'+bkDiffEsc(x.acctCode+' — '+(x.acctName||''))+'</td><td>'+ymLabelThai(x.ym)+'</td><td style="text-align:right">'+x.n+'</td><td style="text-align:right">'+fmtFull(x.inn)+'</td><td style="text-align:right">'+fmtFull(x.out)+'</td></tr>';}).join('')+'</tbody></table><div style="font-size:11px;color:var(--muted);margin-top:6px">โหลดสเตทเมนท์ที่ขาดที่เมนู "กระทบยอดธนาคาร" / "อัปโหลด Statement" หรือดูสถานะทุกบัญชีที่ส่วน "ความครบถ้วนของสเตทเมนท์แบงค์" ด้านบนของหน้านี้</div></div></div>';
   }
   var bodyHtml;
   if(!anyData){
@@ -8675,8 +8683,6 @@ function renderRecon(){
   }
 
   // Charts
-  if(chartInstances['reconCompareBar'])chartInstances['reconCompareBar'].destroy();
-  chartInstances['reconCompareBar']=new Chart(document.getElementById('reconCompareBar'),{type:'bar',data:{labels:sapList.map(function(a){return a.code;}),datasets:[{label:'SAP',data:sapList.map(function(a){return +(a.bal/1e6).toFixed(2);}),backgroundColor:'rgba(91,143,249,0.7)',borderRadius:4},{label:'Bank',data:sapList.map(function(a){if(!hasData)return 0;var ba=bd.accounts.find(function(x){ return acctMatches(x.acctNo, a.name); });return ba?+(ba.bal/1e6).toFixed(2):0;}),backgroundColor:'rgba(43,191,179,0.7)',borderRadius:4}]},options:{plugins:{legend:{labels:{color:'#8FA3B8',boxWidth:10}}},scales:{x:{grid:{color:gc},ticks:{color:'#8FA3B8',font:{size:9}}},y:{grid:{color:gc},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}}}}}});
 
   // Always destroy charts before re-render
   if(chartInstances['reconMonthlyBar'])chartInstances['reconMonthlyBar'].destroy();
@@ -8694,8 +8700,10 @@ function renderRecon(){
     allTxns.forEach(function(t){var dk1=dateKey(t.date||'');if(dk1&&dk1.length===8&&parseInt(dk1.slice(0,4),10)===maxYear){var mn1=parseInt(dk1.slice(4,6),10);if(mn1>=1&&mn1<=12&&mn1>maxMonthNum)maxMonthNum=mn1;}});
     var months=[];for(var _mi=1;_mi<=maxMonthNum;_mi++){months.push(String(_mi).padStart(2,'0'));}
     var mlbls=months.map(function(m){return DM_MTHAI[m]||m;});
-    var cr=months.map(function(m){return allTxns.filter(function(t){return getMonth(t.date||'')===m;}).reduce(function(s,t){return s+(t.credit||0);},0)/1e6;});
-    var dr=months.map(function(m){return allTxns.filter(function(t){return getMonth(t.date||'')===m;}).reduce(function(s,t){return s+(t.debit||0);},0)/1e6;});
+    // กรองด้วย ปี+เดือน (เดิมเทียบเลขเดือนอย่างเดียว ทำให้เดือนเดียวกันของคนละปีถูกรวมกัน)
+    var inYm=function(t,m){var dk=dateKey(t.date||'');return !!dk&&dk.length===8&&dk.slice(0,4)===String(maxYear)&&dk.slice(4,6)===m;};
+    var cr=months.map(function(m){return allTxns.filter(function(t){return inYm(t,m);}).reduce(function(s,t){return s+(t.credit||0);},0)/1e6;});
+    var dr=months.map(function(m){return allTxns.filter(function(t){return inYm(t,m);}).reduce(function(s,t){return s+(t.debit||0);},0)/1e6;});
     chartInstances['reconMonthlyBar']=new Chart(document.getElementById('reconMonthlyBar'),{type:'bar',data:{labels:mlbls,datasets:[{label:'\u0e23\u0e31\u0e1a (Credit)',data:cr,backgroundColor:'rgba(76,175,125,0.8)',borderRadius:4},{label:'\u0e08\u0e48\u0e32\u0e22 (Debit)',data:dr,backgroundColor:'rgba(224,92,92,0.8)',borderRadius:4}]},options:{plugins:{legend:{labels:{color:'#8FA3B8',boxWidth:10}}},scales:{x:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#8FA3B8'}},y:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}},afterDataLimits:function(a){if(a.max>0)a.max=a.max*1.15;}}}},plugins:[barLblPlugin]});
     // Month-end balance per account: last transaction on/before the end of
     // each month (carried forward if no transaction that month).
@@ -8705,7 +8713,8 @@ function renderRecon(){
     var balRows=bd.accounts.map(function(a){
       var sorted=(a.txns||[]).slice().sort(function(x,y){return dateKey(x.date).localeCompare(dateKey(y.date));});
       var vals=months.map(function(m){
-        var upTo=sorted.filter(function(t){var mk=getMonth(t.date||'');return mk&&mk<=m;});
+        // ยอดสิ้นเดือน = รายการสุดท้ายที่ "ไม่เกินสิ้นเดือนนั้นของปี maxYear" เทียบเป็น ปี+เดือน (รายการปีก่อนยกยอดมาได้ถูกต้อง)
+        var upTo=sorted.filter(function(t){var dk=dateKey(t.date||'');return dk&&dk.length===8&&dk.slice(0,6)<=(String(maxYear)+m);});
         return upTo.length?upTo[upTo.length-1].bal||0:null;
       });
       return {name:a.acctNo,vals:vals};
