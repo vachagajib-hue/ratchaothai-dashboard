@@ -10775,23 +10775,23 @@ authStart();
 //   (เท่ากัน → ยอดค้างมากกว่าก่อน) · ในรายเดียวกันตัดใบเก่าสุดก่อน · ใบลดหนี้/เครดิตหักจากใบเก่าสุดของรายนั้น
 // เงินทุกยอดคำนวณเป็นสตางค์ (จำนวนเต็ม) กันเศษปัดเพี้ยน — ผลรวมงวด = ยอดแผน เสมอ
 // ============================================================================
-var PP={method:'pct',bands:null,bandsEdited:false,pct:100,minFull:50000,minInst:10000,byDoc:true,docOff:{},per:{},full:{},skip:{},grp:{},scope:{general:true,lease:false,other:false},n:3,freq:'month',start:'',mode:'equal',custom:[],cap:0,showAll:false,exOpen:false,cur:null,loaded:false};
+var PP={method:'pct',budget:2000000,minPart:10000,noSplit:{},bands:null,bandsEdited:false,pct:100,minFull:50000,minInst:10000,byDoc:false,docOff:{},per:{},full:{},skip:{},grp:{},scope:{general:true,lease:false,other:false},n:3,freq:'month',start:'',mode:'equal',custom:[],cap:0,showAll:false,exOpen:false,cur:null,loaded:false};
 var PP_LEASE_RE=/ลีสซิ่ง|ลิสซิ่ง|ลีสซิง|ลิสซิง|เช่าซื้อ|leasing|\blease\b|ไฟแนนซ์|ไฟแนนส์|สินเชื่อ|แคปปิตอล|finance\b|\bcapital\b/i;
 var PP_BIG=20000000;      // ใบเดี่ยวตั้งแต่ 20 ล้านบาท ติดป้ายเตือนให้ตรวจว่าเป็นสัญญาเช่า/เงินกู้หรือไม่
 var PP_ROWCAP=150;
 var PP_LS='ppSettingsV2';
-var PP_VER='12.11.2026 · ข้าม+สีรายใบ+ตัดจ่ายทั้งใบ+ช่วงอายุหนี้';
+var PP_VER='12.11.2026 · ข้าม+สีรายใบ+ตัดจ่ายทั้งใบ+ช่วงอายุหนี้+ตามงบต่องวด';
 var PP_GRP={general:'เจ้าหนี้ทั่วไป',lease:'เจ้าหนี้ลิสซิ่ง / เงินกู้',other:'อื่น ๆ'};
 var PP_SUB={trc:'ยอดยกมา TRC (บัญชีพัก 9999)',susp:'บัญชีพัก / รอเคลียร์',loan:'ใบที่ลงบัญชีเงินยืม/เงินกู้',name:'ชื่อเจ้าหนี้เป็นลิสซิ่ง/ไฟแนนซ์',user:'ผู้ใช้ย้ายกลุ่มเอง'};
-function ppSave(){try{localStorage.setItem(PP_LS,JSON.stringify({pct:PP.pct,minFull:PP.minFull,minInst:PP.minInst,byDoc:PP.byDoc,docOff:PP.docOff,method:PP.method,bands:PP.bands,bandsEdited:PP.bandsEdited,per:PP.per,full:PP.full,skip:PP.skip,grp:PP.grp,scope:PP.scope,n:PP.n,freq:PP.freq,start:PP.start,mode:PP.mode,custom:PP.custom,cap:PP.cap}));}catch(e){}}
+function ppSave(){try{localStorage.setItem(PP_LS,JSON.stringify({pct:PP.pct,minFull:PP.minFull,minInst:PP.minInst,byDoc:PP.byDoc,docOff:PP.docOff,method:PP.method,budget:PP.budget,minPart:PP.minPart,noSplit:PP.noSplit,bands:PP.bands,bandsEdited:PP.bandsEdited,per:PP.per,full:PP.full,skip:PP.skip,grp:PP.grp,scope:PP.scope,n:PP.n,freq:PP.freq,start:PP.start,mode:PP.mode,custom:PP.custom,cap:PP.cap}));}catch(e){}}
 function ppLoadSettings(){
   if(PP.loaded)return;PP.loaded=true;
   try{var s=JSON.parse(localStorage.getItem(PP_LS)||'null');if(s&&typeof s==='object'){
-    ['pct','minFull','minInst','n','freq','start','mode','cap'].forEach(function(k){if(s[k]!==undefined)PP[k]=s[k];});
-    ['per','full','skip','docOff','grp','scope'].forEach(function(k){if(s[k]&&typeof s[k]==='object')PP[k]=s[k];});
+    ['pct','minFull','minInst','budget','minPart','n','freq','start','mode','cap'].forEach(function(k){if(s[k]!==undefined)PP[k]=s[k];});
+    ['per','full','skip','docOff','noSplit','grp','scope'].forEach(function(k){if(s[k]&&typeof s[k]==='object')PP[k]=s[k];});
     if(Array.isArray(s.custom))PP.custom=s.custom;
     if(typeof s.byDoc==='boolean')PP.byDoc=s.byDoc;
-    if(s.method==='age'||s.method==='pct')PP.method=s.method;
+    if(s.method==='age'||s.method==='pct'||s.method==='budget')PP.method=s.method;
     if(Array.isArray(s.bands))PP.bands=s.bands;
     if(typeof s.bandsEdited==='boolean')PP.bandsEdited=s.bandsEdited;
   }}catch(e){}
@@ -10844,6 +10844,57 @@ function ppBand(k){var b=(PP.bands&&PP.bands[k])||['',''];return {from:(b[0]==='
 function ppBandOk(b){return !(b.from===''&&b.to==='');}
 function ppBandLabel(k){var b=ppBand(k);if(!ppBandOk(b))return 'ไม่ได้ตั้ง';var f=b.from===''?0:b.from;if(b.to==='')return 'เลย '+f+'+ วัน';return 'เลย '+f+'–'+b.to+' วัน';}
 function ppBandOf(days,n){for(var k=0;k<n;k++){var b=ppBand(k);if(!ppBandOk(b))continue;var f=b.from===''?0:b.from;if(days>=f&&(b.to===''||days<=b.to))return k;}return -1;}
+// ---- วิธีแบ่งจ่าย "ตามงบต่องวด": เรียงใบเก่าสุดก่อนทั้งบริษัท เติมงบแต่ละงวดให้เต็ม · ใบสุดท้ายของงวดแบ่งจ่ายได้ ----
+function ppBudgetFill(list,n){
+  var B=Math.round((+PP.budget||0)*100),minP=Math.round((+PP.minPart||0)*100);
+  var q=[],res={needN:0,left:0,nSplit:0};
+  list.forEach(function(p){
+    p.explicit=true;p.nPaid=0;p.nSplit=0;p.nBig=0;
+    p.invs.forEach(function(v,i){v.byK=[];for(var z=0;z<n;z++)v.byK.push(0);v.pay=0;v.rem=v.out;q.push({p:p,v:v,r:v.out,pri:p.full?0:1});});
+  });
+  q.sort(function(a,b){return a.pri-b.pri||a.v.dd-b.v.dd||String(a.v.doc).localeCompare(String(b.v.doc),undefined,{numeric:true})||String(a.p.name).localeCompare(String(b.p.name));});
+  var noSplitOf=function(e){return !!PP.noSplit[e.p.key]||e.p.full;};
+  var runK=function(k,rec){
+    var rem=B,paid=0;
+    for(var i=0;i<q.length&&rem>0;i++){
+      var e=q[i];if(e.r<=0)continue;
+      var pay;
+      if(e.r<=rem)pay=e.r;
+      else{
+        if(noSplitOf(e))continue;                    // ห้ามแบ่ง: รองวดหน้า (ใบอื่นที่พอดียังเติมได้)
+        if(minP>0&&rem<minP)continue;               // ส่วนแรกน้อยกว่าขั้นต่ำ: ไม่แบ่ง รองวดหน้า
+        pay=rem;
+      }
+      e.r-=pay;rem-=pay;paid+=pay;
+      if(rec){e.v.byK[k]+=pay;e.v.pay+=pay;e.v.rem-=pay;}
+    }
+    return paid;
+  };
+  var k;
+  for(k=0;k<n;k++)runK(k,true);
+  var left=0;q.forEach(function(e){left+=e.r;});res.left=left;
+  // นับว่าต้องใช้กี่งวดจึงครบ (จำลองต่อโดยไม่บันทึก)
+  var need=n,stuck=false;
+  if(left>0&&B>0){
+    var save=q.map(function(e){return e.r;});
+    for(var kk=n;kk<600;kk++){var got=runK(kk,false);need=kk+1;var any=false;for(var i2=0;i2<q.length;i2++){if(q[i2].r>0){any=true;break;}}if(!any)break;if(got===0){stuck=true;break;}}
+    q.forEach(function(e,i){e.r=save[i];});
+    if(stuck)need=-1;
+  }else if(left>0)need=-1;
+  res.needN=need;
+  list.forEach(function(p){
+    var inst=[];for(var z=0;z<n;z++)inst.push(0);
+    p.invs.forEach(function(v){
+      v.byK.forEach(function(x,j){inst[j]+=x;});
+      if(v.pay>0){p.nPaid++;var nk=0;v.byK.forEach(function(x){if(x>0)nk++;});if(nk>1||v.pay<v.out){p.nSplit++;res.nSplit++;}}
+      else if(v.out>B&&noSplitOfP(p))p.nBig++;
+    });
+    p.inst=inst;p.share=inst.slice();p.plan=inst.reduce(function(a,b){return a+b;},0);p.target=p.plan;p.unsched=0;
+    p.pct=p.base>0?Math.round(p.plan/p.base*1000)/10:0;
+  });
+  function noSplitOfP(p){return !!PP.noSplit[p.key]||p.full;}
+  return res;
+}
 function ppNewStat(){return {due:0,notyet:0,nodue:0,credit:0,net:0,n:0,docs:0};}
 function ppQ05Total(){var s=0;(G.apRows2||[]).forEach(function(r){s+=ppSat(r.bal);});return s;}
 
@@ -10887,13 +10938,14 @@ function ppCompute(){
   list.sort(function(a,b){return a.oldest-b.oldest||b.base-a.base;});
   var W=ppWeights(n);
   var minFullSat=Math.round((+PP.minFull||0)*100),minInstSat=Math.round((+PP.minInst||0)*100);
-  var ageMode=PP.method==='age',outBandN=0,outBandSat=0;
+  var ageMode=PP.method==='age',budgetMode=PP.method==='budget',outBandN=0,outBandSat=0,bfInfo={needN:0,left:0,nSplit:0};
   list.forEach(function(p){
     p.full=!!PP.full[p.key];p.rule='';p.effN=n;p.outN=0;p.outSat=0;
     var explicit=!ageMode&&PP.per[p.key]!=null;
     // กติกา 1: ยอดค้างไม่เกินเกณฑ์ → จ่ายเต็ม 100% งวดแรก (ถ้าผู้ใช้ตั้ง % เฉพาะรายเอง ถือว่าตั้งใจ ไม่ใช้กติกานี้)
-    if(!p.full&&!explicit&&minFullSat>0&&p.base<=minFullSat)p.rule='small';
+    if(!p.full&&!explicit&&!budgetMode&&minFullSat>0&&p.base<=minFullSat)p.rule='small';
     var payFull=p.full||p.rule==='small';
+    if(budgetMode){p.byDoc=false;p.explicit=true;p.target=0;p.plan=0;p.pct=0;p.share=[];p.inst=[];for(var zb=0;zb<n;zb++){p.share.push(0);p.inst.push(0);}p.unsched=0;return;}
     if(ageMode){
       // ตามช่วงอายุหนี้: แต่ละใบเข้างวดตามช่วงวันที่เลยกำหนด · จ่ายทั้งใบเสมอ · จ่ายเต็ม/เกณฑ์จ่ายเต็ม = ทุกใบงวดแรก
       var selA=[],restA=[];
@@ -10959,13 +11011,14 @@ function ppCompute(){
   });
   var view=list.concat(skipList);
   view.sort(function(a,b){return a.oldest-b.oldest||b.base-a.base;});
+  if(budgetMode)bfInfo=ppBudgetFill(list,n);
   list.forEach(function(p){
     if(!p.byDoc)return;
     p.docOrder=[];for(var di0=0;di0<p.docN;di0++)p.docOrder.push(di0);
     p.docOrder.sort(function(a,b){return p.docK[a]-p.docK[b]||a-b;});
     p.docInst=p.docK.slice();
   });
-  var capSat=PP.cap>0?Math.round(PP.cap*100):0;
+  var capSat=(PP.cap>0&&!budgetMode)?Math.round(PP.cap*100):0;
   if(capSat>0){
     var ord=list.slice().sort(function(a,b){return (b.full?1:0)-(a.full?1:0);});  // ราย "จ่ายเต็ม" ก่อน แล้วตามลำดับเก่าสุด (sort เสถียร)
     var carry={};ord.forEach(function(p){carry[p.g+'|'+p.key]=0;if(p.byDoc){p.ptr=0;for(var di1=0;di1<p.docN;di1++)p.docInst[di1]=-1;}});
@@ -10995,6 +11048,7 @@ function ppCompute(){
     T.base+=p.base;T.plan+=p.plan;T.sched+=p.sched;T.unsched+=p.unsched;
     if(p.sched<p.base)T.partial++;
     if(p.rule==='small'){T.nSmall++;T.sumSmall+=p.plan;}else if(p.rule==='fewer')T.nFewer++;
+    if(p.explicit)return;
     var ptr=0;
     p.invs.forEach(function(v){v.rem=v.out;v.pay=0;v.byK=[];for(var z=0;z<n;z++)v.byK.push(0);});
     if(p.byDoc){p.invs.forEach(function(v,i){if(i<p.docN&&p.docInst[i]>=0){v.pay=v.out;v.rem=0;v.byK[p.docInst[i]]=v.out;}});return;}
@@ -11013,7 +11067,7 @@ function ppCompute(){
   ['general','lease','other'].forEach(function(g){Object.keys(tot).forEach(function(k){tot[k]+=S[g][k];});});
   var outScope=0;['general','lease','other'].forEach(function(g){if(!PP.scope[g])outScope+=S[g].net;});
   var nDoc=0;list.forEach(function(p){if(p.byDoc)nDoc++;});
-  return {outBandN:outBandN,outBandSat:outBandSat,ageMode:ageMode,nDoc:nDoc,list:list,view:view,skipList:skipList,skipBase:skipBase,parties:parties,T:T,S:S,SUB:SUB,tot:tot,dates:dates,today:today,oldest:list.length?list[0]:null,capSat:capSat,q05:ppQ05Total(),outScope:outScope};
+  return {budgetMode:budgetMode,budgetSat:Math.round((+PP.budget||0)*100),needN:bfInfo.needN,bfLeft:bfInfo.left,nSplit:bfInfo.nSplit,outBandN:outBandN,outBandSat:outBandSat,ageMode:ageMode,nDoc:nDoc,list:list,view:view,skipList:skipList,skipBase:skipBase,parties:parties,T:T,S:S,SUB:SUB,tot:tot,dates:dates,today:today,oldest:list.length?list[0]:null,capSat:capSat,q05:ppQ05Total(),outScope:outScope};
 }
 
 // ---- ตัวควบคุม ----
@@ -11023,6 +11077,8 @@ function ppSetNum(f,v){
   else if(f==='cap')PP.cap=Math.max(0,x);
   else if(f==='minFull')PP.minFull=Math.max(0,x);
   else if(f==='minInst')PP.minInst=Math.max(0,x);
+  else if(f==='budget')PP.budget=Math.max(0,x);
+  else if(f==='minPart')PP.minPart=Math.max(0,x);
   ppSave();ppRender();
 }
 function ppQuick(v){PP.pct=v;ppSave();ppRender();}
@@ -11042,7 +11098,7 @@ function ppSetPer(i,v){
 // ติ๊กข้าม: เจ้าหนี้รายนี้ไม่เข้าแผน (เช่น มียอดต้องเคลียร์หนี้ระหว่างกัน) · จำด้วยรหัสเจ้าหนี้ เก็บชื่อไว้แสดงในกล่อง "เจ้าหนี้ที่ข้าม"
 function ppToggleSkip(i,on){var p=PP.cur&&PP.cur.view[i];if(!p)return;if(on)PP.skip[p.key]=p.name||p.key;else delete PP.skip[p.key];ppSave();ppRender();}
 function ppSetMethod(v){
-  PP.method=(v==='age')?'age':'pct';
+  PP.method=(v==='age'||v==='budget')?v:'pct';
   if(PP.method==='age'&&!PP.bandsEdited){PP.bands=ppBandsDef();PP.n=4;}
   ppSave();ppRender();
 }
@@ -11051,6 +11107,8 @@ function ppSetBand(k,w,v){
   var t=String(v).trim(),x=t===''?'':Math.max(0,Math.round(parseFloat(t)||0));
   PP.bands[k]=[w==='from'?x:PP.bands[k][0],w==='to'?x:PP.bands[k][1]];PP.bandsEdited=true;ppSave();ppRender();
 }
+function ppToggleNoSplit(i,on){var p=PP.cur&&PP.cur.view[i];if(!p)return;if(on)PP.noSplit[p.key]=true;else delete PP.noSplit[p.key];ppSave();ppRender();}
+function ppDocStat(v,k){var b=0;for(var j=0;j<k;j++)b+=v.byK[j];var left=v.out-b-v.byK[k];if(b===0&&left<=0)return 'จ่ายครบใบ';if(left<=0)return 'ส่วนที่เหลือ จ่ายครบใบ';return (b===0?'แบ่งจ่าย (ส่วนแรก)':'แบ่งจ่ายต่อ')+' เหลือ '+ppM(left);}
 function ppBandsReset(){PP.bands=ppBandsDef();PP.bandsEdited=false;PP.n=4;ppSave();ppRender();}
 function ppSetByDoc(on){PP.byDoc=!!on;ppSave();ppRender();}
 function ppToggleDoc(i,on){var p=PP.cur&&PP.cur.view[i];if(!p)return;if(on)delete PP.docOff[p.key];else PP.docOff[p.key]=true;ppSave();ppRender();}
@@ -11063,7 +11121,7 @@ function ppMove(src,i,g){
   if(g==='auto')delete PP.grp[p.key];else PP.grp[p.key]=g;
   ppSave();ppRender();
 }
-function ppReset(){PP.method='pct';PP.bands=ppBandsDef();PP.bandsEdited=false;PP.byDoc=true;PP.docOff={};PP.per={};PP.full={};PP.skip={};PP.grp={};PP.pct=100;PP.cap=0;PP.n=3;PP.freq='month';PP.start='';PP.mode='equal';PP.custom=[];PP.scope={general:true,lease:false,other:false};ppSave();ppRender();}
+function ppReset(){PP.budget=2000000;PP.minPart=10000;PP.noSplit={};PP.method='pct';PP.bands=ppBandsDef();PP.bandsEdited=false;PP.byDoc=false;PP.docOff={};PP.per={};PP.full={};PP.skip={};PP.grp={};PP.pct=100;PP.cap=0;PP.n=3;PP.freq='month';PP.start='';PP.mode='equal';PP.custom=[];PP.scope={general:true,lease:false,other:false};ppSave();ppRender();}
 function ppShowAll(){PP.showAll=!PP.showAll;ppRender();}
 
 // ---- หน้าจอ ----
@@ -11096,7 +11154,7 @@ function ppRender(){
   var sk=ppStartKey();
   var startIso=Math.floor(sk/10000)+'-'+String(Math.floor(sk/100)%100).padStart(2,'0')+'-'+String(sk%100).padStart(2,'0');
   var qb=[25,50,75,100].map(function(v){return '<button class="hbtn'+(+PP.pct===v?' hbtn-gold':'')+'" onclick="ppQuick('+v+')">'+v+'%</button>';}).join(' ');
-  var ageMode0=PP.method==='age';
+  var ageMode0=PP.method==='age',bud0=PP.method==='budget',noPct0=ageMode0||bud0;
   var bandRow='';
   if(ageMode0){
     bandRow='<div style="margin-top:10px;padding:10px 12px;border:1px dashed var(--border);border-radius:8px"><div style="display:flex;gap:6px 14px;flex-wrap:wrap;align-items:center">'+lab('ชุดเอกสารแต่ละงวด · เลยกำหนด (วัน) จาก – ถึง:')+
@@ -11104,8 +11162,16 @@ function ppRender(){
       '<button class="hbtn" onclick="ppBandsReset()">ใช้ช่วงมาตรฐาน 4 ชุด</button></div>'+
       '<div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.7">แต่ละใบจ่ายครบทั้งใบในงวดที่ชุดอายุของใบนั้นตรง (นับจากวันครบกำหนดถึงวันนี้) · ไม่ใส่ "ถึง" = ไม่จำกัดขึ้นไป · เว้นว่างทั้งคู่ = งวดนั้นไม่มีเอกสาร · ใบที่ไม่ตรงชุดไหนจะไม่เข้าแผน'+(A.outBandN>0?'<br><b style="color:var(--gold2)">&#9888; มี '+A.outBandN+' ใบ ยอด '+ppM(A.outBandSat)+' ไม่ตรงชุดใดเลย (ไม่เข้าแผน) — ปรับช่วงให้ครอบคลุมถ้าต้องการให้จ่าย</b>':'')+'</div></div>';
   }
+  if(bud0){
+    var bLeftTxt=A.bfLeft>0?'<br><b style="color:var(--red)">&#9888; ยังจัดไม่ครบ: เหลือ '+ppM(A.bfLeft)+' ใน '+n+' งวด '+(A.needN>0?'— ต้องใช้ประมาณ <u>'+A.needN+' งวด</u> จึงจะครบทุกใบ (เพิ่มจำนวนงวด หรือเพิ่มงบต่องวด)':'— บางใบใหญ่กว่างบต่องวดและถูกห้ามแบ่ง จึงจัดไม่ลง (ปลดห้ามแบ่ง หรือเพิ่มงบ)')+'</b>':'<br><b style="color:var(--green)">&#10003; จัดครบทุกใบภายใน '+n+' งวด'+(A.needN>0&&A.needN<n?' (ใช้จริง '+A.needN+' งวด)':'')+'</b>';
+    bandRow='<div style="margin-top:10px;padding:10px 12px;border:1px dashed var(--border);border-radius:8px"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">'+
+      lab('งบจ่ายต่องวด (บาท):')+'<input id="ppBudget" type="number" min="0" step="100000" value="'+(PP.budget>0?PP.budget:'')+'" class="filter-select" style="width:150px" onchange="ppSetNum(\'budget\',this.value)">'+
+      [500000,1000000,2000000,3000000,5000000].map(function(v){return '<button class="hbtn'+(+PP.budget===v?' hbtn-gold':'')+'" onclick="ppSetNum(\'budget\','+v+')">'+(v/1000000)+' ล้าน</button>';}).join(' ')+
+      '<span style="margin-left:10px">'+lab('แบ่งจ่ายใบสุดท้ายของงวดได้ถ้าส่วนแรกไม่ต่ำกว่า (บาท):')+'</span><input id="ppMinPart" type="number" min="0" step="1000" value="'+(PP.minPart>0?PP.minPart:'')+'" placeholder="ไม่จำกัด" class="filter-select" style="width:120px" onchange="ppSetNum(\'minPart\',this.value)"></div>'+
+      '<div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.7">แต่ละงวดดึงใบเก่าสุดของ<b>ทุกเจ้าหนี้</b>มาเติมจนเต็มงบ · ถ้าใบถัดไปใหญ่กว่างบที่เหลือ จะจ่ายบางส่วนเท่าที่เหลือ แล้วยกยอดที่เหลือของใบนั้นเป็นรายการแรกของงวดถัดไป · ติ๊ก "ห้ามแบ่ง" ที่เจ้าหนี้ที่ต้องจ่ายทั้งใบ (ระบบจะข้ามไปใบถัดไปที่พอดีงบ) · "จ่ายเต็ม" = จ่ายใบทั้งหมดของรายนั้นก่อนในงวดแรก (ไม่แบ่ง) · ค้างในแผนทั้งหมด '+ppM(A.T.base)+' ÷ งบ '+fmtFull(PP.budget||0)+bLeftTxt+'</div></div>';
+  }
   var customRow='';
-  if(PP.mode==='custom'&&PP.method!=='age'){
+  if(PP.mode==='custom'&&PP.method==='pct'){
     var cs=ppCustomSum(),ok=Math.abs(cs-100)<0.005;
     customRow='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">'+lab('% รายงวด:')+
       A.dates.map(function(d,k){return '<label style="font-size:12px;color:var(--muted)">งวด '+(k+1)+' <input type="number" min="0" max="100" step="1" value="'+(+PP.custom[k]||0)+'" style="width:64px" class="filter-select" onchange="ppSetCustom('+k+',this.value)"></label>';}).join('')+
@@ -11115,20 +11181,20 @@ function ppRender(){
     ['general','lease','other'].map(function(g){return '<label style="font-size:12.5px;cursor:pointer"><input type="checkbox" '+(PP.scope[g]?'checked ':'')+'onchange="ppScope(\''+g+'\',this.checked)"> '+PP_GRP[g]+' <span style="color:var(--muted)">(ถึงกำหนด '+ppM(S[g].due)+')</span></label>';}).join('')+'</div>';
   var ctl='<div class="recon-section" style="margin-bottom:14px"><div class="recon-section-title">&#9881;&#65039; กำหนดแผน</div>'+scopeRow+
     '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">'+
-    lab('วิธีแบ่งจ่าย:')+sel('ppMethod',[['pct','ตาม % ของยอดค้าง'],['age','ตามช่วงอายุหนี้ (ชุดเอกสาร)']],PP.method,'ppSetMethod(this.value)')+
-    (ageMode0?'':lab('% ชำระ (ทุกราย):')+'<input id="ppPct" type="number" min="0" max="100" step="1" value="'+PP.pct+'" class="filter-select" style="width:80px" onchange="ppSetNum(\'pct\',this.value)">'+qb)+
+    lab('วิธีแบ่งจ่าย:')+sel('ppMethod',[['pct','ตาม % ของยอดค้าง'],['age','ตามช่วงอายุหนี้ (ชุดเอกสาร)'],['budget','ตามงบต่องวด (เก่าสุดก่อน)']],PP.method,'ppSetMethod(this.value)')+
+    (noPct0?'':lab('% ชำระ (ทุกราย):')+'<input id="ppPct" type="number" min="0" max="100" step="1" value="'+PP.pct+'" class="filter-select" style="width:80px" onchange="ppSetNum(\'pct\',this.value)">'+qb)+
     '<span style="margin-left:10px">'+lab('แบ่งเป็น:')+'</span>'+sel('ppN',nOpts,PP.n,'ppSetN(this.value)')+
     sel('ppFreq',[['month','ทุกเดือน'],['two','ทุก 2 สัปดาห์'],['week','ทุกสัปดาห์']],PP.freq,'ppSetFreq(this.value)')+
     lab('งวดแรก:')+'<input id="ppStart" type="date" value="'+startIso+'" class="filter-select" onchange="ppSetStart(this.value)">'+
-    (ageMode0?'':sel('ppMode',[['equal','แบ่งเท่ากันทุกงวด'],['custom','กำหนด % รายงวดเอง']],PP.mode,'ppSetMode(this.value)'))+
+    (noPct0?'':sel('ppMode',[['equal','แบ่งเท่ากันทุกงวด'],['custom','กำหนด % รายงวดเอง']],PP.mode,'ppSetMode(this.value)'))+
     '</div>'+bandRow+customRow+
     '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px">'+
-    lab('วงเงินจ่ายต่องวด (บาท · ไม่บังคับ):')+'<input id="ppCap" type="number" min="0" step="1000" value="'+(PP.cap>0?PP.cap:'')+'" placeholder="ไม่จำกัด" class="filter-select" style="width:150px" onchange="ppSetNum(\'cap\',this.value)">'+
-    '<span style="font-size:11px;color:var(--muted)">ถ้าใส่ ระบบเติมจากเจ้าหนี้เก่าสุดก่อนจนเต็มวงเงิน ส่วนที่เกินเลื่อนไปงวดถัดไป</span>'+
+    (bud0?'':lab('วงเงินจ่ายต่องวด (บาท · ไม่บังคับ):')+'<input id="ppCap" type="number" min="0" step="1000" value="'+(PP.cap>0?PP.cap:'')+'" placeholder="ไม่จำกัด" class="filter-select" style="width:150px" onchange="ppSetNum(\'cap\',this.value)">'+
+    '<span style="font-size:11px;color:var(--muted)">ถ้าใส่ ระบบเติมจากเจ้าหนี้เก่าสุดก่อนจนเต็มวงเงิน ส่วนที่เกินเลื่อนไปงวดถัดไป</span>')+
     '<span style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap"><button class="hbtn" onclick="ppReset()">&#8634; ล้างการตั้งค่า</button>'+
     '<button class="hbtn hbtn-gold" onclick="ppExcel()">&#128202; ส่งออก Excel</button><button class="hbtn hbtn-gold" onclick="ppPrint()">&#128424;&#65039; พิมพ์ / PDF</button></span></div>'+
-    '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px">'+lab('จ่ายเต็มถ้ายอดค้างไม่เกิน (บาท):')+'<input id="ppMinFull" type="number" min="0" step="1000" value="'+(PP.minFull>0?PP.minFull:'')+'" placeholder="ปิด" class="filter-select" style="width:120px" onchange="ppSetNum(\'minFull\',this.value)">'+(ageMode0?'':lab('ยอดต่องวดไม่ต่ำกว่า (บาท):')+'<input id="ppMinInst" type="number" min="0" step="1000" value="'+(PP.minInst>0?PP.minInst:'')+'" placeholder="ปิด" class="filter-select" style="width:120px" onchange="ppSetNum(\'minInst\',this.value)">')+'<span style="font-size:11px;color:var(--muted)">รายที่ค้างไม่เกินเกณฑ์จ่ายเต็ม 100% (ทุกใบในงวดแรก) · รายอื่นถ้าแบ่งแล้วงวดละต่ำกว่าขั้นต่ำ ระบบลดจำนวนงวดให้อัตโนมัติ · เว้นว่าง = ปิดกติกา · ถ้าตั้ง % เฉพาะรายเอง จะไม่ใช้เกณฑ์จ่ายเต็ม</span></div>'+
-    (ageMode0?'<div style="margin-top:10px;font-size:11.5px;color:var(--muted)"><b style="color:var(--text2)">ตัดจ่ายทั้งใบตามเลขที่เอกสารเสมอ</b> ในวิธีแบ่งตามช่วงอายุหนี้ (ไม่มี % และไม่ปัดเศษ) · ดูรายการเอกสารรายงวดในชีต Excel "ใบจ่ายรายงวด"</div>':'<div style="margin-top:10px"><label style="font-size:12.5px;cursor:pointer"><input type="checkbox" '+(PP.byDoc!==false?'checked ':'')+'onchange="ppSetByDoc(this.checked)"> <b>ตัดจ่ายทั้งใบตามเลขที่เอกสาร</b></label> <span style="font-size:11px;color:var(--muted)">เลือกใบเก่าสุดก่อน ปัดให้ใกล้ยอดตามแผนที่สุด (ยอดอาจไม่ตรง % เป๊ะ) · แต่ละใบจ่ายครบในงวดเดียว ไม่แบ่งครึ่งใบ · ปิดรายตัวได้ที่คอลัมน์ "ทั้งใบ"'+(PP.cap>0?' · เมื่อมีวงเงินต่องวด ใบที่ใหญ่กว่าวงเงินจะจัดไม่ลง':'')+'</span></div>')+
+    (bud0?'':'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px">'+lab('จ่ายเต็มถ้ายอดค้างไม่เกิน (บาท):')+'<input id="ppMinFull" type="number" min="0" step="1000" value="'+(PP.minFull>0?PP.minFull:'')+'" placeholder="ปิด" class="filter-select" style="width:120px" onchange="ppSetNum(\'minFull\',this.value)">'+(ageMode0?'':lab('ยอดต่องวดไม่ต่ำกว่า (บาท):')+'<input id="ppMinInst" type="number" min="0" step="1000" value="'+(PP.minInst>0?PP.minInst:'')+'" placeholder="ปิด" class="filter-select" style="width:120px" onchange="ppSetNum(\'minInst\',this.value)">')+'<span style="font-size:11px;color:var(--muted)">รายที่ค้างไม่เกินเกณฑ์จ่ายเต็ม 100% (ทุกใบในงวดแรก) · รายอื่นถ้าแบ่งแล้วงวดละต่ำกว่าขั้นต่ำ ระบบลดจำนวนงวดให้อัตโนมัติ · เว้นว่าง = ปิดกติกา · ถ้าตั้ง % เฉพาะรายเอง จะไม่ใช้เกณฑ์จ่ายเต็ม</span></div>')+
+    (bud0?'':ageMode0?'<div style="margin-top:10px;font-size:11.5px;color:var(--muted)"><b style="color:var(--text2)">ตัดจ่ายทั้งใบตามเลขที่เอกสารเสมอ</b> ในวิธีแบ่งตามช่วงอายุหนี้ (ไม่มี % และไม่ปัดเศษ) · ดูรายการเอกสารรายงวดในชีต Excel "ใบจ่ายรายงวด"</div>':'<div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">'+lab('วิธีตัดใบเอกสาร:')+sel('ppByDocSel',[['exact','ตามยอด % เป๊ะ — ดึงใบเก่าสุดก่อน แบ่งจ่ายครึ่งใบได้'],['doc','ตัดจ่ายทั้งใบ (ปัดใกล้ยอดตามแผน)']],PP.byDoc!==false?'doc':'exact','ppSetByDoc(this.value===\'doc\')')+'<span style="font-size:11px;color:var(--muted)">ตามยอด % เป๊ะ: ทุกเจ้าหนี้ที่ค้างจะถูกดึงมาจ่าย % ที่ตั้ง โดยตัดใบเก่าสุดก่อน — ถ้าไม่ถึงครึ่งใบก็จ่ายบางส่วนของใบนั้น (ยอดตรง % ทุกบาท) · ตัดจ่ายทั้งใบ: แต่ละใบจ่ายครบในงวดเดียว ยอดอาจไม่ตรง % · ปิดทั้งใบรายตัวได้ที่คอลัมน์ "ทั้งใบ"'+(PP.cap>0&&PP.byDoc!==false?' · เมื่อมีวงเงินต่องวด ใบที่ใหญ่กว่าวงเงินจะจัดไม่ลง':'')+'</span></div>')+
     '<div style="font-size:11.5px;color:var(--muted);margin-top:10px;line-height:1.7">ขอบเขตแผน: ใบเจ้าหนี้ที่ยังค้างและ<b>ถึงกำหนดแล้วจนถึงวันนี้ ('+dueFmtKey(A.today)+')</b> · เรียงเจ้าหนี้ที่ใบเก่าสุดครบกำหนดนานสุดก่อน · ใบลดหนี้หักจากใบเก่าสุดของรายนั้น · เป็นแผนบนหน้าจอ ไม่เขียนกลับ SAP · การตั้งค่าเก็บในเบราว์เซอร์เครื่องนี้</div></div>';
 
   var asOfWarn='';
@@ -11138,8 +11204,8 @@ function ppRender(){
   var cards='<div class="kpi-row">'+
     kpi('red','&#128221;','rgba(224,92,92,.15)','เจ้าหนี้ค้างจ่ายทั้งหมด (Q27)',ppM(A.tot.net),'red',(A.q05?('Q05 '+ppM(A.q05)+(diffOk?' · ตรงกัน ✓':' · ต่าง '+ppM(diff))):'ไม่พบ Q05')+' · แยก 3 กลุ่มด้านล่าง','')+
     kpi('blue','&#128179;','rgba(91,143,249,.15)','ค้างถึงกำหนดที่เข้าแผน',ppM(T.base),'blue',T.n+' เจ้าหนี้ · '+(['general','lease','other'].filter(function(g){return PP.scope[g];}).map(function(g){return PP_GRP[g];}).join(' + ')||'—')+(A.skipList.length?' · ข้าม '+A.skipList.length+' ราย ('+ppM(A.skipBase)+')':''),'')+
-    kpi('gold','&#128197;','rgba(240,201,107,.15)','ยอดตามแผน',ppM(T.sched),'gold',(T.base>0?(T.sched/T.base*100).toFixed(1):'0.0')+'% ของยอดที่เข้าแผน · '+n+' งวด'+(A.ageMode?' · ตามช่วงอายุหนี้':(A.nDoc?' · ปัดตามใบ':'')),'')+
-    kpi('red','&#9203;','rgba(224,92,92,.15)','คงเหลือหลังแผน',ppM(T.base-T.sched),'red',T.partial+' เจ้าหนี้ยังค้างต่อ'+(T.unsched>0?' · เกินวงเงิน '+ppM(T.unsched):''),'')+
+    kpi('gold','&#128197;','rgba(240,201,107,.15)','ยอดตามแผน',ppM(T.sched),'gold',(T.base>0?(T.sched/T.base*100).toFixed(1):'0.0')+'% ของยอดที่เข้าแผน · '+n+' งวด'+(A.budgetMode?' · งบ '+ppM(A.budgetSat)+'/งวด':(A.ageMode?' · ตามช่วงอายุหนี้':(A.nDoc?' · ปัดตามใบ':''))),'')+
+    kpi('red','&#9203;','rgba(224,92,92,.15)','คงเหลือหลังแผน',ppM(T.base-T.sched),'red',T.partial+' เจ้าหนี้ยังค้างต่อ'+(A.budgetMode&&A.nSplit>0?' · แบ่งจ่าย '+A.nSplit+' ใบ':'')+(T.unsched>0?' · เกินวงเงิน '+ppM(T.unsched):''),'')+
     kpi('green','&#128176;','rgba(76,175,125,.15)','จ่ายงวดแรก ('+dueFmtKey(A.dates[0])+')',ppM(T.inst[0]||0),'green','งวดอื่น ๆ ดูแถบด้านล่าง','')+
     kpi('green','&#9989;','rgba(76,175,125,.15)','จ่ายเต็มตามเกณฑ์',ppM(T.sumSmall),'green',T.nSmall+' ราย (ค้างไม่เกิน '+fmtFull(PP.minFull||0)+') · ลดจำนวนงวด '+T.nFewer+' ราย','')+
     kpi('teal','&#128308;','rgba(63,201,194,.15)','ค้างนานสุด',oldest?(oldest.days>0?oldest.days+' วัน':'ถึงกำหนดวันนี้'):'—','teal',oldest?ppEsc(oldest.name):'ไม่มีเจ้าหนี้เข้าแผน','')+
@@ -11167,32 +11233,33 @@ function ppRender(){
   var tdn='style="text-align:right;white-space:nowrap"';
   var lab=function(t){return '<td style="color:var(--muted);white-space:nowrap;position:sticky;left:0;background:var(--card,#0f1d33)">'+t+'</td>';};
   var totc='background:rgba(13,85,96,.55);font-weight:700;';
-  var bars='<div class="recon-section" style="margin-bottom:14px"><div class="recon-section-title">&#128197; สรุปยอดจ่ายรายงวด <span class="chart-sub">('+ppFreqLabel()+(A.capSat?' · วงเงิน '+ppM(A.capSat)+' ต่องวด':'')+')</span></div>'+
+  var bars='<div class="recon-section" style="margin-bottom:14px"><div class="recon-section-title">&#128197; สรุปยอดจ่ายรายงวด <span class="chart-sub">('+ppFreqLabel()+(A.budgetMode?' · งบ '+ppM(A.budgetSat)+' ต่องวด · เก่าสุดก่อน':(A.capSat?' · วงเงิน '+ppM(A.capSat)+' ต่องวด':''))+')</span></div>'+
     '<div style="overflow-x:auto"><table style="width:100%"><thead><tr><th></th>'+
       T.inst.map(function(v,k){return '<th '+tdn+'>งวด '+(k+1)+'</th>';}).join('')+'<th style="text-align:right;white-space:nowrap;'+totc+'">รวมทุกงวด</th></tr></thead><tbody>'+
     (A.ageMode?'<tr>'+lab('<span style="color:#4FD1C5">ชุดเอกสาร</span>')+A.dates.map(function(d,k){return '<td '+tdn+'><span style="color:#4FD1C5;font-weight:700">'+ppBandLabel(k)+'</span></td>';}).join('')+'<td style="text-align:right;'+totc+'"></td></tr>':'')+
     '<tr>'+lab('<span style="color:#7FB2FF">วันที่จ่าย</span>')+A.dates.map(function(d){return '<td '+tdn.replace('"><','"><')+'><span style="color:#7FB2FF;font-weight:700;font-size:13.5px">'+dueFmtKey(d)+'</span></td>';}).join('')+'<td style="text-align:right;'+totc+'"></td></tr>'+
     '<tr>'+lab('<span style="color:var(--gold2);font-weight:700">ยอดจ่าย</span>')+T.inst.map(function(v){return '<td '+tdn.replace('"><','"><')+'><b style="color:var(--gold2);font-size:14.5px">'+ppM(v)+'</b></td>';}).join('')+'<td style="text-align:right;white-space:nowrap;color:var(--gold2);font-size:14.5px;'+totc+'">'+ppM(T.sched)+'</td></tr>'+
+    (A.budgetMode?'<tr>'+lab('ใช้งบ')+T.inst.map(function(v){return '<td '+tdn+'>'+(A.budgetSat>0?(v/A.budgetSat*100).toFixed(0):'0')+'%</td>';}).join('')+'<td style="text-align:right;'+totc+'">'+(A.budgetSat>0?(T.sched/(A.budgetSat*n)*100).toFixed(0):'0')+'%</td></tr>':'')+
     '<tr>'+lab('% ของแผน')+T.inst.map(function(v){return '<td '+tdn+'>'+(den>0?(v/den*100).toFixed(1):'0.0')+'%</td>';}).join('')+'<td style="text-align:right;'+totc+'">'+(den>0?'100.0%':'-')+'</td></tr>'+
     '<tr>'+lab('จำนวนเจ้าหนี้')+iCnt.map(function(c){return '<td '+tdn+'>'+c+' ราย</td>';}).join('')+'<td style="text-align:right;'+totc+'">'+T.n+' ราย</td></tr>'+
     '<tr>'+lab('จำนวนใบ')+iDoc.map(function(c){return '<td '+tdn+'>'+c+' ใบ</td>';}).join('')+'<td style="text-align:right;'+totc+'">'+totDoc+' ใบ</td></tr>'+
     '<tr>'+lab('ยอดสะสม')+iCum.map(function(v){return '<td '+tdn+' ><span style="color:var(--muted)">'+ppM(v)+'</span></td>';}).join('')+'<td style="text-align:right;'+totc+'">'+ppM(T.sched)+'</td></tr>'+
     '</tbody></table></div>'+
-    (T.unsched>0?'<div style="font-size:11.5px;color:var(--red);margin-top:8px">&#9888; ยังจัดลงงวดไม่ได้ (เกินวงเงินต่องวด) '+ppM(T.unsched)+' — ไม่รวมในตารางนี้</div>':'')+
+    (A.budgetMode&&A.bfLeft>0?'<div style="font-size:11.5px;color:var(--red);margin-top:8px">&#9888; ยังไม่ได้จัดลงงวดใด (เกิน '+n+' งวด) '+ppM(A.bfLeft)+(A.needN>0?' — ต้องใช้ประมาณ '+A.needN+' งวด':'')+'</div>':'')+(T.unsched>0?'<div style="font-size:11.5px;color:var(--red);margin-top:8px">&#9888; ยังจัดลงงวดไม่ได้ (เกินวงเงินต่องวด) '+ppM(T.unsched)+' — ไม่รวมในตารางนี้</div>':'')+
     '</div>';
   var seq=0;
   var rowsHtml=A.view.slice(0,PP.showAll?A.view.length:PP_ROWCAP).map(function(p,i){
     var sk0=!!p.skipped;if(!sk0)seq++;
     var dcol=p.days>180?'var(--red)':(p.days>90?'#F2A65A':(p.days>30?'var(--gold2)':'var(--muted)'));
-    var tag=(p.big&&!p.skipped?' <span class="bkd-tag" title="มีใบเดี่ยวตั้งแต่ 20 ล้านบาท — ตรวจว่าเป็นสัญญาเช่า/เงินกู้หรือไม่ ถ้าใช่ให้ย้ายไปกลุ่มลิสซิ่ง">⚠ ใบก้อนใหญ่</span>':'')+(p.unsched>0?' <span class="bkd-tag bkd-bad" title="เกินวงเงินต่องวด ยังจัดไม่ลง">เกินวงเงิน '+ppM(p.unsched)+'</span>':'')+(p.rule==='small'?' <span class="bkd-tag bkd-ok" title="ยอดค้างไม่เกินเกณฑ์ จ่ายเต็ม 100% งวดแรก">จ่ายเต็มตามเกณฑ์</span>':'')+(p.rule==='fewer'?' <span class="bkd-tag" title="ลดจำนวนงวดให้งวดละไม่ต่ำกว่าขั้นต่ำ">'+p.effN+' งวด</span>':'')+(p.byDoc&&p.docN>0?' <span class="bkd-tag" style="background:rgba(79,209,197,.16);color:#4FD1C5" title="'+(A.ageMode?'จ่ายทั้งใบตามช่วงอายุหนี้':'ตัดจ่ายทั้งใบ: เป้า '+ppM(p.target)+' ปัดเป็น '+ppM(p.plan)+' ('+(p.plan-p.target>=0?'+':'')+ppM(p.plan-p.target)+')')+'">'+p.docN+' ใบ</span>':'')+(A.ageMode&&p.outN>0?' <span class="bkd-tag" style="background:rgba(143,163,184,.18);color:var(--text2)" title="ใบเหล่านี้ไม่ตรงชุดอายุหนี้ใดที่ตั้ง จึงไม่เข้าแผน">นอกชุด '+p.outN+' ใบ · '+ppM(p.outSat)+'</span>':'')+(!A.ageMode&&p.byDoc&&p.docN===0&&p.target>0?' <span class="bkd-tag bkd-bad" title="เป้า '+ppM(p.target)+' ไม่ถึงครึ่งของใบเก่าสุด จึงไม่จ่ายรอบนี้ (ปิดทั้งใบ หรือเพิ่ม % ถ้าต้องการจ่าย)">เป้าไม่ถึงครึ่งใบ</span>':'');
+    var tag=(p.big&&!p.skipped?' <span class="bkd-tag" title="มีใบเดี่ยวตั้งแต่ 20 ล้านบาท — ตรวจว่าเป็นสัญญาเช่า/เงินกู้หรือไม่ ถ้าใช่ให้ย้ายไปกลุ่มลิสซิ่ง">⚠ ใบก้อนใหญ่</span>':'')+(p.unsched>0?' <span class="bkd-tag bkd-bad" title="เกินวงเงินต่องวด ยังจัดไม่ลง">เกินวงเงิน '+ppM(p.unsched)+'</span>':'')+(p.rule==='small'?' <span class="bkd-tag bkd-ok" title="ยอดค้างไม่เกินเกณฑ์ จ่ายเต็ม 100% งวดแรก">จ่ายเต็มตามเกณฑ์</span>':'')+(p.rule==='fewer'?' <span class="bkd-tag" title="ลดจำนวนงวดให้งวดละไม่ต่ำกว่าขั้นต่ำ">'+p.effN+' งวด</span>':'')+(p.byDoc&&p.docN>0?' <span class="bkd-tag" style="background:rgba(79,209,197,.16);color:#4FD1C5" title="'+(A.ageMode?'จ่ายทั้งใบตามช่วงอายุหนี้':'ตัดจ่ายทั้งใบ: เป้า '+ppM(p.target)+' ปัดเป็น '+ppM(p.plan)+' ('+(p.plan-p.target>=0?'+':'')+ppM(p.plan-p.target)+')')+'">'+p.docN+' ใบ</span>':'')+(A.ageMode&&p.outN>0?' <span class="bkd-tag" style="background:rgba(143,163,184,.18);color:var(--text2)" title="ใบเหล่านี้ไม่ตรงชุดอายุหนี้ใดที่ตั้ง จึงไม่เข้าแผน">นอกชุด '+p.outN+' ใบ · '+ppM(p.outSat)+'</span>':'')+(A.budgetMode&&p.nSplit>0?' <span class="bkd-tag" style="background:rgba(242,166,90,.2);color:#F2A65A" title="มีใบที่ถูกแบ่งจ่ายข้ามงวด">แบ่งจ่าย '+p.nSplit+' ใบ</span>':'')+(A.budgetMode&&p.nBig>0?' <span class="bkd-tag bkd-bad" title="ใบใหญ่กว่างบต่องวดและห้ามแบ่ง จึงจัดไม่ลง">ใหญ่กว่างบ '+p.nBig+' ใบ</span>':'')+(!A.ageMode&&!A.budgetMode&&p.byDoc&&p.docN===0&&p.target>0?' <span class="bkd-tag bkd-bad" title="เป้า '+ppM(p.target)+' ไม่ถึงครึ่งของใบเก่าสุด จึงไม่จ่ายรอบนี้ (ปิดทั้งใบ หรือเพิ่ม % ถ้าต้องการจ่าย)">เป้าไม่ถึงครึ่งใบ</span>':'');
     if(sk0)tag=' <span class="bkd-tag" style="background:rgba(143,163,184,.18);color:var(--text2)" title="ติ๊กข้าม — ไม่อยู่ในแผนและไม่นับในยอดรวม/รายงาน">ข้าม · ไม่อยู่ในแผน</span>';
     return '<tr'+(sk0?' class="pp-skip"':'')+'><td style="color:var(--muted)">'+(sk0?'–':seq)+'</td>'+
       '<td style="white-space:normal;min-width:220px"><a href="javascript:void(0)" style="color:var(--text);text-decoration:underline dotted" onclick="ppDetail('+i+')">'+ppEsc(p.name)+'</a>'+tag+'</td>'+
       '<td>'+dueFmtKey(p.oldest)+'</td><td class="right" style="color:'+dcol+';font-weight:700">'+(p.days>0?p.days:0)+'</td>'+
       '<td class="right">'+ppM(p.base)+'</td>'+
-      '<td class="right"><input type="number" min="0" max="100" step="1" class="filter-select" style="width:64px" '+(p.full||sk0||A.ageMode?'disabled ':'')+'value="'+(PP.per[p.key]!=null?PP.per[p.key]:'')+'" placeholder="'+(sk0?'—':(A.ageMode?'อายุหนี้':p.pct))+'" onchange="ppSetPer('+i+',this.value)"></td>'+
+      '<td class="right"><input type="number" min="0" max="100" step="1" class="filter-select" style="width:64px" '+(p.full||sk0||A.ageMode||A.budgetMode?'disabled ':'')+'value="'+(PP.per[p.key]!=null?PP.per[p.key]:'')+'" placeholder="'+(sk0?'—':(A.ageMode?'อายุหนี้':(A.budgetMode?'ตามงบ':p.pct)))+'" onchange="ppSetPer('+i+',this.value)"></td>'+
       '<td style="text-align:center"><input type="checkbox" '+(p.full?'checked ':'')+(sk0?'disabled ':'')+'title="จ่ายเต็ม 100% ในงวดแรก (แบ่งไม่ได้ เช่น ภาษี ประกันสังคม สาธารณูปโภค)" onchange="ppToggleFull('+i+',this.checked)"></td>'+
-      '<td style="text-align:center"><input type="checkbox" '+((PP.byDoc!==false&&!PP.docOff[p.key])||A.ageMode?'checked ':'')+(sk0||PP.byDoc===false||A.ageMode?'disabled ':'')+'title="ตัดจ่ายทั้งใบตามเลขที่เอกสาร (ติ๊กออก = ให้แบ่งจ่ายตามยอดเป๊ะ ตัดครึ่งใบได้)" onchange="ppToggleDoc('+i+',this.checked)"></td>'+
+      (A.budgetMode?'<td style="text-align:center"><input type="checkbox" '+(PP.noSplit[p.key]||p.full?'checked ':'')+(sk0||p.full?'disabled ':'')+'title="ห้ามแบ่งใบ: ต้องจ่ายทั้งใบเท่านั้น (ถ้าไม่พอในงบงวดนี้ รองวดถัดไป)" onchange="ppToggleNoSplit('+i+',this.checked)"></td>':'<td style="text-align:center"><input type="checkbox" '+((PP.byDoc!==false&&!PP.docOff[p.key])||A.ageMode?'checked ':'')+(sk0||PP.byDoc===false||A.ageMode?'disabled ':'')+'title="ตัดจ่ายทั้งใบตามเลขที่เอกสาร (ติ๊กออก = ให้แบ่งจ่ายตามยอดเป๊ะ ตัดครึ่งใบได้)" onchange="ppToggleDoc('+i+',this.checked)"></td>')+
       '<td class="pp-skipcol" style="text-align:center"><input type="checkbox" '+(sk0?'checked ':'')+'title="ข้าม: ไม่นำเจ้าหนี้รายนี้เข้าแผน (เช่น มียอดต้องเคลียร์หนี้ระหว่างกัน) — ไม่แสดงในรายงาน Excel/PDF" onchange="ppToggleSkip('+i+',this.checked)"></td>'+
       '<td class="right" style="font-weight:700;color:var(--gold2)">'+(sk0?'—':ppM(p.sched))+'</td>'+
       p.inst.map(function(v){return '<td class="right" style="color:'+(v?'var(--text)':'var(--muted)')+'">'+(v?ppM(v):'—')+'</td>';}).join('')+
@@ -11203,7 +11270,7 @@ function ppRender(){
   var tot='<tr style="background:#0d5560;font-weight:700"><td></td><td>รวมทั้งหมด'+(A.skipList.length?' <span style="font-weight:400;font-size:11px;color:var(--text2)">(ไม่รวมที่ข้าม '+A.skipList.length+' ราย)</span>':'')+'</td><td></td><td></td><td class="right">'+ppM(T.base)+'</td><td></td><td></td><td></td><td></td><td class="right">'+ppM(T.sched)+'</td>'+T.inst.map(function(v){return '<td class="right">'+ppM(v)+'</td>';}).join('')+'<td class="right">'+ppM(T.base-T.sched)+'</td><td></td></tr>';
   var tbl='<div class="recon-section" style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><div class="recon-section-title" style="margin-bottom:0">&#128203; แผนรายเจ้าหนี้ <span class="chart-sub">(เรียงค้างนานสุดก่อน · กดชื่อเพื่อดูรายใบ)</span></div>'+
     '<input class="modal-search" style="margin:0;max-width:260px" placeholder="&#128269; ค้นหาเจ้าหนี้…" oninput="filterTbl(this,\'ppTbl\')"></div>'+
-    '<div style="overflow:auto;max-height:70vh;margin-top:10px;border:1px solid var(--border);border-radius:8px"><table id="ppTbl"><thead style="position:sticky;top:0;z-index:2;background:#0b1626"><tr><th>#</th><th>เจ้าหนี้</th><th>ใบเก่าสุดครบกำหนด</th><th style="text-align:right">เลยกำหนด (วัน)</th><th style="text-align:right">ค้างที่เข้าแผน</th><th style="text-align:right">% เฉพาะราย</th><th>จ่ายเต็ม</th><th title="ติ๊ก = ตัดจ่ายทั้งใบตามเลขที่เอกสาร">ทั้งใบ</th><th title="ติ๊กเพื่อไม่นำเข้าแผน (เช่น มียอดต้องเคลียร์หนี้ระหว่างกัน)">ข้าม</th><th style="text-align:right">ยอดตามแผน</th>'+
+    '<div style="overflow:auto;max-height:70vh;margin-top:10px;border:1px solid var(--border);border-radius:8px"><table id="ppTbl"><thead style="position:sticky;top:0;z-index:2;background:#0b1626"><tr><th>#</th><th>เจ้าหนี้</th><th>ใบเก่าสุดครบกำหนด</th><th style="text-align:right">เลยกำหนด (วัน)</th><th style="text-align:right">ค้างที่เข้าแผน</th><th style="text-align:right">% เฉพาะราย</th><th>จ่ายเต็ม</th>'+(A.budgetMode?'<th title="ติ๊ก = ห้ามแบ่งใบของรายนี้ ต้องจ่ายทั้งใบ">ห้ามแบ่ง</th>':'<th title="ติ๊ก = ตัดจ่ายทั้งใบตามเลขที่เอกสาร">ทั้งใบ</th>')+'<th title="ติ๊กเพื่อไม่นำเข้าแผน (เช่น มียอดต้องเคลียร์หนี้ระหว่างกัน)">ข้าม</th><th style="text-align:right">ยอดตามแผน</th>'+
     A.dates.map(function(d,k){return '<th style="text-align:right">งวด '+(k+1)+'<br><span style="font-weight:400;font-size:10.5px">'+dueFmtKey(d)+'</span></th>';}).join('')+'<th style="text-align:right">คงเหลือ</th><th>กลุ่ม</th></tr></thead><tbody>'+
     (rowsHtml||'<tr><td colspan="'+(12+n)+'" style="padding:16px;color:var(--muted)">— ไม่มีเจ้าหนี้ที่ถึงกำหนดและอยู่ในกลุ่มที่เลือก —</td></tr>')+tot+'</tbody></table></div>'+more+
     '<div style="font-size:11px;color:var(--muted);margin-top:8px">ช่อง % เฉพาะราย: เว้นว่าง = ใช้ % ทุกราย ('+PP.pct+'%) · ติ๊ก "จ่ายเต็ม" = 100% ในงวดแรกโดยไม่แบ่ง · ติ๊ก "ข้าม" = ไม่เข้าแผน/ไม่แสดงในรายงาน (แถวจางไว้ให้เห็น ติ๊กออกเพื่อนำกลับ) · ป้าย "จ่ายเต็มตามเกณฑ์" / "N งวด" = ปรับโดยกติกายอดขั้นต่ำ · เปลี่ยน "กลุ่ม" เพื่อย้ายเจ้าหนี้ไปกลุ่มอื่น</div></div>';
@@ -11237,7 +11304,8 @@ function ppDetail(i){
     var d=ppDaysBetween(v.dd,A.today),left=v.out-v.pay;
     var st=v.pay<=0?0:(left<=0?2:1);
     if(st===2){nFull++;sumFull+=v.pay;}else if(st===1){nPart++;sumPart+=v.pay;}else nNone++;
-    var tag=st===2?'<span class="bkd-tag bkd-ok">จ่ายครบใบ</span>':(st===1?'<span class="bkd-tag" style="background:rgba(242,166,90,.2);color:'+ORG+'">จ่ายบางส่วน</span>':'<span class="bkd-tag" style="background:rgba(143,163,184,.16);color:var(--muted)">ไม่จ่ายในแผน</span>');
+    var nk=0;v.byK.forEach(function(x){if(x>0)nk++;});var spl=(!p.byDoc&&nk>1)?' (แบ่ง '+nk+' งวด)':'';
+    var tag=st===2?'<span class="bkd-tag bkd-ok">จ่ายครบใบ'+spl+'</span>':(st===1?'<span class="bkd-tag" style="background:rgba(242,166,90,.2);color:'+ORG+'">จ่ายบางส่วน'+spl+'</span>':'<span class="bkd-tag" style="background:rgba(143,163,184,.16);color:var(--muted)">ไม่จ่ายในแผน</span>');
     var rowBg=st===2?'rgba(76,175,125,.09)':(st===1?'rgba(242,166,90,.09)':'transparent');
     var dim=st===0?'opacity:.62;':'';
     return '<tr style="background:'+rowBg+';'+dim+'"><td style="font-weight:700;color:'+BLUE+'">'+ppEsc(v.doc)+'</td><td>'+dueFmtKey(v.dd)+'</td><td style="text-align:right;color:'+(d>180?'var(--red)':(d>90?ORG:(d>30?GOLD:'var(--muted)')))+'">'+(d>0?d:0)+'</td><td style="text-align:right">'+ppM(v.out)+'</td>'+
@@ -11257,6 +11325,8 @@ function ppDetail(i){
 function ppScopeLabel(){var a=['general','lease','other'].filter(function(g){return PP.scope[g];}).map(function(g){return PP_GRP[g];});return a.length?a.join(' + '):'ไม่ได้เลือกกลุ่ม';}
 function ppSkipNote(A){return A.skipList.length?' · ไม่รวมเจ้าหนี้ที่ข้ามตามที่เลือก '+A.skipList.length+' ราย ยอดถึงกำหนด '+ppM(A.skipBase)+' บาท':'';}
 function ppParamLines(A){
+  if(A.budgetMode){return ['เงื่อนไขแผน: ตามงบต่องวด '+ppM(A.budgetSat)+' บาท (ดึงใบเก่าสุดของทุกเจ้าหนี้เติมงบแต่ละงวด · ใบสุดท้ายของงวดแบ่งจ่ายได้'+(PP.minPart>0?' ถ้าส่วนแรกไม่ต่ำกว่า '+fmtFull(PP.minPart):'')+') · แบ่ง '+PP.n+' งวด '+ppFreqLabel()+' เริ่ม '+dueFmtKey(A.dates[0])+(A.bfLeft>0?' · ยังไม่จัด '+ppM(A.bfLeft)+(A.needN>0?' (ต้องใช้ประมาณ '+A.needN+' งวด)':''):' · จัดครบทุกใบ'),
+    'ขอบเขต: ใบเจ้าหนี้ที่ถึงกำหนดแล้วจนถึง '+dueFmtKey(A.today)+' · กลุ่มที่ทำแผน: '+ppScopeLabel()+' · ข้อมูล Q27 ณ '+(DUE.asOf||'—')+ppSkipNote(A)];}
   if(A.ageMode){var bl=[];A.dates.forEach(function(d,k){bl.push('งวด '+(k+1)+' = '+ppBandLabel(k));});return ['เงื่อนไขแผน: ตามช่วงอายุหนี้ (ชุดเอกสาร · จ่ายทั้งใบ) · '+bl.join(' · ')+' · '+ppFreqLabel()+' เริ่ม '+dueFmtKey(A.dates[0])+(A.capSat?' · วงเงินต่องวด '+ppM(A.capSat):'')+(PP.minFull>0?' · ค้างไม่เกิน '+fmtFull(PP.minFull)+' จ่ายเต็ม':''),
     'ขอบเขต: ใบเจ้าหนี้ที่ถึงกำหนดแล้วจนถึง '+dueFmtKey(A.today)+' · กลุ่มที่ทำแผน: '+ppScopeLabel()+' · ข้อมูล Q27 ณ '+(DUE.asOf||'—')+ppSkipNote(A)+(A.outBandN>0?' · ไม่รวมใบที่ไม่ตรงชุดอายุหนี้ '+A.outBandN+' ใบ ยอด '+ppM(A.outBandSat)+' บาท':'')];}
   return ['เงื่อนไขแผน: % ชำระ '+PP.pct+'% (ทุกราย; ปรับรายตัวได้) · แบ่ง '+PP.n+' งวด '+ppFreqLabel()+' เริ่ม '+dueFmtKey(A.dates[0])+(PP.mode==='custom'?' · % รายงวด '+PP.custom.slice(0,PP.n).join('/'):' · เท่ากันทุกงวด')+(A.capSat?' · วงเงินต่องวด '+ppM(A.capSat):'')+(PP.minFull>0?' · ค้างไม่เกิน '+fmtFull(PP.minFull)+' จ่ายเต็ม':'')+(PP.minInst>0?' · งวดละไม่ต่ำกว่า '+fmtFull(PP.minInst):''),
@@ -11277,7 +11347,7 @@ function ppExcel(){
   var a2=hdr('แผนแบ่งชำระ — รายใบ');
   a2.push(['เจ้าหนี้','เลขที่ใบ','ครบกำหนด','เลยกำหนด (วัน)','ค้าง','จ่ายตามแผน'].concat(A.dates.map(function(d,k){return 'งวด '+(k+1)+' '+dueFmtKey(d);})).concat(['คงเหลือ','สถานะใบ','จ่ายในงวด']));
   var kLab=function(v){var a=[];v.byK.forEach(function(x,k){if(x>0)a.push('งวด '+(k+1)+' '+dueFmtKey(A.dates[k]));});return a.join(' + ')||'ไม่จ่ายในแผนนี้';};
-  A.list.forEach(function(p){p.invs.forEach(function(v){a2.push([p.name,v.doc,dueFmtKey(v.dd),Math.max(0,ppDaysBetween(v.dd,A.today)),R(v.out),R(v.pay)].concat(v.byK.map(R)).concat([R(v.out-v.pay),v.pay<=0?'ไม่จ่ายในแผนนี้':(v.out-v.pay<=0?'จ่ายครบใบ':'จ่ายบางส่วน'),kLab(v)]));});});
+  A.list.forEach(function(p){p.invs.forEach(function(v){a2.push([p.name,v.doc,dueFmtKey(v.dd),Math.max(0,ppDaysBetween(v.dd,A.today)),R(v.out),R(v.pay)].concat(v.byK.map(R)).concat([R(v.out-v.pay),v.pay<=0?'ไม่จ่ายในแผนนี้':(v.out-v.pay<=0?(!p.byDoc&&v.byK.filter(function(x){return x>0;}).length>1?'จ่ายครบใบ (แบ่งจ่ายหลายงวด)':'จ่ายครบใบ'):'จ่ายบางส่วน'),kLab(v)]));});});
   var ws2=XLSX.utils.aoa_to_sheet(a2);ws2['!cols']=[{wch:40},{wch:16},{wch:14},{wch:14},{wch:16},{wch:16}].concat(A.dates.map(function(){return {wch:16};})).concat([{wch:16},{wch:18},{wch:26}]);
   XLSX.utils.book_append_sheet(wb,ws2,'รายใบ');
   var a3=hdr('ยอดเจ้าหนี้ค้างจ่ายแยกกลุ่ม (รวม = ยอดเจ้าหนี้ค้างจ่ายทั้งหมด)');
@@ -11300,7 +11370,7 @@ function ppExcel(){
     A.list.forEach(function(p){p.invs.forEach(function(v){
       if(!(v.byK[k]>0))return;
       sub+=v.byK[k];cnt++;
-      a4.push(['งวด '+(k+1)+(A.ageMode?' ('+ppBandLabel(k)+')':''),dueFmtKey(d),p.name,v.doc,dueFmtKey(v.dd),R(v.byK[k]),v.byK[k]===v.out?'จ่ายครบใบ':'จ่ายบางส่วน']);
+      a4.push(['งวด '+(k+1)+(A.ageMode?' ('+ppBandLabel(k)+')':''),dueFmtKey(d),p.name,v.doc,dueFmtKey(v.dd),R(v.byK[k]),!p.byDoc?ppDocStat(v,k):(v.byK[k]===v.out?'จ่ายครบใบ':'จ่ายบางส่วน')]);
     });});
     a4.push(['รวมงวด '+(k+1)+(A.ageMode?' ('+ppBandLabel(k)+')':''),dueFmtKey(d),cnt+' ใบ','','',R(sub),'']);a4.push([]);
   });
