@@ -11067,8 +11067,8 @@ function ppRender(){
   var bars='<div class="recon-section" style="margin-bottom:14px"><div class="recon-section-title">&#128197; สรุปยอดจ่ายรายงวด <span class="chart-sub">('+ppFreqLabel()+(A.capSat?' · วงเงิน '+ppM(A.capSat)+' ต่องวด':'')+')</span></div>'+
     '<div style="overflow-x:auto"><table style="width:100%"><thead><tr><th></th>'+
       T.inst.map(function(v,k){return '<th '+tdn+'>งวด '+(k+1)+'</th>';}).join('')+'<th style="text-align:right;white-space:nowrap;'+totc+'">รวมทุกงวด</th></tr></thead><tbody>'+
-    '<tr>'+lab('วันที่จ่าย')+A.dates.map(function(d){return '<td '+tdn+'>'+dueFmtKey(d)+'</td>';}).join('')+'<td style="text-align:right;'+totc+'"></td></tr>'+
-    '<tr>'+lab('ยอดจ่าย')+T.inst.map(function(v){return '<td '+tdn.replace('"><','"><')+'><b>'+ppM(v)+'</b></td>';}).join('')+'<td style="text-align:right;white-space:nowrap;'+totc+'">'+ppM(T.sched)+'</td></tr>'+
+    '<tr>'+lab('<span style="color:#7FB2FF">วันที่จ่าย</span>')+A.dates.map(function(d){return '<td '+tdn.replace('"><','"><')+'><span style="color:#7FB2FF;font-weight:700;font-size:13.5px">'+dueFmtKey(d)+'</span></td>';}).join('')+'<td style="text-align:right;'+totc+'"></td></tr>'+
+    '<tr>'+lab('<span style="color:var(--gold2);font-weight:700">ยอดจ่าย</span>')+T.inst.map(function(v){return '<td '+tdn.replace('"><','"><')+'><b style="color:var(--gold2);font-size:14.5px">'+ppM(v)+'</b></td>';}).join('')+'<td style="text-align:right;white-space:nowrap;color:var(--gold2);font-size:14.5px;'+totc+'">'+ppM(T.sched)+'</td></tr>'+
     '<tr>'+lab('% ของแผน')+T.inst.map(function(v){return '<td '+tdn+'>'+(den>0?(v/den*100).toFixed(1):'0.0')+'%</td>';}).join('')+'<td style="text-align:right;'+totc+'">'+(den>0?'100.0%':'-')+'</td></tr>'+
     '<tr>'+lab('จำนวนเจ้าหนี้')+iCnt.map(function(c){return '<td '+tdn+'>'+c+' ราย</td>';}).join('')+'<td style="text-align:right;'+totc+'">'+T.n+' ราย</td></tr>'+
     '<tr>'+lab('ยอดสะสม')+iCum.map(function(v){return '<td '+tdn+' ><span style="color:var(--muted)">'+ppM(v)+'</span></td>';}).join('')+'<td style="text-align:right;'+totc+'">'+ppM(T.sched)+'</td></tr>'+
