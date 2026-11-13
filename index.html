@@ -1418,8 +1418,7 @@ async function loadAllData(opts){
         if(raw instanceof Date){
           ym=raw.getFullYear()+'-'+String(raw.getMonth()+1).padStart(2,'0');
         }else{
-          var m=String(raw||'').match(/^(\d{4})-(\d{2})/);
-          ym=m?m[1]+'-'+m[2]:'';
+          ym=sheetYmOf(raw);   // รองรับกรณีชีตแปลง 'YYYY-MM' เป็นวันที่ (ISO เลื่อนเขตเวลา → เดือนเดิมถอยหลัง 1 เดือน) เหมือน Q11
         }
         if(!ym)return;
         var amt=parseFloat(r[5])||0;
