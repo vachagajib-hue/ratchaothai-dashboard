@@ -479,6 +479,7 @@ body.viewer-mode a[href*="docs.google.com/spreadsheets"]{display:none!important;
 <canvas id="plCashActualChart"></canvas>
 </div>
 <div style="font-size:11px;color:var(--muted);margin-bottom:8px" id="plRangeLabel"></div>
+<div id="plYearEndNote" style="display:none;font-size:11.5px;color:#D4A843;background:rgba(212,168,67,0.10);border:1px solid rgba(212,168,67,0.35);border-radius:6px;padding:7px 10px;margin-bottom:10px"></div>
 <div style="overflow-x:auto;overflow-y:auto;max-height:65vh;border:1px solid rgba(255,255,255,0.08);border-radius:8px"><div id="plTableWrap"></div></div>
 </div>
 </div>
@@ -9798,6 +9799,14 @@ function renderPL(){
     months=months.filter(function(m){return monthHasData[m];});
   }
   document.getElementById('plRangeLabel').textContent='ช่วงข้อมูล: '+(months.length?plMoLbl(months[0])+' — '+plMoLbl(months[months.length-1]):'—')+' — '+months.length+' เดือน';
+  // หมายเหตุ: เดือนที่มีรายการปรับปรุงสิ้นปีรวมอยู่ในตัวเลข (ตัดรายการปิดบัญชี TransType -3 ออกแล้ว) — เพิ่มเดือนอื่นได้ในอาร์เรย์นี้
+  var PL_YEAREND_MONTHS=['2025-12'];
+  var yeNote=PL_YEAREND_MONTHS.filter(function(m){return months.indexOf(m)>=0;});
+  var yeEl=document.getElementById('plYearEndNote');
+  if(yeEl){
+    if(yeNote.length){yeEl.style.display='';yeEl.textContent='หมายเหตุ: '+yeNote.map(function(m){return plMoLbl(m);}).join(', ')+' รวมรายการปรับปรุงสิ้นปี (เช่น ภาษีเงินได้นิติบุคคล ภาษีถูกหัก ณ ที่จ่ายตัดจ่าย) จึงสูงกว่าเดือนปกติ — ไม่รวมรายการปิดบัญชีประจำงวด';}
+    else{yeEl.style.display='none';}
+  }
   var actualRec=months.map(function(m){return +fmtM((G.recByM&&G.recByM[m])||0);});
   var actualPay=months.map(function(m){return +fmtM((G.payByM&&G.payByM[m])||0);});
   makeChart('plCashActualChart',{type:'bar',data:{labels:months.map(function(m){return plMoLbl(m);}),datasets:[
@@ -10831,7 +10840,7 @@ var PP_LEASE_RE=/ลีสซิ่ง|ลิสซิ่ง|ลีสซิง|
 var PP_BIG=20000000;      // ใบเดี่ยวตั้งแต่ 20 ล้านบาท ติดป้ายเตือนให้ตรวจว่าเป็นสัญญาเช่า/เงินกู้หรือไม่
 var PP_ROWCAP=150;
 var PP_LS='ppSettingsV2';
-var PP_VER='12.11.2026 · ข้าม+สีรายใบ+ตัดจ่ายทั้งใบ+ช่วงอายุหนี้+ตามงบต่องวด';
+var PP_VER='13.11.2026 · ข้าม+สีรายใบ+ตัดจ่ายทั้งใบ+ช่วงอายุหนี้+ตามงบต่องวด+เทียบQ05แยกใบลดหนี้';
 var PP_GRP={general:'เจ้าหนี้ทั่วไป',lease:'เจ้าหนี้ลิสซิ่ง / เงินกู้',other:'อื่น ๆ'};
 var PP_SUB={trc:'ยอดยกมา TRC (บัญชีพัก 9999)',susp:'บัญชีพัก / รอเคลียร์',loan:'ใบที่ลงบัญชีเงินยืม/เงินกู้',name:'ชื่อเจ้าหนี้เป็นลิสซิ่ง/ไฟแนนซ์',user:'ผู้ใช้ย้ายกลุ่มเอง'};
 function ppSave(){try{localStorage.setItem(PP_LS,JSON.stringify({pct:PP.pct,minFull:PP.minFull,minInst:PP.minInst,byDoc:PP.byDoc,docOff:PP.docOff,method:PP.method,budget:PP.budget,minPart:PP.minPart,noSplit:PP.noSplit,bands:PP.bands,bandsEdited:PP.bandsEdited,per:PP.per,full:PP.full,skip:PP.skip,grp:PP.grp,scope:PP.scope,n:PP.n,freq:PP.freq,start:PP.start,mode:PP.mode,custom:PP.custom,cap:PP.cap}));}catch(e){}}
