@@ -203,6 +203,14 @@ details[open]>.rp-summary::before{transform:rotate(90deg);}
 #printArea .pr-title{font-size:17px;font-weight:700;color:#1a2332;padding:0 16px;}
 #printArea .pr-title span{font-weight:600;}
 #printArea .pr-meta{font-size:12.5px;font-weight:700;color:#b91c1c;margin-top:4px;padding:0 16px;}
+#printArea .pr-info{margin:10px 0 2px;border:1px solid #d5dbe3;border-radius:6px;background:#f6f8fb;padding:6px 12px;}
+#printArea .pr-inforow{display:flex;gap:12px;align-items:baseline;padding:3px 0;border-bottom:1px dashed #d5dbe3;}
+#printArea .pr-inforow:last-child{border-bottom:0;}
+#printArea .pr-infok{flex:0 0 74px;font-size:11px;font-weight:700;color:#475569;letter-spacing:.2px;}
+#printArea .pr-infov{flex:1;font-size:12px;color:#1a2332;line-height:1.7;}
+#printArea .pr-chip{display:inline-block;white-space:nowrap;background:#fff;border:1px solid #cbd5e1;border-radius:10px;padding:0 8px;margin:0 5px 0 0;}
+#printArea .pr-chip b{color:#b91c1c;font-weight:700;}
+#printArea .pr-infonote .pr-infov{color:#92400e;}
 /* ===== ส่วนลงชื่อท้ายรายงาน ===== */
 #printArea .pr-signwrap{display:flex;justify-content:space-between;gap:18px;padding:34px 10px 10px;page-break-inside:avoid;}
 #printArea .pr-signcol{flex:1;text-align:center;}
@@ -2905,7 +2913,8 @@ function dmSimplePrintDoc(title,columns,rows,opts){
   var theadHtml='<thead><tr>'+columns.map(function(c){return '<th'+(c.right?' class="pr-right"':'')+'>'+c.label+'</th>';}).join('')+'</tr></thead>';
   var tbodyHtml='<tbody>'+rows.map(function(r){var isSum=/^\s*รวมทั้งหมด/.test(String(columns[0].get(r)));return '<tr'+(isSum?' class="pr-sub"':'')+'>'+columns.map(function(c){return '<td'+(c.right?' class="pr-right"':'')+'>'+c.get(r)+'</td>';}).join('')+'</tr>';}).join('')+'</tbody>';
   document.getElementById('printArea').innerHTML=
-    prHeaderHtml(title,'จำนวน '+rows.length+' รายการ &nbsp;·&nbsp; พิมพ์เมื่อ '+printTimestamp())+
+    prHeaderHtml(title,(opts&&opts.meta)||('จำนวน '+rows.length+' รายการ &nbsp;·&nbsp; พิมพ์เมื่อ '+printTimestamp()))+
+    ((opts&&opts.infoHtml)||'')+
     '<table>'+theadHtml+tbodyHtml+'</table>'+
     prSignatureHtml();
   prPrint(opts);
@@ -11141,6 +11150,7 @@ function ppRender(){
   if(!root||!pg||!pg.classList.contains('active'))return;
   ppLoadSettings();
   var scrollY=window.scrollY;
+  var tw0=document.getElementById('ppTblWrap'),twTop=tw0?tw0.scrollTop:0,twLeft=tw0?tw0.scrollLeft:0;
   if(DUE.loading&&!DUE.loaded){root.innerHTML='<div class="info-box blue">&#9203; กำลังโหลดข้อมูลเจ้าหนี้ (Q27)…</div>';return;}
   if(!DUE.have.exp){
     root.innerHTML='<div class="info-box gold"><div class="info-box-title">&#9888; ยังไม่มีข้อมูล Q27</div>หน้านี้ใช้ชีต Q27_AP_DUE_STATUS (รายใบเจ้าหนี้ พร้อมวันครบกำหนด) '+(DUE.failMsg.exp?'— โหลดไม่สำเร็จ: '+ppEsc(DUE.failMsg.exp):'— ยังไม่พบข้อมูล')+'<br><button class="hbtn" style="margin-top:8px" onclick="dueLoad(true)">&#8635; โหลดใหม่</button></div>';
@@ -11270,7 +11280,7 @@ function ppRender(){
   var tot='<tr style="background:#0d5560;font-weight:700"><td></td><td>รวมทั้งหมด'+(A.skipList.length?' <span style="font-weight:400;font-size:11px;color:var(--text2)">(ไม่รวมที่ข้าม '+A.skipList.length+' ราย)</span>':'')+'</td><td></td><td></td><td class="right">'+ppM(T.base)+'</td><td></td><td></td><td></td><td></td><td class="right">'+ppM(T.sched)+'</td>'+T.inst.map(function(v){return '<td class="right">'+ppM(v)+'</td>';}).join('')+'<td class="right">'+ppM(T.base-T.sched)+'</td><td></td></tr>';
   var tbl='<div class="recon-section" style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><div class="recon-section-title" style="margin-bottom:0">&#128203; แผนรายเจ้าหนี้ <span class="chart-sub">(เรียงค้างนานสุดก่อน · กดชื่อเพื่อดูรายใบ)</span></div>'+
     '<input class="modal-search" style="margin:0;max-width:260px" placeholder="&#128269; ค้นหาเจ้าหนี้…" oninput="filterTbl(this,\'ppTbl\')"></div>'+
-    '<div style="overflow:auto;max-height:70vh;margin-top:10px;border:1px solid var(--border);border-radius:8px"><table id="ppTbl"><thead style="position:sticky;top:0;z-index:2;background:#0b1626"><tr><th>#</th><th>เจ้าหนี้</th><th>ใบเก่าสุดครบกำหนด</th><th style="text-align:right">เลยกำหนด (วัน)</th><th style="text-align:right">ค้างที่เข้าแผน</th><th style="text-align:right">% เฉพาะราย</th><th>จ่ายเต็ม</th>'+(A.budgetMode?'<th title="ติ๊ก = ห้ามแบ่งใบของรายนี้ ต้องจ่ายทั้งใบ">ห้ามแบ่ง</th>':'<th title="ติ๊ก = ตัดจ่ายทั้งใบตามเลขที่เอกสาร">ทั้งใบ</th>')+'<th title="ติ๊กเพื่อไม่นำเข้าแผน (เช่น มียอดต้องเคลียร์หนี้ระหว่างกัน)">ข้าม</th><th style="text-align:right">ยอดตามแผน</th>'+
+    '<div id="ppTblWrap" style="overflow:auto;max-height:70vh;margin-top:10px;border:1px solid var(--border);border-radius:8px"><table id="ppTbl"><thead style="position:sticky;top:0;z-index:2;background:#0b1626"><tr><th>#</th><th>เจ้าหนี้</th><th>ใบเก่าสุดครบกำหนด</th><th style="text-align:right">เลยกำหนด (วัน)</th><th style="text-align:right">ค้างที่เข้าแผน</th><th style="text-align:right">% เฉพาะราย</th><th>จ่ายเต็ม</th>'+(A.budgetMode?'<th title="ติ๊ก = ห้ามแบ่งใบของรายนี้ ต้องจ่ายทั้งใบ">ห้ามแบ่ง</th>':'<th title="ติ๊ก = ตัดจ่ายทั้งใบตามเลขที่เอกสาร">ทั้งใบ</th>')+'<th title="ติ๊กเพื่อไม่นำเข้าแผน (เช่น มียอดต้องเคลียร์หนี้ระหว่างกัน)">ข้าม</th><th style="text-align:right">ยอดตามแผน</th>'+
     A.dates.map(function(d,k){return '<th style="text-align:right">งวด '+(k+1)+'<br><span style="font-weight:400;font-size:10.5px">'+dueFmtKey(d)+'</span></th>';}).join('')+'<th style="text-align:right">คงเหลือ</th><th>กลุ่ม</th></tr></thead><tbody>'+
     (rowsHtml||'<tr><td colspan="'+(12+n)+'" style="padding:16px;color:var(--muted)">— ไม่มีเจ้าหนี้ที่ถึงกำหนดและอยู่ในกลุ่มที่เลือก —</td></tr>')+tot+'</tbody></table></div>'+more+
     '<div style="font-size:11px;color:var(--muted);margin-top:8px">ช่อง % เฉพาะราย: เว้นว่าง = ใช้ % ทุกราย ('+PP.pct+'%) · ติ๊ก "จ่ายเต็ม" = 100% ในงวดแรกโดยไม่แบ่ง · ติ๊ก "ข้าม" = ไม่เข้าแผน/ไม่แสดงในรายงาน (แถวจางไว้ให้เห็น ติ๊กออกเพื่อนำกลับ) · ป้าย "จ่ายเต็มตามเกณฑ์" / "N งวด" = ปรับโดยกติกายอดขั้นต่ำ · เปลี่ยน "กลุ่ม" เพื่อย้ายเจ้าหนี้ไปกลุ่มอื่น</div></div>';
@@ -11295,6 +11305,7 @@ function ppRender(){
   }
   root.innerHTML=asOfWarn+ctl+cards+rec+bars+tbl+skBox+exBox+'<div style="font-size:10.5px;color:var(--muted);text-align:right;margin:4px 2px 0">เวอร์ชันหน้านี้: '+PP_VER+'</div>';
   window.scrollTo(0,scrollY);
+  var tw1=document.getElementById('ppTblWrap');if(tw1){tw1.scrollTop=twTop;tw1.scrollLeft=twLeft;}
 }
 function ppDetail(i){
   var A=PP.cur,p=A&&A.view[i];if(!p)return;
@@ -11331,6 +11342,33 @@ function ppParamLines(A){
     'ขอบเขต: ใบเจ้าหนี้ที่ถึงกำหนดแล้วจนถึง '+dueFmtKey(A.today)+' · กลุ่มที่ทำแผน: '+ppScopeLabel()+' · ข้อมูล Q27 ณ '+(DUE.asOf||'—')+ppSkipNote(A)+(A.outBandN>0?' · ไม่รวมใบที่ไม่ตรงชุดอายุหนี้ '+A.outBandN+' ใบ ยอด '+ppM(A.outBandSat)+' บาท':'')];}
   return ['เงื่อนไขแผน: % ชำระ '+PP.pct+'% (ทุกราย; ปรับรายตัวได้) · แบ่ง '+PP.n+' งวด '+ppFreqLabel()+' เริ่ม '+dueFmtKey(A.dates[0])+(PP.mode==='custom'?' · % รายงวด '+PP.custom.slice(0,PP.n).join('/'):' · เท่ากันทุกงวด')+(A.capSat?' · วงเงินต่องวด '+ppM(A.capSat):'')+(PP.minFull>0?' · ค้างไม่เกิน '+fmtFull(PP.minFull)+' จ่ายเต็ม':'')+(PP.minInst>0?' · งวดละไม่ต่ำกว่า '+fmtFull(PP.minInst):''),
     'ขอบเขต: ใบเจ้าหนี้ที่ถึงกำหนดแล้วจนถึง '+dueFmtKey(A.today)+' · กลุ่มที่ทำแผน: '+ppScopeLabel()+' · ข้อมูล Q27 ณ '+(DUE.asOf||'—')+ppSkipNote(A)];
+}
+// กล่องสรุปเงื่อนไขแผนสำหรับหัวรายงานพิมพ์/PDF (แยกเป็นหมวด ป้ายสั้น ๆ แทนประโยคยาวบรรทัดเดียว)
+function ppInfoHtml(A){
+  var chip=function(t){return '<span class="pr-chip">'+t+'</span>';};
+  var row=function(k,arr,cls){return arr&&arr.length?'<div class="pr-inforow'+(cls?' '+cls:'')+'"><div class="pr-infok">'+k+'</div><div class="pr-infov">'+arr.map(chip).join('')+'</div></div>':'';};
+  var sch='แบ่ง <b>'+PP.n+' งวด</b> '+ppFreqLabel()+' เริ่ม <b>'+dueFmtKey(A.dates[0])+'</b>';
+  var cond=[],rule=[];
+  if(A.budgetMode){
+    cond=['ตามงบต่องวด <b>'+fmtFull(A.budgetSat/100)+'</b> บาท','ดึงใบเก่าสุดของทุกเจ้าหนี้ก่อน',sch];
+    rule=['ใบสุดท้ายของงวดแบ่งจ่ายได้'+(PP.minPart>0?' (ส่วนแรกไม่ต่ำกว่า '+fmtFull(PP.minPart)+')':'')];
+    if(A.bfLeft>0)rule.push('ยังไม่จัดลงงวด <b>'+ppM(A.bfLeft)+'</b>'+(A.needN>0?' (ต้องใช้ประมาณ '+A.needN+' งวด)':''));
+  }else if(A.ageMode){
+    cond=['ตามช่วงอายุหนี้ (ชุดเอกสาร · จ่ายทั้งใบ)',sch];
+    var bl=[];A.dates.forEach(function(d,k){bl.push('งวด '+(k+1)+' = '+ppBandLabel(k));});rule=bl;
+    if(PP.minFull>0)rule.push('ค้างไม่เกิน '+fmtFull(PP.minFull)+' จ่ายเต็ม');
+    if(A.capSat)rule.push('วงเงินต่องวด '+ppM(A.capSat));
+  }else{
+    cond=['ชำระ <b>'+PP.pct+'%</b> ของยอดค้าง (ปรับรายตัวได้)',sch,PP.mode==='custom'?'% รายงวด '+PP.custom.slice(0,PP.n).join(' / '):'เท่ากันทุกงวด',PP.byDoc!==false?'ตัดจ่ายทั้งใบ':'ตัดใบเก่าสุดก่อน แบ่งครึ่งใบได้'];
+    if(PP.minFull>0)rule.push('ค้างไม่เกิน <b>'+fmtFull(PP.minFull)+'</b> จ่ายเต็ม');
+    if(PP.minInst>0)rule.push('งวดละไม่ต่ำกว่า <b>'+fmtFull(PP.minInst)+'</b>');
+    if(A.capSat)rule.push('วงเงินต่องวด <b>'+ppM(A.capSat)+'</b>');
+  }
+  var scope=['กลุ่ม: '+ppScopeLabel(),'ใบที่ถึงกำหนดถึง '+dueFmtKey(A.today),'ข้อมูล Q27 ณ '+(DUE.asOf||'—')];
+  var note=[];
+  if(A.skipList.length)note.push('ไม่รวมเจ้าหนี้ที่ข้ามตามที่เลือก '+A.skipList.length+' ราย (ยอดถึงกำหนด '+ppM(A.skipBase)+' บาท)');
+  if(A.ageMode&&A.outBandN>0)note.push('ไม่รวมใบที่ไม่ตรงชุดอายุหนี้ '+A.outBandN+' ใบ (ยอด '+ppM(A.outBandSat)+' บาท)');
+  return '<div class="pr-info">'+row('เงื่อนไขแผน',cond)+row(A.ageMode?'ชุดเอกสาร':'กติกา',rule)+row('ขอบเขต',scope)+row('หมายเหตุ',note,'pr-infonote')+'</div>';
 }
 function ppExcel(){
   var A=PP.cur;if(!A||typeof XLSX==='undefined')return;
@@ -11390,7 +11428,7 @@ function ppPrint(){
     {label:'ยอดตามแผน',right:true,get:function(r){return ppM(r._tot?T.sched:r.sched);}}]
     .concat(A.dates.map(function(d,k){return {label:'งวด '+(k+1)+'<br>'+dueFmtKey(d),right:true,get:function(r){var v=r._tot?T.inst[k]:r.inst[k];return v?ppM(v):'—';}};}))
     .concat([{label:'คงเหลือ',right:true,get:function(r){var v=r._tot?(T.base-T.sched):r.remain;return v>0?ppM(v):'ครบ';}}]);
-  dmSimplePrintDoc('แผนแบ่งชำระเจ้าหนี้ · '+ppParamLines(A)[0]+' · กลุ่ม: '+ppScopeLabel()+ppSkipNote(A),cols,rows,{orient:'landscape'});
+  dmSimplePrintDoc('แผนแบ่งชำระเจ้าหนี้',cols,rows,{orient:'landscape',meta:'จำนวน '+A.list.length+' เจ้าหนี้ &nbsp;·&nbsp; พิมพ์เมื่อ '+printTimestamp(),infoHtml:ppInfoHtml(A)});
 }
 
 </script>
