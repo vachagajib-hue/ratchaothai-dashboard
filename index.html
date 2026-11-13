@@ -2502,7 +2502,11 @@ function dmRender(){
     }
     html+='</div>';
   }
-  html+='<div style="font-size:11px;color:var(--muted);margin-bottom:8px">ช่วงข้อมูล: <strong style="color:var(--gold2)">'+dmRangeLabel()+'</strong> — พบ '+filtered.length+' รายการ, ยอดรวม <strong style="color:var(--text)">'+fmtFull(totalAll)+'</strong> บาท</div>';
+  var dmExp=dmExpandInfo(filtered),dmItm=dmItemsInfo(filtered);
+  html+='<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:8px"><div>ช่วงข้อมูล: <strong style="color:var(--gold2)">'+dmRangeLabel()+'</strong> — พบ '+filtered.length+' รายการ, ยอดรวม <strong style="color:var(--text)">'+fmtFull(totalAll)+'</strong> บาท</div>'+
+    '<span style="display:flex;gap:8px;flex-wrap:wrap">'+
+    (dmItm.n>0?'<button class="recon-bank-btn" id="dmItmAllBtn" title="ขยาย/ยุบรายละเอียดสินค้า-บริการของทุกใบ (ขยายแถวกลุ่มให้ด้วย)" onclick="dmExpandItems('+(dmItm.all?'false':'true')+')">'+(dmItm.all?'▾ ยุบรายละเอียดสินค้า':'▸ ขยายรายละเอียดสินค้า')+' <span style="color:var(--muted)">('+dmItm.n+' ใบ)</span></button>':'')+
+    (dmExp.n>0?'<button class="recon-bank-btn" id="dmExpAllBtn" title="ขยาย/ยุบรายการย่อยของทุกแถวที่แสดง" onclick="dmExpandAll('+(dmExp.all?'false':'true')+')">'+(dmExp.all?'⊟ ยุบทั้งหมด':'⊞ ขยายทั้งหมด')+' <span style="color:var(--muted)">('+dmExp.n+' แถว)</span></button>':'')+'</span></div>';
 
   html+='<div id="dmScrollWrap" style="overflow-x:auto;max-height:420px;overflow-y:auto"><table><thead style="position:sticky;top:0;background:#0b1626;z-index:2"><tr>';
   if(cfg.groupable&&s.view==='group'){
@@ -2615,6 +2619,38 @@ function dmItemsRowHtml(items,colspan){
       '<span style="color:var(--gold2);font-weight:600;min-width:110px;text-align:right">'+fmtFull(it.lineTotal||0)+'</span></div>';
   }).join('');
   return '<tr style="background:rgba(212,168,67,0.04)"><td colspan="'+colspan+'" style="padding:6px 10px 6px 44px">'+body+'</td></tr>';
+}
+// ขยาย/ยุบทุกแถวของมุมมองปัจจุบัน (จัดกลุ่มตามชื่อ / แยกตามเดือน / แยกตามธนาคาร)
+function dmExpandInfo(filtered){
+  var s=DM.state,v=s.view,list=[],map=null;
+  try{
+    if(DM.cfg.groupable&&v==='group'){list=dmGroup(filtered).map(function(g){return g.name;});s.expanded=s.expanded||{};map=s.expanded;}
+    else if(DM.cfg.groupable&&v==='month'){list=dmGroupByMonth(filtered).map(function(g){return g.monthKey;});s.expandedMonths=s.expandedMonths||{};map=s.expandedMonths;}
+    else if(DM.cfg.groupable&&DM.cfg.bankGroupable&&v==='bank'){list=dmGroupByBank(filtered).map(function(g){return g.bankKey;});s.expandedBanks=s.expandedBanks||{};map=s.expandedBanks;}
+  }catch(e){list=[];}
+  if(!map||!list.length)return {n:0,all:false,list:[],map:null};
+  return {n:list.length,all:list.every(function(k){return !!map[k];}),list:list,map:map};
+}
+// รายละเอียดสินค้า/บริการรายใบ (▸ ใต้เลขที่เอกสาร): นับเฉพาะใบที่มีข้อมูล itemsByDoc
+function dmItemsInfo(filtered){
+  var ib=DM.cfg&&DM.cfg.itemsByDoc;if(!ib)return {n:0,all:false,docs:[]};
+  var seen={},docs=[];
+  filtered.forEach(function(r){if(r.docNo&&!seen[r.docNo]&&ib[r.docNo]&&ib[r.docNo].length){seen[r.docNo]=1;docs.push(r.docNo);}});
+  var ex=DM.state.expandedItems||{};
+  return {n:docs.length,all:docs.length>0&&docs.every(function(d){return !!ex[d];}),docs:docs};
+}
+function dmExpandItems(on){
+  var f=dmFilterRows(),info=dmItemsInfo(f);
+  DM.state.expandedItems=DM.state.expandedItems||{};
+  info.docs.forEach(function(d){if(on)DM.state.expandedItems[d]=true;else delete DM.state.expandedItems[d];});
+  if(on&&DM.state.view==='group'){var e=dmExpandInfo(f);if(e.map)e.list.forEach(function(k){e.map[k]=true;});}
+  dmRender();
+}
+function dmExpandAll(on){
+  var info=dmExpandInfo(dmFilterRows());
+  if(!info.map)return;
+  info.list.forEach(function(k){if(on)info.map[k]=true;else delete info.map[k];});
+  dmRender();
 }
 function dmToggleGroupIdx(i){
   var g=DM.state.lastGroups&&DM.state.lastGroups[i];
@@ -3102,7 +3138,13 @@ function renderExpDetailModal(code,accName){
     '<div class="modal-summary">'+mStat('ยอดรวม (YTD)',fmtKPI(total),'var(--red)')+mStat('สัดส่วนของค่าใช้จ่ายรวม',pct+'%','var(--gold2)')+'</div>'+
     '<div style="font-size:11px;color:var(--blue);background:rgba(91,143,249,0.12);border-radius:6px;padding:6px 10px;margin-bottom:10px">แสดงเฉพาะรายการของบัญชีนี้เท่านั้น กดที่แต่ละเดือนเพื่อดูรายละเอียดเอกสาร/คู่ค้า</div>'+
     reconcileNote+
+    (months.length?'<div style="text-align:right;margin-bottom:8px"><button class="recon-bank-btn" onclick="expDetailAll(\''+codeEsc+'\',\''+nameEsc+'\','+(months.every(function(m){return !!EXP_DETAIL_STATE.expanded[m];})?'false':'true')+')">'+(months.every(function(m){return !!EXP_DETAIL_STATE.expanded[m];})?'⊟ ยุบทั้งหมด':'⊞ ขยายทั้งหมด')+' <span style="color:var(--muted)">('+months.length+' เดือน)</span></button></div>':'')+
     '<table><thead><tr><th>เดือน</th><th style="text-align:right">จำนวนเงิน</th></tr></thead><tbody>'+bodyRows+'</tbody></table>');
+}
+function expDetailAll(code,accName,on){
+  var mm={};(G.plRows||[]).forEach(function(r){if(r.code===code)mm[r.ym]=1;});
+  Object.keys(mm).forEach(function(m){if(on)EXP_DETAIL_STATE.expanded[m]=true;else delete EXP_DETAIL_STATE.expanded[m];});
+  renderExpDetailModal(code,accName);
 }
 function toggleExpDetailMonth(code,accName,m){
   EXP_DETAIL_STATE.expanded[m]=!EXP_DETAIL_STATE.expanded[m];
