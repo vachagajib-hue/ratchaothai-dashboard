@@ -10953,9 +10953,11 @@ function ppCompute(){
   var today=projTodayKey(),rows=DUE.exp||[],n=PP.n;
   var P={},order=[];
   var S={general:ppNewStat(),lease:ppNewStat(),other:ppNewStat()},SUB={};
+  var DOCS={};
   rows.forEach(function(r){
     var out=ppSat(r.total)-ppSat(r.paid);
     if(out===0)return;
+    var dk0=(r.type==='CN'?'CN':'INV')+'|'+r.doc,dd0=DOCS[dk0]||(DOCS[dk0]={type:r.type==='CN'?'CN':'INV',doc:r.doc,party:r.party||r.partyCode||'',dd:r.dd,out:0});dd0.out+=out;
     var key=r.partyCode||r.party||'?';
     var gi=ppGroupOf(r,key),pk=gi.g+'|'+key;
     var st=S[gi.g];st.net+=out;st.docs++;
@@ -10972,6 +10974,13 @@ function ppCompute(){
     if(r.dd>today){p.notyet+=out;return;}
     p.invs.push({doc:r.doc,dd:r.dd,out:out,rem:out,acct:r.acct||'',acctName:r.acctName||''});
   });
+  // แยกตามเอกสาร: ใบเจ้าหนี้ยอดบวก (= ฐานเดียวกับ Q05) · ใบลดหนี้ (CN) · ใบเจ้าหนี้ที่ยอดสุทธิติดลบ (Q05 ไม่นับ)
+  var invNet=0,cnNet=0,cnN=0,negNet=0,negN=0,creditDocs=[];
+  Object.keys(DOCS).forEach(function(k){var d=DOCS[k];
+    if(d.type==='CN'){cnNet+=d.out;cnN++;creditDocs.push({kind:'ใบลดหนี้ (CN)',doc:d.doc,party:d.party,dd:d.dd,amt:d.out});}
+    else if(d.out<0){negNet+=d.out;negN++;creditDocs.push({kind:'ใบเจ้าหนี้ยอดติดลบ',doc:d.doc,party:d.party,dd:d.dd,amt:d.out});}
+    else invNet+=d.out;});
+  creditDocs.sort(function(a,b){return a.amt-b.amt;});
   var parties=[],list=[],skipList=[];
   order.forEach(function(pk){
     var p=P[pk];
@@ -11118,7 +11127,7 @@ function ppCompute(){
   ['general','lease','other'].forEach(function(g){Object.keys(tot).forEach(function(k){tot[k]+=S[g][k];});});
   var outScope=0;['general','lease','other'].forEach(function(g){if(!PP.scope[g])outScope+=S[g].net;});
   var nDoc=0;list.forEach(function(p){if(p.byDoc)nDoc++;});
-  return {budgetMode:budgetMode,budgetSat:Math.round((+PP.budget||0)*100),needN:bfInfo.needN,bfLeft:bfInfo.left,nSplit:bfInfo.nSplit,outBandN:outBandN,outBandSat:outBandSat,ageMode:ageMode,nDoc:nDoc,list:list,view:view,skipList:skipList,skipBase:skipBase,parties:parties,T:T,S:S,SUB:SUB,tot:tot,dates:dates,today:today,oldest:list.length?list[0]:null,capSat:capSat,q05:ppQ05Total(),outScope:outScope};
+  return {invNet:invNet,cnNet:cnNet,cnN:cnN,negNet:negNet,negN:negN,creditDocs:creditDocs,budgetMode:budgetMode,budgetSat:Math.round((+PP.budget||0)*100),needN:bfInfo.needN,bfLeft:bfInfo.left,nSplit:bfInfo.nSplit,outBandN:outBandN,outBandSat:outBandSat,ageMode:ageMode,nDoc:nDoc,list:list,view:view,skipList:skipList,skipBase:skipBase,parties:parties,T:T,S:S,SUB:SUB,tot:tot,dates:dates,today:today,oldest:list.length?list[0]:null,capSat:capSat,q05:ppQ05Total(),outScope:outScope};
 }
 
 // ---- ตัวควบคุม ----
@@ -11252,9 +11261,9 @@ function ppRender(){
   var asOfWarn='';
   if(DUE.asOf){var ak=dueKeyDate(DUE.asOf);if(ak&&ak<A.today)asOfWarn='<div class="info-box gold" style="margin-bottom:12px">&#9888; ข้อมูล Q27 ณ '+ppEsc(DUE.asOf)+' — เงินที่จ่ายหลังวันนั้นยังไม่รวม (ยอดค้างอาจสูงกว่าจริง) ควรวางชีตใหม่ก่อนใช้ตัดสินใจ</div>';}
   var oldest=A.oldest;
-  var diff=A.tot.net-A.q05,diffOk=Math.abs(diff)<=100;
+  var diff=A.invNet-A.q05,diffOk=Math.abs(diff)<=100;
   var cards='<div class="kpi-row">'+
-    kpi('red','&#128221;','rgba(224,92,92,.15)','เจ้าหนี้ค้างจ่ายทั้งหมด (Q27)',ppM(A.tot.net),'red',(A.q05?('Q05 '+ppM(A.q05)+(diffOk?' · ตรงกัน ✓':' · ต่าง '+ppM(diff))):'ไม่พบ Q05')+' · แยก 3 กลุ่มด้านล่าง','')+
+    kpi('red','&#128221;','rgba(224,92,92,.15)','เจ้าหนี้ค้างจ่ายทั้งหมด (Q27)',ppM(A.tot.net),'red',(A.q05?('Q05 '+ppM(A.q05)+(diffOk?' · ใบเจ้าหนี้ตรงกัน ✓':' · ใบเจ้าหนี้ต่าง '+ppM(diff))):'ไม่พบ Q05')+((A.cnNet+A.negNet)<0?' · หักใบลดหนี้/ยอดติดลบ '+ppM(-(A.cnNet+A.negNet)):''),'')+
     kpi('blue','&#128179;','rgba(91,143,249,.15)','ค้างถึงกำหนดที่เข้าแผน',ppM(T.base),'blue',T.n+' เจ้าหนี้ · '+(['general','lease','other'].filter(function(g){return PP.scope[g];}).map(function(g){return PP_GRP[g];}).join(' + ')||'—')+(A.skipList.length?' · ข้าม '+A.skipList.length+' ราย ('+ppM(A.skipBase)+')':''),'')+
     kpi('gold','&#128197;','rgba(240,201,107,.15)','ยอดตามแผน',ppM(T.sched),'gold',(T.base>0?(T.sched/T.base*100).toFixed(1):'0.0')+'% ของยอดที่เข้าแผน · '+n+' งวด'+(A.budgetMode?' · งบ '+ppM(A.budgetSat)+'/งวด':(A.ageMode?' · ตามช่วงอายุหนี้':(A.nDoc?' · ปัดตามใบ':''))),'')+
     kpi('red','&#9203;','rgba(224,92,92,.15)','คงเหลือหลังแผน',ppM(T.base-T.sched),'red',T.partial+' เจ้าหนี้ยังค้างต่อ'+(A.budgetMode&&A.nSplit>0?' · แบ่งจ่าย '+A.nSplit+' ใบ':'')+(T.unsched>0?' · เกินวงเงิน '+ppM(T.unsched):''),'')+
@@ -11278,7 +11287,8 @@ function ppRender(){
     rr('รวมทั้งหมด',A.tot,{tot:true})+
     (A.skipList.length?'<tr><td style="padding-left:28px;color:var(--muted);font-size:12px">↳ ในยอดข้างต้น: <b style="color:var(--gold2)">ติ๊กข้ามตามที่เลือก '+A.skipList.length+' ราย</b> (ไม่เข้าแผน · ยอดถึงกำหนดหลังหักเครดิต)</td><td class="right" style="color:var(--gold2);font-size:12px">'+ppM(A.skipBase)+'</td><td></td><td></td><td></td><td></td><td></td></tr>':'')+
     '</tbody></table></div>'+
-    '<div style="font-size:12px;margin-top:10px;line-height:1.8">'+(A.q05?('เทียบกับ KPI "เจ้าหนี้ค้างจ่ายทั้งหมด" (ชีต Q05 รวมทุกใบ) <b>'+ppM(A.q05)+'</b> · ผลต่าง <b style="color:'+(diffOk?'var(--green)':'var(--gold2)')+'">'+ppM(diff)+'</b> '+(diffOk?'✓ ตรงกัน':'— ไม่ตรง: มักเกิดจากวางชีต Q05 กับ Q27 คนละเวลา หรือ KPI กรองเดือนอยู่ ให้วางชีตใหม่พร้อมกัน')):'ไม่พบข้อมูล Q05 ให้เทียบ')+'</div>'+
+    '<div style="font-size:12px;margin-top:10px;line-height:1.8">'+(A.q05?('เทียบกับ KPI "เจ้าหนี้ค้างจ่ายทั้งหมด" (ชีต Q05 — <b>รวมเฉพาะใบเจ้าหนี้ ไม่รวมใบลดหนี้</b>) Q05 <b>'+ppM(A.q05)+'</b> · ใบเจ้าหนี้ใน Q27 <b>'+ppM(A.invNet)+'</b> · ผลต่าง <b style="color:'+(diffOk?'var(--green)':'var(--gold2)')+'">'+ppM(diff)+'</b> '+(diffOk?'✓ ตรงกัน':'— ไม่ตรง: มักเกิดจากวางชีต Q05 กับ Q27 คนละเวลา (มีการจ่าย/เปิดใบใหม่ระหว่างวัน) ให้วางชีตใหม่พร้อมกัน หรือดูรายใบที่ไม่ตรงที่หน้า "รายได้-ค่าใช้จ่ายตามดิว"')):'ไม่พบข้อมูล Q05 ให้เทียบ')+
+    '<br>ค้างสุทธิรวมในตารางนี้ <b>'+ppM(A.tot.net)+'</b> = ใบเจ้าหนี้ '+ppM(A.invNet)+((A.cnNet+A.negNet)<0?' − ใบลดหนี้ '+A.cnN+' ใบ '+ppM(-A.cnNet)+' − ใบเจ้าหนี้ที่ยอดติดลบ '+A.negN+' ใบ '+ppM(-A.negNet)+' <a href="javascript:void(0)" style="color:var(--gold2);text-decoration:underline" onclick="ppCreditDocs()">ดูรายการที่หัก</a>':'')+'</div>'+
     '<div style="font-size:11px;color:var(--muted);margin-top:4px">ยอดที่เข้าแผนจริง (ตัวเลขการ์ด) นับเฉพาะ "ถึงกำหนดแล้ว" ของกลุ่มที่ติ๊กทำแผน หลังหักใบลดหนี้ของเจ้าหนี้รายนั้น</div></div>';
   var cum=0,den=T.sched||0,iCnt=[],iCum=[],iDoc=[],totDoc=0;
   T.inst.forEach(function(v,k){cum+=v;iCum.push(cum);var c=0,dc=0;A.list.forEach(function(p){if(p.inst[k]>0)c++;p.invs.forEach(function(x){if(x.byK[k]>0)dc++;});});iCnt.push(c);iDoc.push(dc);});A.list.forEach(function(p){p.invs.forEach(function(x){if(x.pay>0)totDoc++;});});
@@ -11412,6 +11422,16 @@ function ppInfoHtml(A){
   if(A.ageMode&&A.outBandN>0)note.push('ไม่รวมใบที่ไม่ตรงชุดอายุหนี้ '+A.outBandN+' ใบ (ยอด '+ppM(A.outBandSat)+' บาท)');
   return '<div class="pr-info">'+row('เงื่อนไขแผน',cond)+row(A.ageMode?'ชุดเอกสาร':'กติกา',rule)+row('ขอบเขต',scope)+row('หมายเหตุ',note,'pr-infonote')+'</div>';
 }
+function ppCreditDocs(){
+  var A=PP.cur;if(!A)return;
+  var rows=A.creditDocs;
+  var cols=[{label:'ประเภท',get:function(r){return r.kind;}},{label:'เลขที่เอกสาร',get:function(r){return r.doc;}},{label:'เจ้าหนี้',get:function(r){return r.party;}},{label:'ครบกำหนด',get:function(r){return dueFmtKey(r.dd);}},{label:'ยอดค้าง (ติดลบ)',right:true,get:function(r){return ppM(r.amt);}}];
+  dmRegisterSimple('ppCredit','ใบลดหนี้และใบเจ้าหนี้ยอดติดลบที่หักจากยอดค้าง',cols,rows);
+  openModal('ใบลดหนี้ / ใบเจ้าหนี้ยอดติดลบ',dmExportBtns('ppCredit')+
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:8px;line-height:1.7">รายการเหล่านี้ Q05 ไม่นับ (Q05 มีเฉพาะใบเจ้าหนี้ยอดค้างเป็นบวก) แต่ Q27 หักออกเป็นยอดติดลบ · รวม '+rows.length+' ใบ '+ppM(A.cnNet+A.negNet)+' บาท</div>'+
+    '<table><thead><tr><th>ประเภท</th><th>เลขที่เอกสาร</th><th>เจ้าหนี้</th><th>ครบกำหนด</th><th style="text-align:right">ยอดค้าง</th></tr></thead><tbody>'+
+    rows.map(function(r){return '<tr><td>'+ppEsc(r.kind)+'</td><td>'+ppEsc(r.doc)+'</td><td>'+ppEsc(r.party)+'</td><td>'+dueFmtKey(r.dd)+'</td><td class="right" style="color:#7FB2FF">'+ppM(r.amt)+'</td></tr>';}).join('')+'</tbody></table>');
+}
 function ppExcel(){
   var A=PP.cur;if(!A||typeof XLSX==='undefined')return;
   var R=function(sat){return Math.round(sat)/100;};
@@ -11434,7 +11454,7 @@ function ppExcel(){
   a3.push(['กลุ่มเจ้าหนี้','ถึงกำหนดแล้ว','ยังไม่ถึงกำหนด','ไม่มีวันครบกำหนด','ใบลดหนี้/เครดิต','ค้างสุทธิรวม','ทำแผน']);
   ['general','lease','other'].forEach(function(g){var s=A.S[g];a3.push([PP_GRP[g],R(s.due),R(s.notyet),R(s.nodue),R(s.credit),R(s.net),PP.scope[g]?'ทำแผน':'ไม่ทำแผน']);});
   a3.push(['รวมทั้งหมด',R(A.tot.due),R(A.tot.notyet),R(A.tot.nodue),R(A.tot.credit),R(A.tot.net),'']);
-  a3.push([]);a3.push(['เทียบ KPI เจ้าหนี้ค้างจ่ายทั้งหมด (Q05)','','','','',R(A.q05),'ผลต่าง '+R(A.tot.net-A.q05)]);
+  a3.push([]);a3.push(['เทียบ KPI เจ้าหนี้ค้างจ่ายทั้งหมด (Q05 = เฉพาะใบเจ้าหนี้ยอดบวก)','','','','',R(A.q05),'ผลต่างกับใบเจ้าหนี้ใน Q27 '+R(A.invNet-A.q05)]);a3.push(['ใบเจ้าหนี้ยอดบวกใน Q27','','','','',R(A.invNet)]);a3.push(['ใบลดหนี้ค้าง ('+A.cnN+' ใบ)','','','','',R(A.cnNet)]);a3.push(['ใบเจ้าหนี้ยอดติดลบ ('+A.negN+' ใบ)','','','','',R(A.negNet)]);
   a3.push([]);a3.push(['รายเจ้าหนี้แยกกลุ่ม']);
   a3.push(['เจ้าหนี้','กลุ่ม','เหตุผลที่จัด','ถึงกำหนด (หลังหักเครดิต)','ค้างสุทธิรวม']);
   A.parties.forEach(function(p){if(PP.skip[p.key])return;a3.push([p.name,PP_GRP[p.g],PP_SUB[p.sub]||'',R(p.base),R(p.net)]);});
