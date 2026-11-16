@@ -371,22 +371,25 @@ body.viewer-mode a[href*="docs.google.com/spreadsheets"]{display:none!important;
 </div>
 <div class="filter-bar">
 <span class="filter-label">&#128197; กรองช่วงเวลา:</span>
-<select id="fM1" class="filter-select"><option value="">— เดือน —</option></select>
-<select id="fY1" class="filter-select"><option value="">— ปี —</option></select>
+<select id="fM1" class="filter-select" onchange="applyFilterSoon()"><option value="">— เดือน —</option></select>
+<select id="fY1" class="filter-select" onchange="applyFilterSoon()"><option value="">— ปี —</option></select>
 <span style="color:var(--muted);font-size:13px">ถึง</span>
-<select id="fM2" class="filter-select"><option value="">— เดือน —</option></select>
-<select id="fY2" class="filter-select"><option value="">— ปี —</option></select>
+<select id="fM2" class="filter-select" onchange="applyFilterSoon()"><option value="">— เดือน —</option></select>
+<select id="fY2" class="filter-select" onchange="applyFilterSoon()"><option value="">— ปี —</option></select>
 <button class="filter-apply" onclick="applyFilter()">&#10004; ใช้ตัวกรอง</button>
 <button class="filter-reset" onclick="resetFilter()">&#10005; รีเซ็ต</button>
-<span class="filter-range" id="filterRange">แสดงข้อมูลทั้งหมด</span>
+<span class="filter-range" id="filterRange" title="คลิกเพื่อล้างตัวกรองและแสดงข้อมูลทั้งหมด" style="cursor:pointer" onclick="if(document.getElementById('fY1').value||document.getElementById('fY2').value)resetFilter()">แสดงข้อมูลทั้งหมด</span>
 </div>
+<div id="filterNote" style="display:none;font-size:11px;color:var(--muted);padding:6px 24px 0">หมายเหตุ: ลูกหนี้/เจ้าหนี้ที่แสดง = เอกสารที่ <b>ออกในช่วงนี้</b> (ไม่ใช่ยอดคงค้างสิ้นเดือน) · เงินสดสุทธิธนาคารเป็นยอดล่าสุดเสมอ ไม่ขึ้นกับตัวกรอง</div>
 
 <div class="page active" id="page0">
 <div class="alert-bar" id="alertBar0"></div>
 <div class="kpi-row" id="kpi0"></div>
+<div class="section-sep" id="plSep0" style="display:none;margin-top:4px"></div>
+<div class="kpi-row" id="kpiPL0" style="display:none"></div>
 <div class="chart-row">
-<div class="chart-card"><div class="chart-title">เงินรับ vs เงินจ่าย รายเดือน <span class="chart-sub">(ล้านบาท)</span></div><canvas id="cashBarChart"></canvas></div>
-<div class="chart-card"><div class="chart-title">Cash Flow สุทธิ <span class="chart-sub">รายเดือน</span></div><canvas id="cfLineChart"></canvas></div>
+<div class="chart-card"><div class="chart-title">เงินรับ vs เงินจ่าย รายเดือน <span class="chart-sub" id="cashBarSub">(ล้านบาท)</span></div><canvas id="cashBarChart"></canvas></div>
+<div class="chart-card"><div class="chart-title">Cash Flow สุทธิ <span class="chart-sub" id="cfLineSub">รายเดือน</span></div><canvas id="cfLineChart"></canvas></div>
 </div>
 <div class="chart-row">
 <div class="chart-card"><div class="chart-title">AR vs AP เปรียบเทียบ</div><canvas id="arApBar"></canvas></div>
@@ -1255,21 +1258,41 @@ function buildFilters(months){
   ['fM1','fM2'].forEach(function(id){var s=document.getElementById(id);s.innerHTML='<option value="">\u2014 \u0e40\u0e14\u0e37\u0e2d\u0e19 \u2014</option>';mNums.forEach(function(m){s.insertAdjacentHTML('beforeend','<option value="'+m+'">'+MTHAI[m]+'</option>');});});
   ['fY1','fY2'].forEach(function(id){var s=document.getElementById(id);s.innerHTML='<option value="">\u2014 \u0e1b\u0e35 \u2014</option>';years.forEach(function(y){s.insertAdjacentHTML('beforeend','<option value="'+y+'">'+(+y+543)+'</option>');});});
 }
+var _filtTimer=null;
+function filterRangeEl(){return document.getElementById('filterRange');}
+// วาดใหม่แบบเลื่อนไปหลังหน้าจอแสดงข้อความ "กำลังคำนวณ…" ก่อน (เดิมงานหนักบล็อกหน้าจอจนป้ายไม่ขึ้น)
+function filterRenderDeferred(labelText,showNote){
+  var el=filterRangeEl();el.textContent='\u23f3 \u0e01\u0e33\u0e25\u0e31\u0e07\u0e04\u0e33\u0e19\u0e27\u0e13\u2026';
+  var nt=document.getElementById('filterNote');if(nt)nt.style.display=showNote?'':'none';
+  requestAnimationFrame(function(){setTimeout(function(){
+    try{renderDashboard(G,{skipRecon:true});}catch(e){console.error('filter render',e);}
+    el.textContent=labelText;
+  },0);});
+}
+// เลือกช่องแล้วคำนวณเอง — รอให้เลือกปีอย่างน้อยหนึ่งฝั่งก่อน (กันกรณีเลือกเดือนก่อนแล้วระบบรีเซ็ตช่องทิ้ง)
+function applyFilterSoon(){
+  clearTimeout(_filtTimer);
+  _filtTimer=setTimeout(function(){
+    var y1=document.getElementById('fY1').value,y2=document.getElementById('fY2').value;
+    if(!y1&&!y2)return;
+    applyFilter();
+  },150);
+}
 function applyFilter(){
+  clearTimeout(_filtTimer);
   var m1=document.getElementById('fM1').value,y1=document.getElementById('fY1').value;
   var m2=document.getElementById('fM2').value,y2=document.getElementById('fY2').value;
   if(!y1&&!y2){resetFilter();return;}
   var from=y1&&m1?y1+'-'+String(m1).padStart(2,'0'):y1?y1+'-01':null;
   var to=y2&&m2?y2+'-'+String(m2).padStart(2,'0'):y2?y2+'-12':null;
   ACTIVE_MONTHS=G.allMonths.filter(function(m){return(!from||m>=from)&&(!to||m<=to);});
-  document.getElementById('filterRange').textContent='\u0e41\u0e2a\u0e14\u0e07: '+(from?mlbl(from):'\u0e15\u0e49\u0e19')+' \u2014 '+(to?mlbl(to):'\u0e1b\u0e31\u0e08\u0e08\u0e38\u0e1a\u0e31\u0e19');
-  renderDashboard(G);
+  filterRenderDeferred('\u0e41\u0e2a\u0e14\u0e07: '+(from?mlbl(from):'\u0e15\u0e49\u0e19')+' \u2014 '+(to?mlbl(to):'\u0e1b\u0e31\u0e08\u0e08\u0e38\u0e1a\u0e31\u0e19'),true);
 }
 function resetFilter(){
+  clearTimeout(_filtTimer);
   ['fM1','fY1','fM2','fY2'].forEach(function(id){document.getElementById(id).value='';});
   ACTIVE_MONTHS=[...(G.allMonths||[])];
-  document.getElementById('filterRange').textContent='\u0e41\u0e2a\u0e14\u0e07\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14';
-  renderDashboard(G);
+  filterRenderDeferred('\u0e41\u0e2a\u0e14\u0e07\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14',false);
 }
 
 // ดึงข้อมูลเป็น "ชุดละ N ตัวพร้อมกัน" แทนพร้อมกันหมดทีเดียว หรือทีละตัวเรียงกัน
@@ -7337,7 +7360,7 @@ function showApCatDetail(category){
     rows.map(function(r){return '<tr><td>'+r.name+'</td><td style="color:var(--muted);font-size:12px">'+r.docNum+'</td><td style="font-size:12px;color:var(--text2)">'+fmtD(r.dueDate)+'</td><td class="right red">'+fmtFull(r.amount)+'</td></tr>';}).join('')+
     '</tbody></table>');
 }
-function renderDashboard(d){
+function renderDashboard(d,opts){
   var fm=ACTIVE_MONTHS.length?ACTIVE_MONTHS:d.allMonths;
   var arF=arApFiltered(d.arRows2||[],fm);
   var apF=arApFiltered(d.apRows2||[],fm);
@@ -7358,17 +7381,50 @@ function renderDashboard(d){
   var ar90pct=d.at>0?(d.a90p/d.at*100).toFixed(1):0;
   var apRatio=d.at>0?(d.pt/d.at).toFixed(1):0;
   var gc='rgba(255,255,255,0.05)';
+  // ช่วงข้อมูลที่การ์ดใช้จริง (เดิมเขียนแค่ "14 เดือน" แต่กราฟแสดง 6 เดือนสุดท้าย)
+  var rngTxt=fm.length?(mlbl(fm[0])+' \u2013 '+mlbl(fm[fm.length-1])+' ('+fm.length+' \u0e40\u0e14\u0e37\u0e2d\u0e19)'):'\u2014';
+  var bPos=(d.bankRows||[]).reduce(function(s,r){return s+(r.bal>0?r.bal:0);},0);          // เงินฝาก = ยอด SAP บวก
+  var bNeg=-(d.bankRows||[]).reduce(function(s,r){return s+(r.bal<0?r.bal:0);},0);         // OD ที่ใช้ไป = ยอด SAP ติดลบ (แสดงเป็นบวก)
 
   document.getElementById('alertBar0').innerHTML='\u26a0\ufe0f <strong>\u0e41\u0e08\u0e49\u0e07\u0e40\u0e15\u0e37\u0e2d\u0e19:</strong> AR \u0e40\u0e01\u0e34\u0e19 90 \u0e27\u0e31\u0e19 = <strong>'+fmtKPI(d.a90p)+'</strong> ('+ar90pct+'%) &nbsp;|&nbsp; AP \u0e2a\u0e39\u0e07\u0e01\u0e27\u0e48\u0e32 AR <strong>'+apRatio+' \u0e40\u0e17\u0e48\u0e32</strong>';
 
   document.getElementById('kpi0').innerHTML=
-    kpi('blue','\ud83c\udfe6','rgba(91,143,249,0.18)','\u0e40\u0e07\u0e34\u0e19\u0e2a\u0e14\u0e2a\u0e38\u0e17\u0e18\u0e34 (NET BANK)',fmtKPI(d.bankNet),d.bankNet<0?'red':'green','\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21\u0e17\u0e38\u0e01\u0e1a\u0e31\u0e0d\u0e0a\u0e35','showModalBank()')+
-    kpi('teal','\ud83d\udce5','rgba(43,191,179,0.18)','\u0e40\u0e07\u0e34\u0e19\u0e23\u0e31\u0e1a\u0e43\u0e19\u0e0a\u0e48\u0e27\u0e07\u0e17\u0e35\u0e48\u0e40\u0e25\u0e37\u0e2d\u0e01',fmtKPI(totR),totR>0?'gold':'muted',fm.length+' \u0e40\u0e14\u0e37\u0e2d\u0e19','showModalReceipt()')+
-    kpi('red','\ud83d\udce4','rgba(224,92,92,0.18)','\u0e40\u0e07\u0e34\u0e19\u0e08\u0e48\u0e32\u0e22\u0e43\u0e19\u0e0a\u0e48\u0e27\u0e07\u0e17\u0e35\u0e48\u0e40\u0e25\u0e37\u0e2d\u0e01',fmtKPI(totP),'red',fm.length+' \u0e40\u0e14\u0e37\u0e2d\u0e19','showModalPayment()')+
-    kpi('red','\ud83d\udcb8','rgba(224,92,92,0.18)','CASH FLOW \u0e2a\u0e38\u0e17\u0e18\u0e34',fmtKPI(totCF),totCF>=0?'green':'red','\u0e23\u0e31\u0e1a \u2013 \u0e08\u0e48\u0e32\u0e22','showModalCF()')+
+    kpi('blue','\ud83c\udfe6','rgba(91,143,249,0.18)','\u0e40\u0e07\u0e34\u0e19\u0e2a\u0e14\u0e2a\u0e38\u0e17\u0e18\u0e34 (NET BANK)',fmtKPI(d.bankNet),d.bankNet<0?'red':'green','\u0e40\u0e07\u0e34\u0e19\u0e1d\u0e32\u0e01 '+fmtM(bPos)+' \u0e25\u0e49\u0e32\u0e19<br>\u0e43\u0e0a\u0e49 OD '+fmtM(bNeg)+' \u0e25\u0e49\u0e32\u0e19 (\u0e22\u0e2d\u0e14 SAP \u0e25\u0e48\u0e32\u0e2a\u0e38\u0e14)','showModalBank()')+
+    kpi('teal','\ud83d\udce5','rgba(43,191,179,0.18)','\u0e40\u0e07\u0e34\u0e19\u0e23\u0e31\u0e1a\u0e43\u0e19\u0e0a\u0e48\u0e27\u0e07\u0e17\u0e35\u0e48\u0e40\u0e25\u0e37\u0e2d\u0e01',fmtKPI(totR),totR>0?'gold':'muted',rngTxt,'showModalReceipt()')+
+    kpi('red','\ud83d\udce4','rgba(224,92,92,0.18)','\u0e40\u0e07\u0e34\u0e19\u0e08\u0e48\u0e32\u0e22\u0e43\u0e19\u0e0a\u0e48\u0e27\u0e07\u0e17\u0e35\u0e48\u0e40\u0e25\u0e37\u0e2d\u0e01',fmtKPI(totP),'red',rngTxt,'showModalPayment()')+
+    kpi('red','\ud83d\udcb8','rgba(224,92,92,0.18)','CASH FLOW \u0e2a\u0e38\u0e17\u0e18\u0e34',fmtKPI(totCF),totCF>=0?'green':'red','\u0e23\u0e31\u0e1a \u2013 \u0e08\u0e48\u0e32\u0e22 \u00b7 '+rngTxt,'showModalCF()')+
     kpi('gold','\ud83d\udccb','rgba(212,168,67,0.18)','\u0e25\u0e39\u0e01\u0e2b\u0e19\u0e35\u0e49\u0e04\u0e49\u0e32\u0e07\u0e23\u0e31\u0e1a (AR)',fmtKPI(d.at),'gold',d.arRowCount.toLocaleString()+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','showModalAR()')+
     kpi('red','\ud83d\udcdd','rgba(224,92,92,0.18)','\u0e40\u0e08\u0e49\u0e32\u0e2b\u0e19\u0e35\u0e49\u0e04\u0e49\u0e32\u0e07\u0e08\u0e48\u0e32\u0e22 (AP)',fmtKPI(d.pt),'red',d.apRowCount.toLocaleString()+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','showModalAP()')+
     kpi('red','\ud83d\udd34','rgba(224,92,92,0.18)','AR \u0e40\u0e01\u0e34\u0e19\u0e01\u0e33\u0e2b\u0e19\u0e14 (>90 \u0e27\u0e31\u0e19)',fmtKPI(d.a90p),'red',ar90pct+'% \u0e02\u0e2d\u0e07 AR','showModalAROver()');
+
+  // ป้ายกำกับกราฟรายเดือนให้ตรงกับข้อมูลที่วาดจริง
+  var cbs=document.getElementById('cashBarSub'),cls=document.getElementById('cfLineSub');
+  var chartRng=last6.length?(mlbl(last6[0])+' \u2013 '+mlbl(last6[last6.length-1])+(fm.length>6?' \u00b7 6 \u0e40\u0e14\u0e37\u0e2d\u0e19\u0e2a\u0e38\u0e14\u0e17\u0e49\u0e32\u0e22\u0e08\u0e32\u0e01\u0e17\u0e31\u0e49\u0e07\u0e0a\u0e48\u0e27\u0e07 '+fm.length+' \u0e40\u0e14\u0e37\u0e2d\u0e19':'')):'';
+  if(cbs)cbs.textContent='(\u0e25\u0e49\u0e32\u0e19\u0e1a\u0e32\u0e17 \u00b7 '+chartRng+')';
+  if(cls)cls.textContent='\u0e23\u0e32\u0e22\u0e40\u0e14\u0e37\u0e2d\u0e19 \u00b7 '+chartRng;
+
+  // ผลประกอบการสะสมปีปัจจุบัน (จากชีต Q12 เหมือนแท็บ P&L · ตัดเดือนที่ยังไม่ถึง · ไม่ขึ้นกับตัวกรองด้านบน)
+  try{
+    var plSep=document.getElementById('plSep0'),plRow=document.getElementById('kpiPL0');
+    var yNow=String(new Date().getFullYear()),curYM=dqNowMK();
+    var plY=(d.plRows||[]).filter(function(r){return r.ym.slice(0,4)===yNow&&r.ym<=curYM;});
+    if(plSep&&plRow){
+      if(!plY.length){plSep.style.display='none';plRow.style.display='none';}
+      else{
+        var plRev=plY.filter(function(r){return r.category==='REVENUE';}).reduce(function(s,r){return s+r.amount;},0);
+        var plExp=plY.filter(function(r){return r.category==='EXPENSE';}).reduce(function(s,r){return s+r.amount;},0);
+        var plNet=plRev-plExp,plMg=plRev>0?(plNet/plRev*100):0;
+        var plMs=plY.map(function(r){return r.ym;}).sort(),plRng=mlbl(plMs[0])+' \u2013 '+mlbl(plMs[plMs.length-1]);
+        plSep.style.display='';plRow.style.display='';
+        plSep.innerHTML='\ud83d\udcca \u0e1c\u0e25\u0e1b\u0e23\u0e30\u0e01\u0e2d\u0e1a\u0e01\u0e32\u0e23\u0e2a\u0e30\u0e2a\u0e21\u0e1b\u0e35 '+(+yNow+543)+' <span style="font-weight:400;font-size:11px;color:var(--muted)">('+plRng+' \u00b7 \u0e44\u0e21\u0e48\u0e02\u0e36\u0e49\u0e19\u0e01\u0e31\u0e1a\u0e15\u0e31\u0e27\u0e01\u0e23\u0e2d\u0e07\u0e0a\u0e48\u0e27\u0e07\u0e40\u0e27\u0e25\u0e32 \u00b7 \u0e1a\u0e32\u0e07\u0e40\u0e14\u0e37\u0e2d\u0e19\u0e25\u0e48\u0e32\u0e2a\u0e38\u0e14\u0e2d\u0e32\u0e08\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e1b\u0e34\u0e14\u0e07\u0e27\u0e14)</span>';
+        plRow.innerHTML=
+          kpi('green','\ud83d\udcb5','rgba(76,175,125,0.18)','\u0e23\u0e32\u0e22\u0e44\u0e14\u0e49\u0e2a\u0e30\u0e2a\u0e21',fmtKPI(plRev),'green',plRng,'switchTab(3)')+
+          kpi('red','\ud83d\udcb8','rgba(224,92,92,0.18)','\u0e04\u0e48\u0e32\u0e43\u0e0a\u0e49\u0e08\u0e48\u0e32\u0e22\u0e2a\u0e30\u0e2a\u0e21',fmtKPI(plExp),'red',plRng,'switchTab(3)')+
+          kpi('gold','\u2696\ufe0f','rgba(212,168,67,0.18)','\u0e01\u0e33\u0e44\u0e23(\u0e02\u0e32\u0e14\u0e17\u0e38\u0e19)\u0e2a\u0e38\u0e17\u0e18\u0e34\u0e2a\u0e30\u0e2a\u0e21',fmtKPI(plNet),(plNet>=0?'green':'red'),'\u0e23\u0e32\u0e22\u0e44\u0e14\u0e49 \u2013 \u0e04\u0e48\u0e32\u0e43\u0e0a\u0e49\u0e08\u0e48\u0e32\u0e22','switchTab(3)')+
+          kpi('blue','\ud83d\udcc8','rgba(91,143,249,0.18)','% \u0e01\u0e33\u0e44\u0e23\u0e2a\u0e38\u0e17\u0e18\u0e34',plMg.toFixed(1)+'%',(plMg>=0?'green':'red'),'\u0e02\u0e2d\u0e07\u0e23\u0e32\u0e22\u0e44\u0e14\u0e49\u0e23\u0e27\u0e21','switchTab(3)');
+      }
+    }
+  }catch(e){console.error('plOverview',e);}
 
   makeChart('cashBarChart',{type:'bar',data:{labels:lbl,datasets:[{label:'\u0e40\u0e07\u0e34\u0e19\u0e23\u0e31\u0e1a',data:rD,backgroundColor:'rgba(76,175,125,0.8)',borderRadius:5},{label:'\u0e40\u0e07\u0e34\u0e19\u0e08\u0e48\u0e32\u0e22',data:pD,backgroundColor:'rgba(224,92,92,0.8)',borderRadius:5}]},options:{plugins:{legend:{labels:{color:'#8FA3B8',boxWidth:12}}},scales:{x:{grid:{color:gc},ticks:{color:'#8FA3B8'}},y:{grid:{color:gc},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}},afterDataLimits:function(a){a.max=a.max*1.18;}}}},plugins:[barLblPlugin]});
   makeChart('cfLineChart',{type:'line',data:{labels:lbl,datasets:[{data:cfD,borderColor:'#D4A843',backgroundColor:'rgba(212,168,67,0.08)',pointBackgroundColor:cfD.map(function(v){return v>=0?'#4CAF7D':'#E05C5C';}),pointRadius:6,tension:0.4,fill:true,borderWidth:2.5}]},options:{plugins:{legend:{display:false}},scales:{x:{grid:{color:gc},ticks:{color:'#8FA3B8'}},y:{grid:{color:gc},ticks:{color:'#8FA3B8',callback:function(v){return v+'M';}},afterDataLimits:function(a){a.max=a.max*1.22;if(a.min<0)a.min=a.min*1.22;}}}},plugins:[lineLblPlugin]});
@@ -7414,7 +7470,8 @@ function renderDashboard(d){
 
   try{renderProjectPage();}catch(e){console.error('renderProjectPage',e);}
 
-  renderRecon();
+  // ตัวกรองช่วงเวลาไม่กระทบหน้าเทียบยอดธนาคาร (renderRecon ไม่อ่าน ACTIVE_MONTHS) จึงข้ามตอนกดกรอง/รีเซ็ตเพื่อให้เร็วขึ้น
+  if(!(opts&&opts.skipRecon))renderRecon();
 }
 
 
