@@ -87,6 +87,7 @@ table{width:100%;border-collapse:collapse;font-size:13px;}
 thead th{text-align:left;color:var(--muted);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;padding:8px 10px;border-bottom:1px solid var(--border);}
 tbody tr{border-bottom:1px solid rgba(255,255,255,0.03);transition:background 0.1s;}tbody tr:hover{background:rgba(255,255,255,0.03);}tbody td{padding:9px 10px;}
 td.right{text-align:right;font-weight:600;font-variant-numeric:tabular-nums;}
+thead th.right{text-align:right;}
 td.right.red{color:var(--red);}td.right.gold{color:var(--gold2);}td.right.green{color:var(--green);}td.right.blue{color:var(--blue);}
 .rank{color:var(--muted);font-size:12px;}
 .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;}
@@ -368,6 +369,7 @@ body.viewer-mode a[href*="docs.google.com/spreadsheets"]{display:none!important;
 <div class="tab" onclick="switchTab(10)">&#128202; ค้างจ่ายสะสมรายเดือน</div>
 <div class="tab" onclick="switchTab(11)">&#129534; เช็คจ่ายรอผ่าน</div>
 <div class="tab" onclick="switchTab(12)">&#129689; แผนแบ่งชำระเจ้าหนี้</div>
+<div class="tab" onclick="switchTab(13)">&#128209; งบทดลอง</div>
 </div>
 <div class="filter-bar">
 <span class="filter-label">&#128197; กรองช่วงเวลา:</span>
@@ -384,6 +386,7 @@ body.viewer-mode a[href*="docs.google.com/spreadsheets"]{display:none!important;
 
 <div class="page active" id="page0">
 <div class="alert-bar" id="alertBar0"></div>
+<div id="tbBadge0"></div>
 <div class="kpi-row" id="kpi0"></div>
 <div class="section-sep" id="plSep0" style="display:none;margin-top:4px"></div>
 <div class="kpi-row" id="kpiPL0" style="display:none"></div>
@@ -687,6 +690,9 @@ tr.cov-hl td{background:rgba(224,92,92,.08)}.cov-st{font-size:11.5px;font-weight
 </div>
 <div class="page" id="page12">
 <div id="ppRoot"><div class="info-box blue">&#9203; กำลังเตรียมหน้าแผนแบ่งชำระ…</div></div>
+</div>
+<div class="page" id="page13">
+<div id="tbRoot"><div class="info-box blue">&#9203; กำลังเตรียมหน้างบทดลอง…</div></div>
 </div>
 
 </div>
@@ -1594,7 +1600,8 @@ async function loadAllData(opts){
     document.getElementById('dateBadge').textContent='\ud83d\udcc5 '+today();
     setTimeout(function(){ov.style.opacity='0';setTimeout(function(){ov.style.display='none';},400);},600);
     dqSchedule();
-    setTimeout(function(){dqBackground(!opts.force);},1500);   // โหลด Q26/Q27 เบื้องหลัง ให้แถบสถานะข้อมูลครบทุกชีต
+    setTimeout(function(){dqBackground(!opts.force);},1500);
+    setTimeout(function(){try{tbLoad(!!(opts.force&&opts.force.length));}catch(e){console.error(e);}},2500);   // โหลดงบทดลองเบื้องหลังเพื่อแสดงสถานะที่หน้าภาพรวม   // โหลด Q26/Q27 เบื้องหลัง ให้แถบสถานะข้อมูลครบทุกชีต
   }catch(err){
     console.error(err);
     st.textContent='\u26a0\ufe0f \u0e40\u0e0a\u0e37\u0e48\u0e2d\u0e21\u0e15\u0e48\u0e2d\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49 \u2014 \u0e43\u0e0a\u0e49\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e2a\u0e33\u0e23\u0e2d\u0e07\u2026';
@@ -9929,11 +9936,12 @@ function switchTab(i){
   if(i===2){try{renderApCat();}catch(e){}}
   if(i===8){try{bkPopulate();}catch(e){console.error(e);}}
   var bbk=document.getElementById('bkBackRecon');if(bbk&&i!==8)bbk.style.display='none';
-  var fb=document.querySelector('.filter-bar');if(fb)fb.style.display=((i===9||i===10||i===11||i===12)?'none':'');
+  var fb=document.querySelector('.filter-bar');if(fb)fb.style.display=((i===9||i===10||i===11||i===12||i===13)?'none':'');
   if(i===9){try{dueEnter();}catch(e){console.error(e);}}
   if(i===10){try{mxEnter();}catch(e){console.error(e);}}
   if(i===11){try{chqEnter();}catch(e){console.error(e);}}
   if(i===12){try{ppEnter();}catch(e){console.error(e);}}
+  if(i===13){try{tbEnter();}catch(e){console.error(e);}}
 }
 
 // ============================================================================
@@ -10880,6 +10888,322 @@ function chqRender(){
   root.innerHTML=bar+alert+kpis+noteHtml+sum+det;
   var ex=document.getElementById('chqExp');if(ex)ex.innerHTML=dmExportBtns('chqList');
   if(CHQ.q)chqApplyQ();
+}
+
+// ============================================================================
+// แท็บ "งบทดลอง" (tab 13) — งบทดลองรายเดือนจาก SAP (JDT1) ชีต Q16_TRIAL_BALANCE (ไฟล์ SQL: Q16_TRIAL_BALANCE_v2.sql)
+// ข้อมูล: แถวละ 1 บัญชี ต่อ 1 เดือนที่มีเคลื่อนไหว อ่านตามชื่อหัวคอลัมน์
+//   AcctCode, AcctName, Category, YearMonth, MonthDebit, MonthCredit, CumBalance, YtdBalance
+// หลักคิด:
+//   • CumBalance = Σ(เดบิต−เครดิต) สะสมตั้งแต่เริ่มระบบ (ไม่รวมรายการปิดบัญชีสิ้นปี TransType -3) · YtdBalance = สะสมเฉพาะปีนั้น (เริ่มใหม่ทุก ม.ค.)
+//   • ชีตมีแถวเฉพาะเดือนที่บัญชีนั้นมีเคลื่อนไหว → เดือนที่ไม่มีแถวต้อง "ยกยอดมา" จากแถวล่าสุดก่อนหน้า (carry-forward)
+//   • หมวด 1-3 และบัญชีอื่น ใช้ยอดสะสม (Cum) · หมวด 4-6 (รายได้/ค่าใช้จ่าย) ใช้ยอดปีนี้ (Ytd) เป็นค่าตั้งต้น — สลับดูแบบสะสมทั้งหมดได้
+//   • ตรวจสอบ: ผลรวมเดบิต = ผลรวมเครดิต ทุกเดือน, ผลรวมยอดสะสมทุกบัญชี = 0 (ความคลาดเคลื่อนไม่เกิน TB_TOL บาท)
+// โหลดเมื่อเปิดแท็บ หรือเบื้องหลังหลังหน้าแรกโหลดเสร็จ (เพื่อแสดงสถานะที่หน้าภาพรวม)
+// ============================================================================
+var TB={loaded:false,loading:false,fail:'',accts:{},months:[],ym:'',basis:'ytd',hideZero:true,q:'',open:{},skipped:0,dups:0,nRows:0};
+var TB_NAME='Q16_TRIAL_BALANCE';
+var TB_TOL=0.05;
+var TB_COLS=['acctcode','acctname','category','yearmonth','monthdebit','monthcredit','cumbalance','ytdbalance'];
+// dr = true: ยอดตามธรรมชาติเป็นฝั่งเดบิต (สินทรัพย์/ค่าใช้จ่าย)   dr = false: ฝั่งเครดิต (หนี้สิน/ทุน/รายได้)
+var TB_CATS=[
+  {k:'ASSET',   t:'สินทรัพย์ (1xxx)',        dr:true,  pl:false},
+  {k:'LIABILITY',t:'หนี้สิน (2xxx)',          dr:false, pl:false},
+  {k:'EQUITY',  t:'ส่วนของเจ้าของ (3xxx)',   dr:false, pl:false},
+  {k:'REVENUE', t:'รายได้ (4xxx)',            dr:false, pl:true},
+  {k:'EXPENSE', t:'ค่าใช้จ่าย (5xxx-6xxx)',  dr:true,  pl:true},
+  {k:'OTHER',   t:'บัญชีอื่น / บัญชีพัก',     dr:true,  pl:false}
+];
+function tbCatOf(code,hdr){
+  var h=String(hdr==null?'':hdr).trim().toUpperCase();
+  for(var i=0;i<TB_CATS.length;i++){if(TB_CATS[i].k===h)return h;}
+  var d=String(code).charAt(0);
+  return d==='1'?'ASSET':d==='2'?'LIABILITY':d==='3'?'EQUITY':d==='4'?'REVENUE':(d==='5'||d==='6')?'EXPENSE':'OTHER';
+}
+function tbNum(v){if(typeof v==='number')return isFinite(v)?v:0;var n=parseFloat(String(v==null?'':v).replace(/,/g,''));return isNaN(n)?0:n;}
+function tbCatDef(k){for(var i=0;i<TB_CATS.length;i++){if(TB_CATS[i].k===k)return TB_CATS[i];}return TB_CATS[5];}
+function tbIsZero(x){return Math.abs(x)<0.005;}
+
+function tbParse(res){
+  var rawCols=(res.cols||[]).map(function(c){return String(c==null?'':c).trim();});
+  var cols=rawCols.map(function(c){return c.toLowerCase().replace(/[^a-z0-9]/g,'');});
+  var off=rawCols[0]==='#'?1:0,ix={};
+  TB_COLS.forEach(function(n,i){var p=cols.indexOf(n);ix[n]=p>=0?p:(i+off);});
+  var must=['acctcode','yearmonth','monthdebit','monthcredit','cumbalance','ytdbalance'];
+  var bad=must.filter(function(n){return cols.indexOf(n)<0;});
+  if((res.rows||[]).length&&bad.length)throw new Error('หัวคอลัมน์ในชีตไม่ตรง (ไม่พบ: '+bad.join(', ')+') — แถวแรกของชีตที่อ่านได้คือ: ['+rawCols.slice(0,8).map(function(c){return c||'(ว่าง)';}).join(' | ')+(rawCols.length>8?' | …':'')+']');
+  var g=function(r,n){var v=r[ix[n]];return v==null?'':v;};
+  var accts={},monthSet={},skipped=0,dups=0,n=0;
+  (res.rows||[]).forEach(function(r){
+    var code=String(repairAcctCode(g(r,'acctcode'))).trim();
+    var ym=sheetYmOf(g(r,'yearmonth'));
+    if(!code||!ym){skipped++;return;}
+    var a=accts[code];
+    if(!a){a=accts[code]={code:code,name:'',cat:tbCatOf(code,g(r,'category')),rows:[],byYm:{}};}
+    var nm=String(g(r,'acctname')).trim();if(nm)a.name=nm;
+    var rec={ym:ym,d:tbNum(g(r,'monthdebit')),c:tbNum(g(r,'monthcredit')),cum:tbNum(g(r,'cumbalance')),ytd:tbNum(g(r,'ytdbalance'))};
+    if(a.byYm[ym]){dups++;a.rows[a.rows.indexOf(a.byYm[ym])]=rec;}else a.rows.push(rec);
+    a.byYm[ym]=rec;monthSet[ym]=1;n++;
+  });
+  Object.keys(accts).forEach(function(k){accts[k].rows.sort(function(x,y){return x.ym<y.ym?-1:x.ym>y.ym?1:0;});});
+  TB.skipped=skipped;TB.dups=dups;TB.nRows=n;
+  return {accts:accts,months:Object.keys(monthSet).sort()};
+}
+async function tbLoad(force){
+  if(TB.loading)return;
+  if(TB.loaded&&!force)return;
+  TB.loading=true;TB.fail='';
+  try{tbRender();}catch(e){}
+  try{
+    var res=null;
+    for(var pass=0;pass<2&&!res;pass++){
+      if(pass>0)await sleepMs(3000);
+      try{res=await fetchSheet(TB_NAME);}catch(e){TB.fail=String((e&&e.message)||e);if(/Sheet not found|^forbidden|^login required/i.test(TB.fail))break;}
+    }
+    if(res){
+      TB.fail='';
+      try{
+        var p=tbParse(res);TB.accts=p.accts;TB.months=p.months;TB.loaded=true;
+        if(!TB.ym||TB.months.indexOf(TB.ym)<0)TB.ym=TB.months.length?TB.months[TB.months.length-1]:'';
+      }catch(e){TB.fail=String((e&&e.message)||e);TB.accts={};TB.months=[];TB.loaded=false;}
+    }
+  }catch(e){console.error('tbLoad',e);TB.fail=String((e&&e.message)||e);}
+  TB.loading=false;
+  try{tbRender();}catch(e){console.error(e);}
+  try{tbBadge();}catch(e){console.error(e);}
+}
+function tbEnter(){if(!TB.loaded&&!TB.loading)tbLoad();else tbRender();}
+
+// สถานะของบัญชีหนึ่ง ณ สิ้นเดือน M: เคลื่อนไหวในเดือน + ยอดสะสม (ยกยอดมาถ้าเดือนนั้นไม่มีแถว) + ยอดปีนี้ (เป็น 0 ถ้าแถวล่าสุดเป็นของปีก่อน)
+function tbAt(a,M){
+  var rows=a.rows,best=null;
+  for(var i=rows.length-1;i>=0;i--){if(rows[i].ym<=M){best=rows[i];break;}}
+  if(!best)return {d:0,c:0,cum:0,ytd:0};
+  var same=(best.ym===M);
+  return {d:same?best.d:0,c:same?best.c:0,cum:best.cum,ytd:(best.ym.slice(0,4)===M.slice(0,4))?best.ytd:0};
+}
+// รวมงบทดลอง ณ เดือน M — คืนรายการบัญชี + ยอดรวม + ผลตรวจ
+function tbCompute(M,basis){
+  var list=[],T={mD:0,mC:0,cumNet:0};
+  Object.keys(TB.accts).forEach(function(k){
+    var a=TB.accts[k],s=tbAt(a,M),def=tbCatDef(a.cat);
+    var bal=(basis==='ytd'&&def.pl)?s.ytd:s.cum;
+    list.push({code:a.code,name:a.name||'(ไม่มีชื่อบัญชี)',cat:a.cat,mD:s.d,mC:s.c,cum:s.cum,ytd:s.ytd,bal:bal});
+    T.mD+=s.d;T.mC+=s.c;T.cumNet+=s.cum;
+  });
+  list.sort(function(x,y){return x.code<y.code?-1:x.code>y.code?1:0;});
+  return {list:list,T:T};
+}
+// ผลรวมตามหมวด: net = เดบิต−เครดิต ; nat = ยอดตามธรรมชาติของหมวด (เดบิตบวกสำหรับ 1/5/6, เครดิตบวกสำหรับ 2/3/4)
+function tbByCat(list){
+  var out={};TB_CATS.forEach(function(c){out[c.k]={def:c,items:[],net:0,dr:0,cr:0,mD:0,mC:0,cum:0,ytd:0};});
+  list.forEach(function(r){
+    var o=out[r.cat]||out.OTHER;o.items.push(r);o.net+=r.bal;o.mD+=r.mD;o.mC+=r.mC;o.cum+=r.cum;o.ytd+=r.ytd;
+    if(r.bal>0)o.dr+=r.bal;else if(r.bal<0)o.cr+=-r.bal;
+  });
+  TB_CATS.forEach(function(c){var o=out[c.k];o.nat=c.dr?o.net:-o.net;});
+  return out;
+}
+// ตรวจเดือนทั้งหมด: เดือนไหนที่ Σ(เดบิต−เครดิต) ไม่เป็นศูนย์
+function tbMonthChecks(){
+  var sums={};TB.months.forEach(function(m){sums[m]={d:0,c:0};});
+  Object.keys(TB.accts).forEach(function(k){TB.accts[k].rows.forEach(function(r){var s=sums[r.ym];if(s){s.d+=r.d;s.c+=r.c;}});});
+  var bad=[];
+  TB.months.forEach(function(m){var df=sums[m].d-sums[m].c;if(Math.abs(df)>TB_TOL)bad.push({ym:m,diff:df,d:sums[m].d,c:sums[m].c});});
+  return {sums:sums,bad:bad};
+}
+function tbLatest(){return TB.months.length?TB.months[TB.months.length-1]:'';}
+function tbCurYm(){return dqNowMK();}
+
+// เทียบกับ Q11 (ยอดคงเหลือสิ้นเดือนของบัญชีเงินสด/ธนาคาร) และ Q12 (รายได้-ค่าใช้จ่ายรายเดือน) ที่โหลดไว้แล้ว
+function tbCrossQ11(M){
+  var mm=G&&G.sapMonthlyByAcct,res={has:false,n:0,ok:0,diffs:[]};
+  if(!mm||!Object.keys(mm).length)return res;
+  res.has=true;
+  Object.keys(mm).forEach(function(code){
+    var a=TB.accts[code];var months=Object.keys(mm[code]).filter(function(y){return y<=M;}).sort();
+    if(!months.length)return;
+    var q=mm[code][months[months.length-1]],t=a?tbAt(a,M).cum:0;
+    res.n++;
+    if(Math.abs(q-t)<=TB_TOL)res.ok++;
+    else res.diffs.push({code:code,name:a?a.name:'(ไม่พบในงบทดลอง)',q11:q,tb:t,diff:t-q,qm:months[months.length-1]});
+  });
+  res.diffs.sort(function(x,y){return Math.abs(y.diff)-Math.abs(x.diff);});
+  return res;
+}
+function tbCrossQ12(M,list){
+  var pl=G&&G.plRows,res={has:false,rev:{q:0,t:0},exp:{q:0,t:0},diffs:[],n:0,ok:0};
+  if(!pl||!pl.length)return res;
+  var inMonth=pl.filter(function(r){return r.ym===M;});
+  res.has=true;
+  if(!inMonth.length){res.noMonth=true;return res;}
+  var q={};inMonth.forEach(function(r){q[r.code]=(q[r.code]||0)+r.amount;if(r.category==='REVENUE')res.rev.q+=r.amount;else res.exp.q+=r.amount;});
+  var t={};list.forEach(function(r){
+    if(r.cat==='REVENUE'){var v=r.mC-r.mD;res.rev.t+=v;if(!tbIsZero(v))t[r.code]={v:v,name:r.name};}
+    else if(r.cat==='EXPENSE'){var w=r.mD-r.mC;res.exp.t+=w;if(!tbIsZero(w))t[r.code]={v:w,name:r.name};}
+  });
+  var codes={};Object.keys(q).forEach(function(c){codes[c]=1;});Object.keys(t).forEach(function(c){codes[c]=1;});
+  Object.keys(codes).forEach(function(c){
+    var a=q[c]||0,b=t[c]?t[c].v:0;res.n++;
+    if(Math.abs(a-b)<=TB_TOL+0.5)res.ok++;   // เผื่อปัดเศษ 0.5 บาท ต่อบัญชี
+    else{var nm=t[c]?t[c].name:'';if(!nm){var pr=inMonth.filter(function(r){return r.code===c;})[0];nm=pr?pr.name:'';}res.diffs.push({code:c,name:nm,q12:a,tb:b,diff:b-a});}
+  });
+  res.diffs.sort(function(x,y){return Math.abs(y.diff)-Math.abs(x.diff);});
+  return res;
+}
+
+// ---------- แสดงผล ----------
+function tbSetYm(v){TB.ym=v;tbRender();}
+function tbSetBasis(v){TB.basis=v;tbRender();}
+function tbToggleZero(){TB.hideZero=!TB.hideZero;tbRender();}
+function tbSetQ(v){TB.q=String(v||'');tbApplyQ();}
+function tbApplyQ(){
+  var q=TB.q.trim().toLowerCase();
+  document.querySelectorAll('#tbRoot details.tb-cat').forEach(function(d){
+    var any=false;
+    d.querySelectorAll('tr.tb-r').forEach(function(tr){var ok=(!q||tr.textContent.toLowerCase().indexOf(q)>=0);tr.style.display=ok?'':'none';if(ok)any=true;});
+    if(q){d.style.display=any?'':'none';if(any)d.open=true;}
+    else{d.style.display='';d.open=!!TB.open[d.getAttribute('data-cat')];}
+  });
+}
+function tbOpenToggle(el){if(!TB.q.trim())TB.open[el.getAttribute('data-cat')]=el.open;}
+function tbOpenAll(v){TB_CATS.forEach(function(c){TB.open[c.k]=v;});tbRender();}
+
+function tbRender(){
+  var root=document.getElementById('tbRoot');if(!root)return;
+  var head='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,0.03)">'+
+    '<span style="font-size:12px;color:var(--muted);font-weight:600">📑 งบทดลองรายเดือนจาก SAP (ทุกบัญชีแยกประเภท)</span>'+
+    '<button class="hbtn hbtn-muted" style="margin-left:auto" onclick="tbLoad(true)">🔄 โหลดข้อมูลใหม่</button></div>';
+  if(TB.loading){root.innerHTML=head+'<div class="info-box blue">⏳ กำลังโหลดข้อมูลจากชีต '+TB_NAME+'…</div>';return;}
+  if(!TB.loaded){
+    var nf=/Sheet not found/i.test(TB.fail);
+    root.innerHTML=head+'<div class="info-box gold"><div class="info-box-title">'+(nf?'ยังไม่พบแท็บ '+TB_NAME+' ใน Google Sheet':(TB.fail?'โหลดข้อมูลงบทดลองไม่สำเร็จ':'ยังไม่ได้โหลดข้อมูลงบทดลอง'))+'</div>'+
+      (nf||!TB.fail?'วิธีเริ่มใช้งาน: (1) ตั้งคอลัมน์ <b>AcctCode</b> และ <b>YearMonth</b> ของแท็บใหม่เป็น <b>Plain text</b> ก่อนวาง (กัน Google Sheets แปลงรหัสบัญชีเช่น 1113-05 และเดือน 2025-12 เป็นวันที่) (2) รันคิวรี Q16 v2 (ไฟล์ Q16_TRIAL_BALANCE_v2.sql) ใน SAP Query Manager (3) คัดลอกผลลัพธ์ <b>พร้อมแถวหัวคอลัมน์</b> วางที่แท็บชื่อ <b>'+TB_NAME+'</b> (4) กลับมากด 🔄 โหลดข้อมูลใหม่'
+        :projEsc(TB.fail)+'<br>ตรวจชื่อแท็บและหัวคอลัมน์ในชีต แล้วกด 🔄 โหลดข้อมูลใหม่')+'</div>';
+    return;
+  }
+  if(!TB.months.length){root.innerHTML=head+'<div class="info-box gold"><div class="info-box-title">ชีต '+TB_NAME+' ไม่มีข้อมูล</div>ชีตมีแต่หัวคอลัมน์ หรืออ่านรหัสบัญชี/เดือนไม่ได้ทุกแถว'+(TB.skipped?' (ข้าม '+TB.skipped+' แถว)':'')+' — ตรวจว่าวางข้อมูลครบและตั้งคอลัมน์เป็น Plain text</div>';return;}
+  var M=TB.ym,C=tbCompute(M,TB.basis),byCat=tbByCat(C.list),T=C.T;
+  var mc=tbMonthChecks();
+  var okDrCr=Math.abs(T.mD-T.mC)<=TB_TOL,okCum=Math.abs(T.cumNet)<=TB_TOL,okAll=mc.bad.length===0;
+  var ym1=function(y){return ymLabelThai(y);};
+  // ----- แถบควบคุม -----
+  var sel='<select class="filter-select" onchange="tbSetYm(this.value)">'+TB.months.slice().reverse().map(function(m){return '<option value="'+m+'"'+(m===M?' selected':'')+'>ณ สิ้นเดือน '+ym1(m)+'</option>';}).join('')+'</select>';
+  var bsel='<select class="filter-select" onchange="tbSetBasis(this.value)"><option value="ytd"'+(TB.basis==='ytd'?' selected':'')+'>รายได้/ค่าใช้จ่าย: ยอดปีนี้ (ม.ค.–เดือนที่เลือก)</option><option value="cum"'+(TB.basis==='cum'?' selected':'')+'>ทุกบัญชี: ยอดสะสมตั้งแต่เริ่มระบบ (ใช้ตรวจสมดุล)</option></select>';
+  var ctrl='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">'+sel+bsel+
+    '<button class="hbtn hbtn-muted" onclick="tbToggleZero()">'+(TB.hideZero?'☑':'☐')+' ซ่อนบัญชียอด 0 และไม่เคลื่อนไหว</button>'+
+    '<button class="hbtn hbtn-muted" onclick="tbOpenAll(true)">▾ ขยายทุกหมวด</button><button class="hbtn hbtn-muted" onclick="tbOpenAll(false)">▸ ยุบทุกหมวด</button>'+
+    '<input class="filter-select" type="search" placeholder="🔍 ค้นหา รหัส / ชื่อบัญชี" value="'+projEsc(TB.q)+'" oninput="tbSetQ(this.value)" style="min-width:220px;margin-left:auto"></div>';
+  // ----- ข้อความเตือน -----
+  var notes=[];
+  var last=tbLatest(),cur=tbCurYm();
+  if(last<cur)notes.push('⚠ ข้อมูลล่าสุดในชีตคือเดือน <b>'+ym1(last)+'</b> ซึ่งเก่ากว่าเดือนปัจจุบัน ('+ym1(cur)+') — หากเดือนหลังจากนี้มีรายการใน SAP ให้รัน Q16 ใหม่แล้ววางทับชีต');
+  if(M<last)notes.push('กำลังดูย้อนหลัง ณ สิ้นเดือน '+ym1(M)+' (ข้อมูลในชีตถึง '+ym1(last)+')');
+  if(TB.skipped)notes.push('⚠ ข้ามข้อมูล '+TB.skipped+' แถว เพราะอ่านรหัสบัญชีหรือเดือนไม่ได้ — ตรวจว่าตั้งคอลัมน์ AcctCode/YearMonth เป็น Plain text');
+  if(TB.dups)notes.push('⚠ พบแถวซ้ำ (บัญชีเดียวกัน เดือนเดียวกัน) '+TB.dups+' แถว — ใช้แถวหลังสุด ตรวจว่าวางข้อมูลซ้ำหรือไม่');
+  notes.push('งบทดลองนี้<b>ไม่รวมรายการปิดบัญชีสิ้นปี</b> (TransType −3) และไม่รวมรายการลงวันที่ล่วงหน้าเกินสิ้นเดือนปัจจุบัน · บัญชีที่เดือนใดไม่มีเคลื่อนไหวจะยกยอดมาจากเดือนก่อนหน้า');
+  var noteHtml='<div class="info-box blue" style="font-size:12.5px;line-height:1.7">'+notes.join('<br>')+'</div>';
+  // ----- ผลตรวจหลัก -----
+  var chk=function(ok,t,sub){return '<div style="display:flex;gap:8px;align-items:flex-start"><span class="badge '+(ok?'badge-green':'badge-red')+'" style="flex:none">'+(ok?'ผ่าน':'ไม่ผ่าน')+'</span><div><b>'+t+'</b><div style="font-size:12px;color:var(--text2)">'+sub+'</div></div></div>';};
+  var chkHtml='<div class="chart-card" style="margin-bottom:14px"><div class="chart-title">ผลตรวจความถูกต้องของงบทดลอง <span class="chart-sub">ความคลาดเคลื่อนที่ยอมได้ '+TB_TOL.toFixed(2)+' บาท</span></div><div style="display:grid;gap:10px">'+
+    chk(okDrCr,'เดบิตเดือน '+ym1(M)+' = เครดิตเดือน '+ym1(M),'เดบิต '+fmtFull(T.mD)+' · เครดิต '+fmtFull(T.mC)+' · ผลต่าง '+fmtFull(T.mD-T.mC))+
+    chk(okCum,'ยอดสะสมของทุกบัญชีรวมกัน = 0 ณ สิ้นเดือน '+ym1(M),'ผลรวมเดบิต−เครดิตสะสม '+fmtFull(T.cumNet)+(okCum?'':' — งบไม่สมดุล ตรวจรายการที่ลงบัญชีไม่ครบคู่หรือข้อมูลชีตไม่ครบ'))+
+    chk(okAll,'ทุกเดือนในชีต เดบิต = เครดิต ('+TB.months.length+' เดือน)',okAll?'ไม่พบเดือนที่ไม่สมดุล':'พบเดือนที่ไม่สมดุล: '+mc.bad.slice(0,6).map(function(b){return ym1(b.ym)+' ('+fmtFull(b.diff)+')';}).join(' · ')+(mc.bad.length>6?' · …':''))+
+    '</div></div>';
+  // ----- KPI -----
+  var A=byCat.ASSET,L=byCat.LIABILITY,E=byCat.EQUITY,R=byCat.REVENUE,X=byCat.EXPENSE,O=byCat.OTHER;
+  var kpi=function(cls,label,val,sub,vcls){return '<div class="kpi-card '+cls+'" style="cursor:default;padding-bottom:16px"><div class="kpi-label">'+label+'</div><div class="kpi-value '+(vcls||cls)+'">'+val+'</div><div class="kpi-sub">'+sub+'</div></div>';};
+  var ytdProfit=null,cumProfit=0,sumCum=function(c){return byCat[c].cum;};
+  cumProfit=-(sumCum('REVENUE')+sumCum('EXPENSE'));   // กำไร(ขาดทุน)สะสมที่ยังไม่ปิดบัญชี = −Σ(เดบิต−เครดิต) ของหมวด 4-6
+  var ytdRev=-R.ytd,ytdExp=X.ytd;ytdProfit=ytdRev-ytdExp;
+  var kpis='<div class="kpi-row">'+
+    kpi('blue','สินทรัพย์รวม',fmtFull(sumCum('ASSET')),A.items.length+' บัญชี · ยอดสะสม')+
+    kpi('gold','หนี้สินรวม',fmtFull(-sumCum('LIABILITY')),L.items.length+' บัญชี · ยอดสะสม')+
+    kpi('teal','ส่วนของเจ้าของ (บัญชี 3xxx)',fmtFull(-sumCum('EQUITY')),E.items.length+' บัญชี · ไม่รวมกำไรสะสมที่ยังไม่ปิด')+
+    kpi('green','รายได้ปีนี้ (ม.ค.–'+ym1(M).split(' ')[0]+')',fmtFull(ytdRev),R.items.length+' บัญชี')+
+    kpi('red','ค่าใช้จ่ายปีนี้',fmtFull(ytdExp),X.items.length+' บัญชี')+
+    kpi(ytdProfit>=0?'green':'red','กำไร(ขาดทุน)ปีนี้',fmtFull(ytdProfit),ytdProfit>=0?'รายได้ − ค่าใช้จ่าย':'ขาดทุนสุทธิ',ytdProfit>=0?'green':'red')+
+    '</div>';
+  // สมการบัญชี
+  var eq=sumCum('ASSET')+sumCum('LIABILITY')+sumCum('EQUITY')+cumProfit*-1+sumCum('OTHER');   // = Σ cum ทุกบัญชี (ควร = 0)
+  var eqHtml='<div class="info-box blue" style="font-size:12.5px;line-height:1.8"><div class="info-box-title">สมการบัญชี ณ สิ้นเดือน '+ym1(M)+' (ยอดสะสม)</div>'+
+    'สินทรัพย์ <b>'+fmtFull(sumCum('ASSET'))+'</b> = หนี้สิน <b>'+fmtFull(-sumCum('LIABILITY'))+'</b> + ส่วนของเจ้าของ <b>'+fmtFull(-sumCum('EQUITY'))+'</b> + กำไร(ขาดทุน)สะสมที่ยังไม่ปิดบัญชี <b>'+fmtFull(cumProfit)+'</b>'+(tbIsZero(sumCum('OTHER'))?'':' − บัญชีอื่น/บัญชีพัก <b>'+fmtFull(sumCum('OTHER'))+'</b>')+
+    '<br>ผลต่าง <b style="color:var(--'+(Math.abs(eq)<=TB_TOL?'green':'red')+')">'+fmtFull(eq)+'</b>'+
+    (!tbIsZero(sumCum('OTHER'))?'<br>⚠ มียอดค้างในบัญชีอื่น/บัญชีพัก (รหัสไม่ได้ขึ้นต้น 1–6) '+fmtFull(sumCum('OTHER'))+' บาท — ตรวจว่าเป็นรายการที่ต้องเคลียร์หรือไม่'
+      :'')+'<br><span style="color:var(--muted)">กำไรสะสมที่ยังไม่ปิดบัญชี = ผลรวมรายได้−ค่าใช้จ่ายสะสมทุกปี (เพราะไม่รวมรายการปิดบัญชีสิ้นปี) จึงไม่เท่ากับ "กำไรปีนี้" ด้านบน</span></div>';
+  // ----- ตารางตามหมวด -----
+  var q11=tbCrossQ11(M),q12=tbCrossQ12(M,C.list);
+  var basisTxt=TB.basis==='ytd'?'ยอดคงเหลือ: หมวด 4–6 เป็นยอดปีนี้ · หมวดอื่นเป็นยอดสะสม':'ยอดคงเหลือ: ยอดสะสมตั้งแต่เริ่มระบบทุกหมวด';
+  var sumRows=TB_CATS.map(function(def){
+    var o=byCat[def.k];
+    return '<tr><td style="font-weight:600">'+def.t+'</td><td class="right">'+o.items.length+'</td><td class="right">'+fmtFull(o.mD)+'</td><td class="right">'+fmtFull(o.mC)+'</td><td class="right">'+fmtFull(o.dr)+'</td><td class="right">'+fmtFull(o.cr)+'</td><td class="right gold">'+fmtFull(o.nat)+'</td></tr>';
+  }).join('');
+  var tDr=0,tCr=0;TB_CATS.forEach(function(d){tDr+=byCat[d.k].dr;tCr+=byCat[d.k].cr;});
+  var sum='<div class="chart-card" style="margin-bottom:14px"><div class="chart-title">สรุปตามหมวดบัญชี <span class="chart-sub">'+basisTxt+'</span></div><div style="overflow-x:auto"><table><thead><tr><th>หมวด</th><th class="right">บัญชี</th><th class="right">เดบิตเดือนนี้</th><th class="right">เครดิตเดือนนี้</th><th class="right">คงเหลือ เดบิต</th><th class="right">คงเหลือ เครดิต</th><th class="right">ยอดตามธรรมชาติหมวด</th></tr></thead><tbody>'+sumRows+
+    '<tr style="font-weight:700;border-top:2px solid var(--border)"><td>รวมทุกหมวด</td><td class="right">'+C.list.length+'</td><td class="right">'+fmtFull(T.mD)+'</td><td class="right">'+fmtFull(T.mC)+'</td><td class="right">'+fmtFull(tDr)+'</td><td class="right">'+fmtFull(tCr)+'</td><td class="right"></td></tr></tbody></table></div>'+
+    (TB.basis==='cum'?'<div style="font-size:12px;margin-top:8px;color:var(--'+(Math.abs(tDr-tCr)<=TB_TOL?'green':'red')+')">'+(Math.abs(tDr-tCr)<=TB_TOL?'✔ คงเหลือเดบิตรวม = เครดิตรวม — งบทดลองสมดุล':'✖ คงเหลือเดบิตรวม ≠ เครดิตรวม ผลต่าง '+fmtFull(tDr-tCr))+'</div>'
+      :'<div style="font-size:12px;margin-top:8px;color:var(--muted)">ในมุมมอง "ยอดปีนี้" ยอดคงเหลือเดบิตรวมกับเครดิตรวมจะไม่เท่ากัน เพราะหมวดรายได้/ค่าใช้จ่ายแสดงเฉพาะปีนี้ — เลือก "ยอดสะสมตั้งแต่เริ่มระบบ" เพื่อดูงบทดลองที่สมดุล</div>')+'</div>';
+  // ----- รายละเอียดบัญชี -----
+  var exp=[];
+  var det='<div class="chart-card"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px"><div class="chart-title" style="margin:0">รายละเอียดรายบัญชี</div></div><div id="tbExp"></div>';
+  TB_CATS.forEach(function(def){
+    var o=byCat[def.k];
+    var items=o.items.filter(function(r){return !(TB.hideZero&&tbIsZero(r.bal)&&tbIsZero(r.mD)&&tbIsZero(r.mC));});
+    if(!items.length)return;
+    det+='<details class="tb-cat" data-cat="'+def.k+'" ontoggle="tbOpenToggle(this)" style="margin-bottom:8px"'+(TB.open[def.k]?' open':'')+'><summary style="cursor:pointer;padding:8px 10px;background:rgba(255,255,255,0.04);border-radius:8px;font-weight:700;display:flex;gap:12px;flex-wrap:wrap;align-items:center">'+
+      '<span>'+def.t+'</span><span style="font-weight:400;color:var(--muted);font-size:11.5px">'+items.length+' บัญชี</span><span style="margin-left:auto;color:var(--gold2)">'+fmtFull(o.nat)+'</span></summary>'+
+      '<div style="overflow-x:auto"><table style="table-layout:fixed;min-width:760px"><colgroup><col style="width:110px"><col><col style="width:140px"><col style="width:140px"><col style="width:150px"><col style="width:150px"></colgroup><thead><tr><th>รหัสบัญชี</th><th>ชื่อบัญชี</th><th class="right">เดบิตเดือนนี้</th><th class="right">เครดิตเดือนนี้</th><th class="right">คงเหลือ เดบิต</th><th class="right">คงเหลือ เครดิต</th></tr></thead><tbody>'+
+      items.map(function(r){
+        var dr=r.bal>0?fmtFull(r.bal):'',cr=r.bal<0?fmtFull(-r.bal):'';
+        exp.push({cat:def.t,code:r.code,name:r.name,mD:fmtFull(r.mD),mC:fmtFull(r.mC),dr:dr,cr:cr});
+        return '<tr class="tb-r"><td style="font-variant-numeric:tabular-nums;white-space:nowrap">'+projEsc(r.code)+'</td><td>'+projEsc(r.name)+'</td><td class="right">'+(tbIsZero(r.mD)?'':fmtFull(r.mD))+'</td><td class="right">'+(tbIsZero(r.mC)?'':fmtFull(r.mC))+'</td><td class="right">'+dr+'</td><td class="right">'+cr+'</td></tr>';
+      }).join('')+
+      '<tr style="font-weight:700;border-top:2px solid var(--border)"><td colspan="2">รวม '+def.t+'</td><td class="right">'+fmtFull(o.mD)+'</td><td class="right">'+fmtFull(o.mC)+'</td><td class="right">'+fmtFull(o.dr)+'</td><td class="right">'+fmtFull(o.cr)+'</td></tr></tbody></table></div></details>';
+  });
+  det+='</div>';
+  exp.push({cat:'รวมทุกหมวด',code:'',name:'',mD:fmtFull(T.mD),mC:fmtFull(T.mC),dr:fmtFull(tDr),cr:fmtFull(tCr)});
+  dmRegisterSimple('tbList','งบทดลอง ณ สิ้นเดือน '+ym1(M)+(TB.basis==='ytd'?' (P&L ยอดปีนี้)':' (ยอดสะสม)'),[
+    {label:'หมวด',get:function(r){return r.cat;}},{label:'รหัสบัญชี',get:function(r){return r.code;}},{label:'ชื่อบัญชี',get:function(r){return r.name;}},
+    {label:'เดบิตเดือนนี้',right:true,get:function(r){return r.mD;}},{label:'เครดิตเดือนนี้',right:true,get:function(r){return r.mC;}},
+    {label:'คงเหลือ เดบิต',right:true,get:function(r){return r.dr;}},{label:'คงเหลือ เครดิต',right:true,get:function(r){return r.cr;}}],exp);
+  // ----- กล่องเทียบข้อมูลกับ Q11/Q12 -----
+  var xc='<div class="chart-card" style="margin-top:14px"><div class="chart-title">เทียบกับข้อมูลชุดอื่นในแดชบอร์ด <span class="chart-sub">ใช้ตรวจว่า Q16 ตรงกับ Q11 / Q12</span></div>';
+  if(!q11.has)xc+='<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">Q11 (ยอดคงเหลือเงินสด/ธนาคารรายเดือน): ยังไม่มีข้อมูลในแดชบอร์ด</div>';
+  else{
+    xc+='<div style="margin-bottom:6px">'+chk(q11.diffs.length===0,'ยอดคงเหลือบัญชีเงินสด/ธนาคารตรงกับ Q11 ('+q11.ok+'/'+q11.n+' บัญชี)',q11.diffs.length?'ไม่ตรง '+q11.diffs.length+' บัญชี — สาเหตุที่พบบ่อย: Q11 เป็นของคนละช่วงเวลา/ต่างเงื่อนไขการตัดรายการ หรือบัญชีนั้นไม่มีใน Q16':'ทุกบัญชีในชีต Q11 ตรงกับงบทดลองภายใน '+TB_TOL.toFixed(2)+' บาท')+'</div>';
+    if(q11.diffs.length)xc+='<div style="overflow-x:auto;margin-bottom:12px"><table><thead><tr><th>รหัสบัญชี</th><th>ชื่อบัญชี</th><th class="right">Q11 (สิ้นเดือน '+'ล่าสุด)</th><th class="right">Q16 งบทดลอง</th><th class="right">ผลต่าง</th></tr></thead><tbody>'+
+      q11.diffs.slice(0,8).map(function(d){return '<tr><td style="white-space:nowrap">'+projEsc(d.code)+'</td><td>'+projEsc(d.name)+'</td><td class="right">'+fmtFull(d.q11)+'</td><td class="right">'+fmtFull(d.tb)+'</td><td class="right red">'+fmtFull(d.diff)+'</td></tr>';}).join('')+'</tbody></table>'+(q11.diffs.length>8?'<div style="font-size:11.5px;color:var(--muted)">แสดง 8 บัญชีที่ต่างมากที่สุด จากทั้งหมด '+q11.diffs.length+' บัญชี</div>':'')+'</div>';
+  }
+  if(!q12.has)xc+='<div style="font-size:12.5px;color:var(--muted)">Q12 (รายได้-ค่าใช้จ่ายรายเดือน): ยังไม่มีข้อมูลในแดชบอร์ด</div>';
+  else if(q12.noMonth)xc+='<div style="font-size:12.5px;color:var(--muted)">Q12: ไม่มีข้อมูลของเดือน '+ym1(M)+' ให้เทียบ</div>';
+  else{
+    xc+=chk(q12.diffs.length===0,'รายได้/ค่าใช้จ่ายเดือน '+ym1(M)+' ตรงกับ Q12 ('+q12.ok+'/'+q12.n+' บัญชี)','รายได้ Q12 '+fmtFull(q12.rev.q)+' · Q16 '+fmtFull(q12.rev.t)+' | ค่าใช้จ่าย Q12 '+fmtFull(q12.exp.q)+' · Q16 '+fmtFull(q12.exp.t));
+    if(q12.diffs.length)xc+='<div style="overflow-x:auto;margin-top:8px"><table><thead><tr><th>รหัสบัญชี</th><th>ชื่อบัญชี</th><th class="right">Q12</th><th class="right">Q16 งบทดลอง</th><th class="right">ผลต่าง</th></tr></thead><tbody>'+
+      q12.diffs.slice(0,8).map(function(d){return '<tr><td style="white-space:nowrap">'+projEsc(d.code)+'</td><td>'+projEsc(d.name)+'</td><td class="right">'+fmtFull(d.q12)+'</td><td class="right">'+fmtFull(d.tb)+'</td><td class="right red">'+fmtFull(d.diff)+'</td></tr>';}).join('')+'</tbody></table>'+(q12.diffs.length>8?'<div style="font-size:11.5px;color:var(--muted)">แสดง 8 บัญชีที่ต่างมากที่สุด จากทั้งหมด '+q12.diffs.length+' บัญชี</div>':'')+'</div>';
+  }
+  xc+='</div>';
+  root.innerHTML=head+ctrl+noteHtml+chkHtml+kpis+eqHtml+sum+det.replace('<div id="tbExp"></div>','<div id="tbExp"></div>')+xc;
+  var ex=document.getElementById('tbExp');if(ex)ex.innerHTML=dmExportBtns('tbList');
+  if(TB.q)tbApplyQ();
+}
+
+// ---------- แถบสถานะที่หน้าภาพรวมผู้บริหาร ----------
+function tbBadge(){
+  var el=document.getElementById('tbBadge0');if(!el)return;
+  var cls,txt;
+  if(TB.loading)return;
+  if(!TB.loaded||!TB.months.length){
+    var nf=/Sheet not found/i.test(TB.fail);
+    cls='rgba(255,255,255,0.05)';txt='📑 งบทดลอง: '+(nf||!TB.fail?'ยังไม่มีข้อมูล (รอวางชีต '+TB_NAME+')':'โหลดไม่สำเร็จ');
+    el.innerHTML='<div onclick="switchTab(13)" style="cursor:pointer;display:inline-block;margin:0 0 12px;padding:6px 12px;border-radius:20px;font-size:12px;color:var(--muted);border:1px solid var(--border);background:'+cls+'">'+txt+' <span style="opacity:.7">· เปิดดู ›</span></div>';
+    return;
+  }
+  var last=tbLatest(),C=tbCompute(last,'cum'),mc=tbMonthChecks();
+  var ok=Math.abs(C.T.cumNet)<=TB_TOL&&mc.bad.length===0;
+  var stale=last<tbCurYm();
+  var col=ok?'var(--green)':'var(--red)',bg=ok?'rgba(76,175,125,0.10)':'rgba(224,92,92,0.12)';
+  txt=(ok?'✅ งบทดลองสมดุล':'⚠ งบทดลองไม่สมดุล')+' ณ '+ymLabelThai(last)+(ok?'':' · ผลต่างสะสม '+fmtFull(C.T.cumNet)+(mc.bad.length?' · '+mc.bad.length+' เดือนเดบิต≠เครดิต':''))+(stale?' · ข้อมูลเก่ากว่าเดือนปัจจุบัน':'');
+  el.innerHTML='<div onclick="switchTab(13)" style="cursor:pointer;display:inline-block;margin:0 0 12px;padding:6px 12px;border-radius:20px;font-size:12.5px;font-weight:600;color:'+col+';border:1px solid '+col+';background:'+bg+'">'+txt+' <span style="opacity:.7;font-weight:400">· เปิดดูงบทดลอง ›</span></div>';
 }
 
 Chart.defaults.color='#8FA3B8';Chart.defaults.font.family='Sarabun';Chart.defaults.font.size=12;
