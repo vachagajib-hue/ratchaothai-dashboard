@@ -529,6 +529,11 @@ body.viewer-mode a[href*="docs.google.com/spreadsheets"]{display:none!important;
 <div style="font-size:11px;color:var(--muted);margin-bottom:8px">เขียว = ตรงกัน (ต่างกันไม่เกิน 1 บาท) &nbsp;·&nbsp; แดง = ต้องตรวจสอบ &nbsp;·&nbsp; <i style="opacity:.7">ตัวเอียงจาง</i> = SAP เดือนนั้นไม่มีรายการเคลื่อนไหว ยกยอดจากเดือนก่อนมาแสดง &nbsp;·&nbsp; — = ยังไม่มีข้อมูลในช่วงนั้น &nbsp;·&nbsp; <b>กดตัวเลขสีแดงในแถวส่วนต่างของแต่ละบัญชี</b> เพื่อเปิดสมุดบัญชีธนาคารเดือนนั้น<br><b>ส่วนต่าง</b> = ยอดคงเหลือแบงค์ − SAP (ตัวเลขดิบ) &nbsp;·&nbsp; <b>อธิบายแล้ว</b> = ส่วนต่างสะสมที่มีรายการตรวจ/ยืนยัน/จับคู่แล้ว หรือรอแก้ไขวันที่ รองรับ (ตัวเลขเดียวกับการ์ดส่วนต่างในสมุดบัญชี) &nbsp;·&nbsp; <b>ยังอธิบายไม่ได้</b> = ส่วนต่าง − อธิบายแล้ว (เหลือง = ส่วนต่างดิบที่อธิบายครบแล้ว) &nbsp;·&nbsp; รายการที่ยืนยันเองถูกตัดสินโดยผู้ใช้ ควรสุ่มตรวจความถูกต้อง</div>
 <div id="reconSapMonthlyWrap" style="overflow-x:auto"></div>
 </div>
+<div class="recon-section" id="reconFlowSection" style="display:none">
+<div class="recon-section-title">&#128200; รวมรับ / รวมจ่ายรายเดือน: SAP เทียบ Bank <span style="font-size:11px;font-weight:400;color:var(--muted)">— ใช้หาว่าส่วนต่างเกิดเดือนไหน ฝั่งรับหรือจ่าย วันไหน ก่อนลงตรวจรายรายการ</span></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px"><span style="font-size:12px;color:var(--muted)">บัญชี:</span><select class="filter-select" id="flowAcctSel" onchange="flowSetAcct(this.value)" style="min-width:300px"></select></div>
+<div id="flowBody"></div>
+</div>
 <div class="recon-section">
 <div class="recon-section-title">&#128269; รายละเอียดการกระทบยอดรายบัญชี</div>
 <div id="reconAsOfNote" class="info-box blue" style="margin-bottom:12px;font-size:12.5px;line-height:1.7"></div>
@@ -8890,8 +8895,10 @@ function renderRecon(){
       RECON_CMP={months:cmpMonths,lbls:cmpLbls,pairs:acctPairs,totSap:totSap,totBank:totBank,totDiff:totDiff,sapCellC:sapCellC,sapCell:sapCell,diffCell:diffCell};
       reconCmpDraw();
       reconExplStart();
+      try{flowReset();flowRender();}catch(e){console.error('flowRender',e);}
     } else {
       document.getElementById('reconSapMonthlySection').style.display='none';
+      var _fs=document.getElementById('reconFlowSection');if(_fs)_fs.style.display='none';
     }
   } else {
     document.getElementById('reconMonthlyBalSection').style.display='none';
@@ -11204,6 +11211,247 @@ function tbBadge(){
   var col=ok?'var(--green)':'var(--red)',bg=ok?'rgba(76,175,125,0.10)':'rgba(224,92,92,0.12)';
   txt=(ok?'✅ งบทดลองสมดุล':'⚠ งบทดลองไม่สมดุล')+' ณ '+ymLabelThai(last)+(ok?'':' · ผลต่างสะสม '+fmtFull(C.T.cumNet)+(mc.bad.length?' · '+mc.bad.length+' เดือนเดบิต≠เครดิต':''))+(stale?' · ข้อมูลเก่ากว่าเดือนปัจจุบัน':'');
   el.innerHTML='<div onclick="switchTab(13)" style="cursor:pointer;display:inline-block;margin:0 0 12px;padding:6px 12px;border-radius:20px;font-size:12.5px;font-weight:600;color:'+col+';border:1px solid '+col+';background:'+bg+'">'+txt+' <span style="opacity:.7;font-weight:400">· เปิดดูงบทดลอง ›</span></div>';
+}
+
+// ============================================================================
+// ตาราง "รวมรับ / รวมจ่ายรายเดือน SAP เทียบ Bank" (หน้ากระทบยอดธนาคาร) — เพิ่ม 18 พ.ย. 2569
+// ใช้หา "เดือนไหน / ฝั่งรับหรือจ่าย / วันไหน" ที่ส่วนต่างเกิดขึ้น ก่อนลงไปตรวจรายรายการ (ไม่แทนที่ตารางเทียบยอดคงเหลือเดิม)
+// ข้อมูล: ฝั่ง SAP = G.sapAllBankLegs (Q15; เดบิต = เงินเข้า, เครดิต = เงินออก; ไม่นับคู่กลับรายการวันเดียวกัน/อ้างเลข JE ตาม bkDetectReversals)
+//         ฝั่ง Bank = สเตทเมนท์ที่โหลดแล้ว (RBANK_DATA ... txns; credit = เงินเข้า, debit = เงินออก)
+//         ยอดคงเหลือ SAP = Q11 (ยกยอดเดือนที่ไม่มีเคลื่อนไหว) · ยอดคงเหลือ Bank = bal ของรายการสุดท้ายไม่เกินสิ้นเดือน
+// นิยาม: ต่างรับ = Bank รับ − SAP รับ · ต่างจ่าย = Bank จ่าย − SAP จ่าย · ส่วนต่างใหม่ในเดือน = ต่างรับ − ต่างจ่าย
+//        ส่วนต่างสะสม = ยอดปิด Bank − ยอดปิด SAP (เครื่องหมายเดียวกับตารางเทียบยอดเดิม)
+// เช็ก: (1) สเตทเมนท์ ยอดยกมา + รับ − จ่าย = ยอดปิด (2) SAP ยอดยกมา(Q11) + รับ − จ่าย(Q15) = ยอดปิด(Q11) — ถ้าไม่ผ่าน ตัวเลขเดือนนั้นยังไม่ควรเชื่อ
+// เดือนที่ใหม่กว่าสเตทเมนท์เดือนล่าสุดของทุกบัญชี = "รอสเตทเมนท์" ไม่คิดส่วนต่าง (ผู้ใช้อัปโหลดสเตทเมนท์ทุกสิ้นเดือน)
+// ============================================================================
+var FLOW={code:'',open:{},cache:{}};
+var FLOW_TOL=0.05;        // ความคลาดเคลื่อนที่ยอมได้ในการเช็กยอด (บาท)
+var FLOW_HOT=1000000;     // ส่วนต่างใหม่ในเดือนตั้งแต่เท่านี้ขึ้นไป แสดง "ต้องตรวจ" (สีแดง)
+function flowReset(){FLOW.cache={};}
+function flowZ(x){return Math.abs(x)<0.005;}
+function flowYmRange(a,b){var out=[],y=a,g=0;while(y&&y<=b&&g++<240){out.push(y);y=dqMonthShift(y,1);}return out;}
+function flowNum(v){return (typeof v==='number'&&isFinite(v))?v:null;}
+function flowGlobalLast(){
+  var mx='';
+  Object.keys(RBANK_DATA||{}).forEach(function(k){
+    if(k==='CASH')return;var bd=RBANK_DATA[k];if(!bd||!bd.accounts)return;
+    bd.accounts.forEach(function(a){(a.txns||[]).forEach(function(t){var dk=dateKey(t.date||'');if(dk.length===8){var y=dk.slice(0,4)+'-'+dk.slice(4,6);if(y>mx)mx=y;}});});
+  });
+  return mx;
+}
+function flowAccts(){
+  return bkAccounts().filter(function(a){
+    var legs=(G.sapAllBankLegs&&G.sapAllBankLegs[a.code])||[];
+    return legs.length||bkFindBankAccount(a.name||'');
+  });
+}
+// คำนวณรายเดือนของบัญชีหนึ่ง
+function flowCalc(code){
+  if(FLOW.cache[code])return FLOW.cache[code];
+  var acct=bkAccounts().filter(function(a){return a.code===code;})[0];
+  if(!acct)return null;
+  var legs=(G.sapAllBankLegs&&G.sapAllBankLegs[code])||[];
+  var found=bkFindBankAccount(acct.name||'');
+  var txns=found?(found.account.txns||[]).slice().sort(function(a,b){return dateKey(a.date||'').localeCompare(dateKey(b.date||''));}):[];
+  var mm=(G.sapMonthlyByAcct||{})[code]||{};
+  // ---- ฝั่ง SAP รายเดือน ----
+  var sap={},byYm={};
+  legs.forEach(function(l){var y=bkYmOf(l.date);if(y){(byYm[y]=byYm[y]||[]).push(l);}});
+  Object.keys(byYm).forEach(function(y){
+    var arr=byYm[y].slice().sort(function(a,b){var ka=dateKey(a.date),kb=dateKey(b.date);if(ka!==kb)return ka<kb?-1:1;return (parseInt(a.tid,10)||0)-(parseInt(b.tid,10)||0);});
+    var rev=bkDetectReversals(arr),s={inn:0,out:0,n:0,rev:0,legs:[]};
+    arr.forEach(function(r,i){if(rev.flags[i]){s.rev++;return;}s.inn+=r.debit||0;s.out+=r.credit||0;s.n++;s.legs.push(r);});
+    sap[y]=s;
+  });
+  // ---- ฝั่ง Bank รายเดือน ----
+  var bank={},firstBank='';
+  txns.forEach(function(t){
+    var dk=dateKey(t.date||'');if(dk.length!==8)return;
+    var y=dk.slice(0,4)+'-'+dk.slice(4,6);
+    var b=bank[y]=bank[y]||{inn:0,out:0,n:0,firstBal:null,firstIn:0,firstOut:0,closeBal:null,txns:[]};
+    b.inn+=t.credit||0;b.out+=t.debit||0;b.n++;b.txns.push(t);
+    if(b.n===1){b.firstBal=flowNum(t.bal);b.firstIn=t.credit||0;b.firstOut=t.debit||0;}
+    b.closeBal=flowNum(t.bal);
+    if(!firstBank||y<firstBank)firstBank=y;
+  });
+  // ---- ช่วงเดือน ----
+  var keys=Object.keys(sap).concat(Object.keys(bank),Object.keys(mm)).sort();
+  if(!keys.length){FLOW.cache[code]={code:code,name:acct.name,rows:[],hasBank:!!found};return FLOW.cache[code];}
+  var cur=dqNowMK(),endYm=keys[keys.length-1]>cur?keys[keys.length-1]:cur;
+  var months=flowYmRange(keys[0],endYm);
+  var gLast=flowGlobalLast(),hasBank=!!found&&txns.length>0;
+  var prevSapClose=null,prevBankClose=null,rows=[];
+  months.forEach(function(y){
+    var s=sap[y]||{inn:0,out:0,n:0,rev:0,legs:[]},b=bank[y];
+    var sapOpen=prevSapClose;
+    var sapClose=(mm[y]!==undefined)?mm[y]:sapOpen;
+    prevSapClose=sapClose;
+    var r={ym:y,sIn:s.inn,sOut:s.out,sN:s.n,sRev:s.rev,sapOpen:sapOpen,sapClose:sapClose};
+    // สถานะสเตทเมนท์ของเดือนนี้
+    if(!hasBank)r.st='nofile';
+    else if(y<firstBank)r.st='pre';
+    else if(gLast&&y>gLast)r.st='wait';
+    else r.st='ok';
+    // ยอดเปิด/ปิด Bank (ยกยอดจากเดือนก่อนถ้าไม่มีรายการ)
+    var bankOpen=null,bankClose=null;
+    if(r.st==='ok'){
+      if(b){
+        bankOpen=(prevBankClose!==null)?prevBankClose:(b.firstBal!==null?b.firstBal-b.firstIn+b.firstOut:null);
+        bankClose=b.closeBal;
+      }else{bankOpen=prevBankClose;bankClose=prevBankClose;}
+      if(bankClose!==null)prevBankClose=bankClose;
+      else if(b&&b.closeBal===null){/* สเตทเมนท์ไม่มียอดคงเหลือ — เช็กไม่ได้ */}
+      r.bIn=b?b.inn:0;r.bOut=b?b.out:0;r.bN=b?b.n:0;
+      r.recDiff=r.bIn-r.sIn;r.payDiff=r.bOut-r.sOut;r.delta=r.recDiff-r.payDiff;
+      r.bankOpen=bankOpen;r.bankClose=bankClose;
+      // เช็ก 1: สเตทเมนท์
+      r.stmtChk=null;
+      if(bankOpen!==null&&bankClose!==null){var e1=bankOpen+r.bIn-r.bOut-bankClose;r.stmtChk={ok:Math.abs(e1)<=FLOW_TOL+1e-6,err:e1,exp:bankOpen+r.bIn-r.bOut};}
+      // เช็ก 2: SAP (Q15 vs Q11)
+      r.sapChk=null;
+      if(sapOpen!==null&&sapClose!==null){var e2=sapOpen+r.sIn-r.sOut-sapClose;r.sapChk={ok:Math.abs(e2)<=FLOW_TOL+1e-6,err:e2,exp:sapOpen+r.sIn-r.sOut};}
+      r.cum=(bankClose!==null&&sapClose!==null)?bankClose-sapClose:null;
+      r.balDelta=(bankOpen!==null&&sapOpen!==null&&bankClose!==null&&sapClose!==null)?(bankClose-sapClose)-(bankOpen-sapOpen):null;
+      r.mismatch=(r.balDelta!==null&&Math.abs(r.balDelta-r.delta)>FLOW_TOL+1e-6);
+    }else if(b&&b.closeBal!==null){prevBankClose=b.closeBal;}
+    rows.push(r);
+  });
+  var res={code:code,name:acct.name,rows:rows,hasBank:hasBank,sap:sap,bank:bank,gLast:gLast,firstBank:firstBank};
+  FLOW.cache[code]=res;return res;
+}
+// รายวันของเดือน: เฉพาะวันที่ยอดรวมรับ/จ่ายสองฝั่งไม่เท่ากัน
+function flowDays(C,ym){
+  var days={};
+  var get=function(dk){return days[dk]||(days[dk]={dk:dk,sIn:0,sOut:0,bIn:0,bOut:0,sN:0,bN:0});};
+  ((C.sap[ym]&&C.sap[ym].legs)||[]).forEach(function(l){var d=get(dateKey(l.date));d.sIn+=l.debit||0;d.sOut+=l.credit||0;d.sN++;});
+  ((C.bank[ym]&&C.bank[ym].txns)||[]).forEach(function(t){var d=get(dateKey(t.date||''));d.bIn+=t.credit||0;d.bOut+=t.debit||0;d.bN++;});
+  var list=Object.keys(days).sort().map(function(k){var d=days[k];d.rd=d.bIn-d.sIn;d.pd=d.bOut-d.sOut;return d;});
+  var diffs=list.filter(function(d){return !flowZ(d.rd)||!flowZ(d.pd);});
+  // ข้อแนะนำ: ยอดต่างตรงข้ามกันในวันอื่นของเดือนเดียวกัน = น่าจะคนละวันที่
+  var ddmm=function(dk){return dk.slice(6,8)+'/'+dk.slice(4,6);};
+  diffs.forEach(function(d){
+    var hint=[];
+    var part=function(label,sv,bv,df,field){
+      if(flowZ(df))return;
+      var t;
+      if(flowZ(sv)&&bv>0)t='Bank '+label+' '+fmtFull(bv)+' แต่ SAP ไม่มีรายการ'+label+'วันนั้น';
+      else if(flowZ(bv)&&sv>0)t='SAP '+label+' '+fmtFull(sv)+' แต่ Bank ไม่มีรายการ'+label+'วันนั้น';
+      else t='ยอด'+label+'ต่างกัน '+fmtFull(df)+' (บางรายการยังไม่บันทึก หรือบันทึกคนละวัน)';
+      var mate=diffs.filter(function(o){return o!==d&&Math.abs(o[field]+df)<0.005;})[0];
+      if(mate)t+=' · ยอดต่างตรงข้ามกันวันที่ '+ddmm(mate.dk)+' น่าจะคนละวันที่';
+      hint.push(t);
+    };
+    part('รับ',d.sIn,d.bIn,d.rd,'rd');part('จ่าย',d.sOut,d.bOut,d.pd,'pd');
+    d.hint=hint.join(' | ');
+  });
+  return diffs;
+}
+function flowSetAcct(v){FLOW.code=v;FLOW.open={};flowRender();}
+function flowToggle(ym){FLOW.open[ym]=!FLOW.open[ym];flowRender();}
+function flowGo(ym){try{bkOpenFromRecon(FLOW.code,ym);}catch(e){console.error(e);}}
+function flowMonthLabel(y){return ymLabelThai(y);}
+function flowChip(r){
+  if(r.st==='wait')return '<span class="badge" style="background:rgba(255,255,255,0.07);color:var(--muted)">รอสเตทเมนท์</span>';
+  if(r.st==='nofile')return '<span class="badge" style="background:rgba(255,255,255,0.07);color:var(--muted)">ไม่มีสเตทเมนท์</span>';
+  if(r.st==='pre')return '<span class="badge" style="background:rgba(255,255,255,0.07);color:var(--muted)">ก่อนมีสเตทเมนท์</span>';
+  var a=Math.abs(r.delta);
+  if(a<1){return (!flowZ(r.recDiff)&&Math.abs(r.recDiff)>=1)?'<span class="badge badge-gold" title="ต่างรับ/ต่างจ่ายมีทั้งสองฝั่งแต่หักล้างกันพอดี">ตรวจ (หักล้างกัน)</span>':'<span class="badge badge-green">ตรงกัน</span>';}
+  return a>=FLOW_HOT?'<span class="badge badge-red">ต้องตรวจ</span>':'<span class="badge badge-gold">ตรวจ</span>';
+}
+function flowChkChip(label,c,hasData){
+  if(!c)return '<span class="badge" style="background:rgba(255,255,255,0.06);color:var(--muted)" title="'+label+': ไม่มียอดยกมา/ยอดปิดให้เช็ก">'+label+' —</span>';
+  var tip=label+': ยกมา + รับ − จ่าย = '+fmtFull(c.exp)+(c.ok?' (ตรงกับยอดปิด)':' แต่ยอดปิดต่างกัน '+fmtFull(-c.err)+' — ข้อมูลเดือนนี้อาจไม่ครบ');
+  return '<span class="badge '+(c.ok?'badge-green':'badge-red')+'" title="'+projEsc(tip)+'">'+label+(c.ok?' ✔':' ✖')+'</span>';
+}
+function flowRender(){
+  var sec=document.getElementById('reconFlowSection'),body=document.getElementById('flowBody'),sel=document.getElementById('flowAcctSel');
+  if(!sec||!body)return;
+  var list=flowAccts();
+  if(!list.length){sec.style.display='none';return;}
+  sec.style.display='block';
+  if(!FLOW.code||!list.some(function(a){return a.code===FLOW.code;})){
+    // ค่าเริ่มต้น: บัญชีที่ส่วนต่างล่าสุดใหญ่ที่สุดในตารางเทียบยอดเดิม
+    var best=null,bv=-1;
+    if(RECON_CMP&&RECON_CMP.pairs)RECON_CMP.pairs.forEach(function(p){
+      var v=null;for(var i=p.diffVals.length-1;i>=0;i--){if(p.diffVals[i]!==null){v=p.diffVals[i];break;}}
+      if(v!==null&&Math.abs(v)>bv&&list.some(function(a){return a.code===p.code;})){bv=Math.abs(v);best=p.code;}
+    });
+    FLOW.code=best||list[0].code;
+  }
+  if(sel){
+    sel.innerHTML=list.map(function(a){return '<option value="'+projEsc(a.code)+'"'+(a.code===FLOW.code?' selected':'')+'>'+projEsc(a.code+' — '+(a.name||''))+'</option>';}).join('');
+  }
+  var C=flowCalc(FLOW.code);
+  if(!C||!C.rows.length){body.innerHTML='<div class="info-box blue">ยังไม่มีข้อมูล SAP หรือสเตทเมนท์ของบัญชีนี้</div>';return;}
+  var rows=C.rows,okRows=rows.filter(function(r){return r.st==='ok';});
+  var f=function(v){return v===null||v===undefined?'<span style="color:var(--muted)">—</span>':fmtFull(v);};
+  var cls=function(v){return (v===null||v===undefined||flowZ(v))?'color:var(--muted)':'color:var(--gold2)';};
+  // ---- KPI ----
+  var lastOk=null;for(var i=okRows.length-1;i>=0;i--){if(okRows[i].cum!==null){lastOk=okRows[i];break;}}
+  var worst=null;okRows.forEach(function(r){if(!worst||Math.abs(r.delta)>Math.abs(worst.delta))worst=r;});
+  var still=0;for(var j=okRows.length-1;j>=0;j--){if(Math.abs(okRows[j].delta)<1)still++;else break;}
+  var nWait=rows.filter(function(r){return r.st==='wait';}).length;
+  var nBad=okRows.filter(function(r){return (r.stmtChk&&!r.stmtChk.ok)||(r.sapChk&&!r.sapChk.ok)||r.mismatch;}).length;
+  var kp=function(label,val,sub,color){return '<div class="kpi-card" style="cursor:default;padding-bottom:16px"><div class="kpi-label">'+label+'</div><div class="kpi-value" style="font-size:20px;color:'+color+'">'+val+'</div><div class="kpi-sub">'+sub+'</div></div>';};
+  var kpis='<div class="kpi-row">'+
+    kp('ส่วนต่างสะสม '+(lastOk?flowMonthLabel(lastOk.ym):'—'),lastOk?fmtFull(lastOk.cum):'—',lastOk?'SAP '+fmtFull(lastOk.sapClose)+' · Bank '+fmtFull(lastOk.bankClose):'ยังไม่มีสเตทเมนท์',lastOk&&Math.abs(lastOk.cum)>=1?'var(--red)':'var(--green)')+
+    kp('เดือนที่สร้างส่วนต่างใหม่มากสุด',worst&&Math.abs(worst.delta)>=1?flowMonthLabel(worst.ym):'ไม่มี',worst&&Math.abs(worst.delta)>=1?fmtFull(worst.delta)+' บาทในเดือนเดียว':'ทุกเดือนที่มีสเตทเมนท์ตรงกัน',worst&&Math.abs(worst.delta)>=1?'var(--red)':'var(--green)')+
+    kp('ความต่อเนื่องของส่วนต่าง',still>0?'นิ่ง '+still+' เดือนล่าสุด':'ยังมีส่วนต่างใหม่',still>0?'ไม่มีส่วนต่างก้อนใหม่ — ที่เหลือเป็นของเก่าที่ยังไม่แก้':'เดือนล่าสุดที่มีสเตทเมนท์ยังมีส่วนต่างใหม่',still>0?'var(--green)':'var(--gold2)')+
+    kp('สถานะข้อมูล',nWait?'รอสเตทเมนท์ '+nWait+' เดือน':'สเตทเมนท์ครบ',nBad?('⚠ เดือนที่เช็กยอดไม่ผ่าน '+nBad+' เดือน (ดูคอลัมน์เช็กยอด)'):'เช็กยอดผ่านทุกเดือน',nBad?'var(--red)':(nWait?'var(--gold2)':'var(--green)'))+
+    '</div>';
+  // ---- ตาราง ----
+  var maxAbs=0;okRows.forEach(function(r){maxAbs=Math.max(maxAbs,Math.abs(r.delta));});
+  var th='<thead><tr><th rowspan="2">เดือน</th><th colspan="3" style="text-align:center;background:rgba(255,255,255,0.035)">รวมรับ</th><th colspan="3" style="text-align:center;background:rgba(255,255,255,0.035)">รวมจ่าย</th><th rowspan="2" style="text-align:right">ส่วนต่างใหม่ในเดือน</th><th rowspan="2" style="text-align:right">ส่วนต่างสะสมสิ้นเดือน</th><th rowspan="2" style="text-align:center">เช็กยอด</th></tr>'+
+    '<tr><th style="text-align:right">SAP</th><th style="text-align:right">Bank</th><th style="text-align:right">ต่าง</th><th style="text-align:right">SAP</th><th style="text-align:right">Bank</th><th style="text-align:right">ต่าง</th></tr></thead>';
+  var tb='',exp=[];
+  rows.forEach(function(r){
+    var open=!!FLOW.open[r.ym],lbl=flowMonthLabel(r.ym);
+    if(r.st!=='ok'){
+      var why=r.st==='wait'?'รอสเตทเมนท์':(r.st==='pre'?'ก่อนมีสเตทเมนท์':'ไม่มีสเตทเมนท์');
+      tb+='<tr style="color:var(--muted);background:rgba(255,255,255,0.02)"><td><b>'+lbl+'</b> '+flowChip(r)+'</td><td class="right">'+(r.sN?fmtFull(r.sIn):'—')+'</td><td colspan="2" style="text-align:center">'+why+'</td><td class="right">'+(r.sN?fmtFull(r.sOut):'—')+'</td><td colspan="2" style="text-align:center">'+why+'</td><td class="right">—</td><td class="right">—</td><td style="text-align:center">—</td></tr>';
+      exp.push({m:lbl,si:r.sN?fmtFull(r.sIn):'',bi:'',di:'',so:r.sN?fmtFull(r.sOut):'',bo:'',dp:'',dl:'',cum:'',st:why,c1:'',c2:''});
+      return;
+    }
+    var w=maxAbs>0?Math.round(Math.abs(r.delta)/maxAbs*60):0;
+    var bar=w>0&&Math.abs(r.delta)>=1?'<span style="display:inline-block;height:9px;width:'+w+'px;border-radius:3px;margin-left:6px;vertical-align:middle;background:'+(r.delta<0?'var(--red)':'var(--green)')+'"></span>':'';
+    var dcol=Math.abs(r.delta)<1?'var(--green)':(r.delta<0?'var(--red)':'var(--green)');
+    var warn=r.mismatch?' <span title="ผลต่างยอดคงเหลือ ('+projEsc(fmtFull(r.balDelta))+') ไม่เท่ากับผลต่างยอดรวมรับ-จ่าย — ข้อมูลเดือนนี้ไม่ครบ ดูคอลัมน์เช็กยอด" style="color:var(--red)">⚠</span>':'';
+    tb+='<tr style="cursor:pointer'+(open?';background:rgba(91,143,249,0.07)':'')+'" onclick="flowToggle(\''+r.ym+'\')" title="กดเพื่อดูรายวัน">'+
+      '<td style="white-space:nowrap"><b>'+(open?'▾ ':'▸ ')+lbl+'</b> '+flowChip(r)+'</td>'+
+      '<td class="right">'+fmtFull(r.sIn)+'</td><td class="right">'+fmtFull(r.bIn)+'</td><td class="right" style="'+cls(r.recDiff)+'">'+fmtFull(r.recDiff)+'</td>'+
+      '<td class="right">'+fmtFull(r.sOut)+'</td><td class="right">'+fmtFull(r.bOut)+'</td><td class="right" style="'+cls(r.payDiff)+'">'+fmtFull(r.payDiff)+'</td>'+
+      '<td class="right" style="color:'+dcol+';white-space:nowrap">'+fmtFull(r.delta)+bar+warn+'</td>'+
+      '<td class="right">'+f(r.cum)+'</td>'+
+      '<td style="text-align:center;white-space:nowrap">'+flowChkChip('สเตทเมนท์',r.stmtChk)+' '+flowChkChip('SAP',r.sapChk)+'</td></tr>';
+    exp.push({m:lbl,si:fmtFull(r.sIn),bi:fmtFull(r.bIn),di:fmtFull(r.recDiff),so:fmtFull(r.sOut),bo:fmtFull(r.bOut),dp:fmtFull(r.payDiff),dl:fmtFull(r.delta),cum:r.cum===null?'':fmtFull(r.cum),
+      st:(Math.abs(r.delta)<1?'ตรงกัน':(Math.abs(r.delta)>=FLOW_HOT?'ต้องตรวจ':'ตรวจ')),c1:r.stmtChk?(r.stmtChk.ok?'ผ่าน':'ไม่ผ่าน'):'ไม่มีข้อมูล',c2:r.sapChk?(r.sapChk.ok?'ผ่าน':'ไม่ผ่าน'):'ไม่มีข้อมูล'});
+    if(open){
+      var days=flowDays(C,r.ym),tr='',sumR=0,sumP=0;
+      days.forEach(function(d){
+        sumR+=d.rd;sumP+=d.pd;
+        tr+='<tr><td>'+d.dk.slice(6,8)+'/'+d.dk.slice(4,6)+'/'+(+d.dk.slice(0,4)+543)+'</td><td class="right">'+fmtFull(d.sIn)+'</td><td class="right">'+fmtFull(d.bIn)+'</td><td class="right" style="'+cls(d.rd)+'">'+fmtFull(d.rd)+'</td><td class="right">'+fmtFull(d.sOut)+'</td><td class="right">'+fmtFull(d.bOut)+'</td><td class="right" style="'+cls(d.pd)+'">'+fmtFull(d.pd)+'</td><td style="font-size:11.5px;color:var(--text2);white-space:normal;min-width:240px">'+projEsc(d.hint)+'</td></tr>';
+      });
+      var dayBody=days.length?
+        '<div style="overflow-x:auto"><table style="min-width:900px"><thead><tr><th>วันที่</th><th style="text-align:right">SAP รับ</th><th style="text-align:right">Bank รับ</th><th style="text-align:right">ต่างรับ</th><th style="text-align:right">SAP จ่าย</th><th style="text-align:right">Bank จ่าย</th><th style="text-align:right">ต่างจ่าย</th><th>ข้อแนะนำ</th></tr></thead><tbody>'+tr+
+        '<tr style="font-weight:700;border-top:2px solid var(--border)"><td>รวมวันที่ต่าง</td><td></td><td></td><td class="right">'+fmtFull(sumR)+'</td><td></td><td></td><td class="right">'+fmtFull(sumP)+'</td><td style="font-weight:400;color:var(--muted);font-size:11.5px;white-space:normal">ส่วนต่างใหม่ = '+fmtFull(sumR-sumP)+(Math.abs((sumR-sumP)-r.delta)<0.01?' (ตรงกับตารางด้านบน)':' ⚠ ไม่ตรงกับตารางด้านบน')+'</td></tr></tbody></table></div>':
+        '<div style="color:var(--green)">✅ ทุกวันของเดือนนี้ ยอดรวมรับ/จ่ายสองฝั่งเท่ากัน</div>';
+      var sx=[];
+      if(r.sRev)sx.push('ไม่นับรายการกลับรายการใน SAP '+r.sRev+' บรรทัด (เป็นคู่กลับรายการ ไม่กระทบเงินสด)');
+      if(r.bN===0)sx.push('สเตทเมนท์เดือนนี้ไม่มีรายการ');
+      tb+='<tr><td colspan="10" style="background:rgba(91,143,249,0.06);white-space:normal;padding:12px 14px"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><b>รายวัน '+lbl+'</b> <span style="color:var(--muted);font-size:12px">แสดงเฉพาะวันที่ยอดรวมสองฝั่งไม่เท่ากัน · เทียบยอดรวมทั้งวัน ไม่ใช่รายรายการ</span><button class="hbtn hbtn-muted" style="margin-left:auto" onclick="event.stopPropagation();flowGo(\''+r.ym+'\')">📒 ดูสมุดบัญชีเดือนนี้ ›</button></div>'+dayBody+(sx.length?'<div style="font-size:11.5px;color:var(--muted);margin-top:8px">'+sx.join(' · ')+'</div>':'')+'</td></tr>';
+    }
+  });
+  dmRegisterSimple('flowList','รวมรับ-รวมจ่ายรายเดือน SAP เทียบ Bank '+(C.name||C.code),[
+    {label:'เดือน',get:function(r){return r.m;}},
+    {label:'รับ SAP',right:true,get:function(r){return r.si;}},{label:'รับ Bank',right:true,get:function(r){return r.bi;}},{label:'ต่างรับ',right:true,get:function(r){return r.di;}},
+    {label:'จ่าย SAP',right:true,get:function(r){return r.so;}},{label:'จ่าย Bank',right:true,get:function(r){return r.bo;}},{label:'ต่างจ่าย',right:true,get:function(r){return r.dp;}},
+    {label:'ส่วนต่างใหม่ในเดือน',right:true,get:function(r){return r.dl;}},{label:'ส่วนต่างสะสม',right:true,get:function(r){return r.cum;}},
+    {label:'สถานะ',get:function(r){return r.st;}},{label:'เช็กสเตทเมนท์',get:function(r){return r.c1;}},{label:'เช็ก SAP',get:function(r){return r.c2;}}],exp);
+  var notes=['ส่วนต่าง = Bank − SAP · <b>ต่างรับ</b> = Bank รับ − SAP รับ · <b>ต่างจ่าย</b> = Bank จ่าย − SAP จ่าย · <b>ส่วนต่างใหม่ในเดือน</b> = ต่างรับ − ต่างจ่าย (เดือนนั้นสร้างส่วนต่างเพิ่ม/ลดเท่าไร ไม่ใช่ยอดสะสม) · แดง = ตั้งแต่ '+fmtFull(FLOW_HOT)+' บาท',
+    '<b>เช็กยอด</b>: "สเตทเมนท์" = ยกมา + รับ − จ่าย ต้องเท่ายอดปิดในสเตทเมนท์ · "SAP" = ยกมา(Q11) + รับ − จ่าย(Q15) ต้องเท่ายอดปิด(Q11) · ✖ = ข้อมูลเดือนนั้นไม่ครบ อย่าเชื่อส่วนต่างของเดือนนั้นจนกว่าจะแก้',
+    'เดือนที่ยังไม่มีสเตทเมนท์ (ใหม่กว่าสเตทเมนท์ล่าสุด'+(C.gLast?' = '+flowMonthLabel(C.gLast):'')+') แสดงเป็น "รอสเตทเมนท์" ไม่คิดส่วนต่าง · ไม่นับรายการกลับรายการใน SAP ที่จับคู่ได้ (วันเดียวกัน/อ้างเลข JE ในเดือนเดียวกัน) · การกลับรายการข้ามเดือนยังนับอยู่'];
+  body.innerHTML=kpis+'<div class="chart-card"><div style="display:flex;justify-content:flex-end">'+dmExportBtns('flowList')+'</div><div style="overflow-x:auto"><table style="min-width:1050px">'+th+'<tbody>'+tb+'</tbody></table></div>'+
+    '<div style="font-size:11.5px;color:var(--muted);margin-top:10px;line-height:1.8">'+notes.join('<br>')+'</div></div>';
 }
 
 Chart.defaults.color='#8FA3B8';Chart.defaults.font.family='Sarabun';Chart.defaults.font.size=12;
