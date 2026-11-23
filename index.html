@@ -735,6 +735,10 @@ function fmtKPI(n){
 // บัญชี OD (เบิกเกินบัญชี) ตามที่ผู้จัดทำยืนยัน: Kbank 039-1-87485-9 (4859), Kbank 054-3-72482-3 (4823), ทหารไทย 242-1-00749-9 (7499)
 // บัญชีอื่นที่ยอดติดลบ (เช่น ออมทรัพย์/เงินสดย่อย) ไม่ถือเป็น OD — แสดงแยกเป็น "ควรตรวจ"
 var BANK_OD_CODES=['1112-06','1112-09','1112-10'];
+// บัญชี 111x ที่ "ไม่ใช่เงินสด/ธนาคารจริง" — ไม่นำมารวมเงินสดสุทธิ เงินฝาก และรายการเทียบยอด (แก้ที่นี่ที่เดียว)
+// 1111-00 "เงินสดในมือ": ทั้งบัญชีมีแต่รายการปิดงวด (TransType -3) ลงวันที่ 1 ม.ค. 2569 "For Closing Period 12-2025" สุทธิเดบิต 648,028,979.89 (ยืนยัน 23 พ.ย. 2569)
+var CASH_EXCLUDE_CODES=['1111-00'];
+function cashIsExcluded(code){return CASH_EXCLUDE_CODES.indexOf(String(code||'').trim())>=0;}
 function fmtM(n){return (n/1e6).toFixed(2);}
 function fmtFull(n){
   if(n===null||n===undefined)return '\u2014';
@@ -1368,8 +1372,8 @@ async function loadAllData(opts){
     var payByM={},payRows=[];
     q02.rows.forEach(function(r){var mk=getMK(r[1]),amt=parseFloat(r[5])||0;if(mk&&trustYmOk(mk))payByM[mk]=(payByM[mk]||0)+amt;payRows.push({date:r[1],docNo:String(r[2]||''),vendName:String(r[4]||''),amt:amt,bankCode:repairAcctCode(r[6]).trim(),bankName:String(r[7]||'').trim(),itemDetail:String(r[8]||'').trim(),itemDetails2:String(r[9]||'').trim(),docCreator:String(r[10]||'').trim(),remarks:String(r[11]||'').trim()});});
 
-    var bankNet=0,bankRows=[];
-    q03.rows.forEach(function(r){var code=repairAcctCode(r[1]),bal=parseFloat(r[3])||0;if(code.includes('-')){bankNet+=bal;bankRows.push({code:code,name:String(r[2]||''),bal:bal});}});
+    var bankNet=0,bankRows=[],bankExcluded=[];
+    q03.rows.forEach(function(r){var code=repairAcctCode(r[1]),bal=parseFloat(r[3])||0;if(code.includes('-')){if(cashIsExcluded(code)){bankExcluded.push({code:code,name:String(r[2]||''),bal:bal});return;}bankNet+=bal;bankRows.push({code:code,name:String(r[2]||''),bal:bal});}});
 
     var at=0,a30=0,a60=0,a90=0,a90p=0;
     var arByCust={},arAgeMap={},arRows2=[];
@@ -1441,7 +1445,7 @@ async function loadAllData(opts){
     var sapMonthlyByAcct={};
     try{
       q11.rows.forEach(function(r){
-        var code=repairAcctCode(r[1]);if(!code)return;
+        var code=repairAcctCode(r[1]);if(!code||cashIsExcluded(code))return;
         // Google Sheets มักแปลง '2026-01' เป็นวันที่จริงโดยอัตโนมัติ (แม้จอโชว์เป็น '2026-01')
         // พอส่งผ่าน JSON จะกลายเป็น ISO string ยาวๆ เช่น '2026-01-01T00:00:00.000Z'
         // ต้องดึงแค่ YYYY-MM ออกมาเสมอ ไม่ใช้ String(r[3]) ตรงๆ
@@ -1607,7 +1611,7 @@ async function loadAllData(opts){
     // recRows/payRows = ครบทุกปี (ใช้ในหน้ากระทบยอดธนาคาร/รายงานรับเงิน) · recRowsT/payRowsT = เฉพาะตั้งแต่วันเริ่มข้อมูลที่เชื่อถือได้ (ใช้ในโมดัลรายรับ-รายจ่ายและหน้าเงินสดธนาคาร)
     var recRowsT=recRows.filter(function(r){return trustDateOk(r.date);}),payRowsT=payRows.filter(function(r){return trustDateOk(r.date);});
     var allMonths=Object.keys(Object.assign({},recByM,payByM)).sort();
-    G={recByM:recByM,payByM:payByM,bankNet:bankNet,bankRows:bankRows,recRows:recRows,payRows:payRows,recRowsT:recRowsT,payRowsT:payRowsT,
+    G={recByM:recByM,payByM:payByM,bankNet:bankNet,bankRows:bankRows,bankExcluded:bankExcluded,recRows:recRows,payRows:payRows,recRowsT:recRowsT,payRowsT:payRowsT,
        at:at,a30:a30,a60:a60,a90:a90,a90p:a90p,topAR:topAR,arAgeMap:arAgeMap,arRows2:arRows2,arCusts:Object.keys(arByCust).length,
        pt:pt,p30:p30,p60:p60,p60p:p60p,topAP:topAP,apRows2:apRows2,arItemsByDoc:arItemsByDoc,apItemsByDoc:apItemsByDoc,sapMonthlyByAcct:sapMonthlyByAcct,
        et:et,etNet:etNet,topExp:exps.slice(0,10),expAll:expAll,expDetailByAcct:expDetailByAcct,arRowCount:q04.rows.length,apRowCount:q05.rows.length,allMonths:allMonths,plRows:plRows,apCatRows:apCatRows,manualMatch:manualMatch,sapTransferLegs:sapTransferLegs,sapBankGLItems:sapBankGLItems,sapAllBankLegs:sapAllBankLegs};
@@ -3034,6 +3038,7 @@ function showModalBank(){
     mStat('\u0e22\u0e2d\u0e14\u0e25\u0e1a\u0e23\u0e27\u0e21',fmtKPI(neg.reduce(function(s,r){return s+r.bal;},0)),'var(--red)')+
     mStat('\u0e22\u0e2d\u0e14\u0e2a\u0e38\u0e17\u0e18\u0e34',fmtKPI(G.bankNet),'var(--red)')+
     mStat('\u0e08\u0e33\u0e19\u0e27\u0e19\u0e1a\u0e31\u0e0d\u0e0a\u0e35',rows.length+' \u0e1a\u0e31\u0e0d\u0e0a\u0e35','var(--blue)')+'</div>'+
+    ((G.bankExcluded&&G.bankExcluded.length)?'<div class="info-box blue" style="font-size:12.5px;line-height:1.7;margin:8px 0">ไม่รวมบัญชีที่ไม่ใช่เงินสด/ธนาคารจริง: '+G.bankExcluded.map(function(r){return r.code+' '+r.name+' '+fmtFull(r.bal);}).join(' · ')+' — ยอดนี้มาจากรายการปิดงวด (TransType −3) ลงวันที่ 1 ม.ค. 2569 ไม่ใช่เงินสดจริง (ตั้งค่าที่ CASH_EXCLUDE_CODES)</div>':'')+
     '<div class="section-sep">\ud83d\udfe2 \u0e1a\u0e31\u0e0d\u0e0a\u0e35\u0e22\u0e2d\u0e14\u0e1a\u0e27\u0e01 ('+pos.length+')</div>'+
     '<table><thead><tr><th>\u0e23\u0e2b\u0e31\u0e2a</th><th>\u0e0a\u0e37\u0e48\u0e2d\u0e1a\u0e31\u0e0d\u0e0a\u0e35</th><th style="text-align:right">\u0e22\u0e2d\u0e14\u0e04\u0e07\u0e40\u0e2b\u0e25\u0e37\u0e2d</th></tr></thead><tbody>'+
     pos.map(function(r){return '<tr><td style="color:var(--muted);font-size:12px">'+r.code+'</td><td>'+r.name+'</td><td class="right green">'+fmtFull(r.bal)+'</td></tr>';}).join('')+'</tbody></table>'+
@@ -7449,6 +7454,8 @@ function renderDashboard(d,opts){
   var gc='rgba(255,255,255,0.05)';
   // ช่วงข้อมูลที่การ์ดใช้จริง (เดิมเขียนแค่ "14 เดือน" แต่กราฟแสดง 6 เดือนสุดท้าย)
   var rngTxt=fm.length?(mlbl(fm[0])+' \u2013 '+mlbl(fm[fm.length-1])+' ('+fm.length+' \u0e40\u0e14\u0e37\u0e2d\u0e19)'):'\u2014';
+  var bExclAmt=(d.bankExcluded||[]).reduce(function(s,r){return s+r.bal;},0);
+  var bExclTxt=(d.bankExcluded&&d.bankExcluded.length&&Math.abs(bExclAmt)>=1)?'<br><span style="color:var(--muted)">ไม่รวม '+d.bankExcluded.map(function(r){return r.code;}).join(', ')+' (ยอดปิดงวด '+fmtM(bExclAmt)+' ล้าน)</span>':'';
   var bPos=(d.bankRows||[]).reduce(function(s,r){return s+(r.bal>0?r.bal:0);},0);          // เงินฝาก = ยอด SAP บวก
   var bNeg=-(d.bankRows||[]).reduce(function(s,r){return s+((r.bal<0&&BANK_OD_CODES.indexOf(r.code)>=0)?r.bal:0);},0);   // OD ที่ใช้ไป = ยอดติดลบของ 3 บัญชี OD (แสดงเป็นบวก)
   var bOth=-(d.bankRows||[]).reduce(function(s,r){return s+((r.bal<0&&BANK_OD_CODES.indexOf(r.code)<0)?r.bal:0);},0);   // บัญชีอื่นที่ติดลบ (ไม่ใช่ OD)
@@ -7456,7 +7463,7 @@ function renderDashboard(d,opts){
   document.getElementById('alertBar0').innerHTML='\u26a0\ufe0f <strong>\u0e41\u0e08\u0e49\u0e07\u0e40\u0e15\u0e37\u0e2d\u0e19:</strong> AR \u0e40\u0e01\u0e34\u0e19 90 \u0e27\u0e31\u0e19 = <strong>'+fmtKPI(d.a90p)+'</strong> ('+ar90pct+'%) &nbsp;|&nbsp; AP \u0e2a\u0e39\u0e07\u0e01\u0e27\u0e48\u0e32 AR <strong>'+apRatio+' \u0e40\u0e17\u0e48\u0e32</strong>';
 
   document.getElementById('kpi0').innerHTML=
-    kpi('blue','\ud83c\udfe6','rgba(91,143,249,0.18)','\u0e40\u0e07\u0e34\u0e19\u0e2a\u0e14\u0e2a\u0e38\u0e17\u0e18\u0e34 (NET BANK)',fmtKPI(d.bankNet),d.bankNet<0?'red':'green','\u0e40\u0e07\u0e34\u0e19\u0e1d\u0e32\u0e01 '+fmtM(bPos)+' \u0e25\u0e49\u0e32\u0e19<br>\u0e43\u0e0a\u0e49 OD '+fmtM(bNeg)+' \u0e25\u0e49\u0e32\u0e19'+(bOth>=1000?'<br><span style="color:var(--gold2)">\u26a0 \u0e1a\u0e31\u0e0d\u0e0a\u0e35\u0e2d\u0e37\u0e48\u0e19\u0e15\u0e34\u0e14\u0e25\u0e1a '+fmtM(bOth)+' \u0e25\u0e49\u0e32\u0e19</span>':''),'showModalBank()')+
+    kpi('blue','\ud83c\udfe6','rgba(91,143,249,0.18)','\u0e40\u0e07\u0e34\u0e19\u0e2a\u0e14\u0e2a\u0e38\u0e17\u0e18\u0e34 (NET BANK)',fmtKPI(d.bankNet),d.bankNet<0?'red':'green','\u0e40\u0e07\u0e34\u0e19\u0e1d\u0e32\u0e01 '+fmtM(bPos)+' \u0e25\u0e49\u0e32\u0e19<br>\u0e43\u0e0a\u0e49 OD '+fmtM(bNeg)+' \u0e25\u0e49\u0e32\u0e19'+(bOth>=1000?'<br><span style="color:var(--gold2)">\u26a0 \u0e1a\u0e31\u0e0d\u0e0a\u0e35\u0e2d\u0e37\u0e48\u0e19\u0e15\u0e34\u0e14\u0e25\u0e1a '+fmtM(bOth)+' \u0e25\u0e49\u0e32\u0e19</span>':'')+bExclTxt,'showModalBank()')+
     kpi('teal','\ud83d\udce5','rgba(43,191,179,0.18)','\u0e40\u0e07\u0e34\u0e19\u0e23\u0e31\u0e1a\u0e43\u0e19\u0e0a\u0e48\u0e27\u0e07\u0e17\u0e35\u0e48\u0e40\u0e25\u0e37\u0e2d\u0e01',fmtKPI(totR),totR>0?'gold':'muted',rngTxt,'showModalReceipt()')+
     kpi('red','\ud83d\udce4','rgba(224,92,92,0.18)','\u0e40\u0e07\u0e34\u0e19\u0e08\u0e48\u0e32\u0e22\u0e43\u0e19\u0e0a\u0e48\u0e27\u0e07\u0e17\u0e35\u0e48\u0e40\u0e25\u0e37\u0e2d\u0e01',fmtKPI(totP),'red',rngTxt,'showModalPayment()')+
     kpi('red','\ud83d\udcb8','rgba(224,92,92,0.18)','CASH FLOW \u0e2a\u0e38\u0e17\u0e18\u0e34',fmtKPI(totCF),totCF>=0?'green':'red','\u0e23\u0e31\u0e1a \u2013 \u0e08\u0e48\u0e32\u0e22 \u00b7 '+rngTxt,'showModalCF()')+
