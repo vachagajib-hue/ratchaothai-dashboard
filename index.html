@@ -9258,7 +9258,9 @@ function renderRecon(){
             if(!fb)return null;
             var inM=fb.rows.filter(function(r){return bkYmOf(r.date)===ym;});
             if(!inM.length)return null;
-            return {n:inM.filter(function(r){return r.st==='warn'||r.st==='bad'||r.st==='miss';}).length,all:inM.length};
+            var real=inM.filter(function(r){return r.kind!=='orphan';}),orph=inM.length-real.length;
+            if(!real.length&&!orph)return null;
+            return {n:real.filter(function(r){return r.st==='warn'||r.st==='bad'||r.st==='miss';}).length,all:real.length,chk:orph};
           });
         }
         return {code:a.code,name:a.name,sapVals:sapVals,sapCarry:sapCarry,bankVals:bankVals,diffVals:diffVals,usd:isUsd,fxCnt:fxCnt,usdEq:usdEq};
@@ -9381,7 +9383,8 @@ function reconCmpDraw(){
     return p.fxCnt.map(function(c,i){
       if(trialIdx[i])return trialCell(null);
       if(!c)return '<td class="right" style="color:var(--muted)">—</td>';
-      if(c.n===0)return '<td class="right green" title="รายการแลกเงิน/ใบรับ-จ่าย USD เดือนนี้ '+c.all+' รายการ ตรงกับ SAP ครบ">✅ '+c.all+' รายการ</td>';
+      if(c.n===0&&c.all===0)return '<td class="right" style="color:var(--gold2)" title="เดือนนี้ไม่มีรายการ USD แต่มีเงินบาทเข้าบัญชีบาทคู่ ≥ 1 ล้านที่ไม่พบ USD ฝั่งจ่าย '+c.chk+' รายการ — ตรวจในส่วน จับคู่รายการแลกเงิน หน้าสมุดบัญชีธนาคาร">ℹ️ '+c.chk+' ตรวจ</td>';
+      if(c.n===0)return '<td class="right green" title="รายการแลกเงิน/ใบรับ-จ่าย USD เดือนนี้ '+c.all+' รายการ ตรงกับ SAP ครบ'+(c.chk?' (ยังมีบาทเข้าที่ไม่พบคู่ USD '+c.chk+' รายการ — ดูส่วน จับคู่รายการแลกเงิน)':'')+'">✅ '+c.all+' รายการ'+(c.chk?' · ℹ️ '+c.chk:'')+'</td>';
       return '<td class="right red" title="เดือนนี้มี '+c.n+' จาก '+c.all+' รายการที่ SAP ยังไม่ลง/ลงไม่ตรง — ดูส่วน จับคู่รายการแลกเงิน หน้าสมุดบัญชีธนาคาร">'+c.n+' ต้องแก้</td>';
     }).join('');
   }
