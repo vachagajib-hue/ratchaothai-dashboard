@@ -3114,8 +3114,8 @@ function preBadge(d){
   var el=document.getElementById('preBadge0');if(!el)return;
   var ar=trustPreSummary(d.arRows2),ap=trustPreSummary(d.apRows2);
   var h='<div style="display:inline-block;margin:0 8px 12px 0;padding:6px 12px;border-radius:20px;font-size:12px;color:var(--muted);border:1px solid var(--border);background:rgba(255,255,255,0.04)" title="ข้อมูลรายได้/ค่าใช้จ่าย/รายรับ-รายจ่ายเริ่มนับตั้งแต่วันนี้ ส่วนข้อมูลปี 2568 เป็นช่วงทดลองระบบ">🗓 ข้อมูลที่เชื่อถือได้เริ่ม '+DATA_TRUST_START.label+' · ยอดยกมา '+DATA_TRUST_START.openLabel+'</div>';
-  if(ar.n)h+='<div onclick="showModalPreGoLive(\'AR\')" style="cursor:pointer;display:inline-block;margin:0 8px 12px 0;padding:6px 12px;border-radius:20px;font-size:12.5px;font-weight:600;color:var(--gold2);border:1px solid var(--gold2);background:rgba(212,168,67,0.10)">⚠ AR เอกสารก่อน '+DATA_TRUST_START.label+' '+ar.n.toLocaleString()+' รายการ · '+fmtKPI(ar.sum)+' <span style="opacity:.7;font-weight:400">· ดูรายการ ›</span></div>';
-  if(ap.n)h+='<div onclick="showModalPreGoLive(\'AP\')" style="cursor:pointer;display:inline-block;margin:0 8px 12px 0;padding:6px 12px;border-radius:20px;font-size:12.5px;font-weight:600;color:var(--red);border:1px solid var(--red);background:rgba(224,92,92,0.10)">⚠ AP เอกสารก่อน '+DATA_TRUST_START.label+' '+ap.n.toLocaleString()+' รายการ · '+fmtKPI(ap.sum)+' <span style="opacity:.7;font-weight:400">· ดูรายการ ›</span></div>';
+  if(ar.n)h+='<div onclick="showModalPreGoLive(\'AR\')" style="cursor:pointer;display:inline-block;margin:0 8px 12px 0;padding:6px 12px;border-radius:20px;font-size:12.5px;font-weight:600;color:var(--gold2);border:1px solid var(--gold2);background:rgba(212,168,67,0.10)">⚠ AR เอกสารก่อน '+DATA_TRUST_START.label+' '+ar.n.toLocaleString()+' รายการ · '+fmtKPI(ar.sum)+' <span style="opacity:.7;font-weight:400">· ไม่รวมในการ์ดด้านล่าง · ดูรายการ ›</span></div>';
+  if(ap.n)h+='<div onclick="showModalPreGoLive(\'AP\')" style="cursor:pointer;display:inline-block;margin:0 8px 12px 0;padding:6px 12px;border-radius:20px;font-size:12.5px;font-weight:600;color:var(--red);border:1px solid var(--red);background:rgba(224,92,92,0.10)">⚠ AP เอกสารก่อน '+DATA_TRUST_START.label+' '+ap.n.toLocaleString()+' รายการ · '+fmtKPI(ap.sum)+' <span style="opacity:.7;font-weight:400">· ไม่รวมในการ์ดด้านล่าง · ดูรายการ ›</span></div>';
   el.innerHTML=h;
 }
 function showModalAR(){
@@ -7451,6 +7451,7 @@ function renderDashboard(d,opts){
   var totCF=totR-totP;
   var ar90pct=d.at>0?(d.a90p/d.at*100).toFixed(1):0;
   var apRatio=d.at>0?(d.pt/d.at).toFixed(1):0;
+  var apCmpTxt=(d.at>0)?(d.pt>d.at?'AP \u0e2a\u0e39\u0e07\u0e01\u0e27\u0e48\u0e32 AR <strong>'+(d.pt/d.at).toFixed(2)+' \u0e40\u0e17\u0e48\u0e32</strong>':(d.pt<d.at?'AP \u0e15\u0e48\u0e33\u0e01\u0e27\u0e48\u0e32 AR (AP = <strong>'+(d.pt/d.at).toFixed(2)+' \u0e40\u0e17\u0e48\u0e32</strong>\u0e02\u0e2d\u0e07 AR)':'AP \u0e40\u0e17\u0e48\u0e32\u0e01\u0e31\u0e1a AR')):'\u0e44\u0e21\u0e48\u0e21\u0e35 AR \u0e04\u0e49\u0e32\u0e07\u0e23\u0e31\u0e1a';   // เทียบทิศทางจริง (เดิมเขียน \u0e2a\u0e39\u0e07\u0e01\u0e27\u0e48\u0e32 \u0e40\u0e2a\u0e21\u0e2d)
   var gc='rgba(255,255,255,0.05)';
   // ช่วงข้อมูลที่การ์ดใช้จริง (เดิมเขียนแค่ "14 เดือน" แต่กราฟแสดง 6 เดือนสุดท้าย)
   var rngTxt=fm.length?(mlbl(fm[0])+' \u2013 '+mlbl(fm[fm.length-1])+' ('+fm.length+' \u0e40\u0e14\u0e37\u0e2d\u0e19)'):'\u2014';
@@ -7460,7 +7461,7 @@ function renderDashboard(d,opts){
   var bNeg=-(d.bankRows||[]).reduce(function(s,r){return s+((r.bal<0&&BANK_OD_CODES.indexOf(r.code)>=0)?r.bal:0);},0);   // OD ที่ใช้ไป = ยอดติดลบของ 3 บัญชี OD (แสดงเป็นบวก)
   var bOth=-(d.bankRows||[]).reduce(function(s,r){return s+((r.bal<0&&BANK_OD_CODES.indexOf(r.code)<0)?r.bal:0);},0);   // บัญชีอื่นที่ติดลบ (ไม่ใช่ OD)
 
-  document.getElementById('alertBar0').innerHTML='\u26a0\ufe0f <strong>\u0e41\u0e08\u0e49\u0e07\u0e40\u0e15\u0e37\u0e2d\u0e19:</strong> AR \u0e40\u0e01\u0e34\u0e19 90 \u0e27\u0e31\u0e19 = <strong>'+fmtKPI(d.a90p)+'</strong> ('+ar90pct+'%) &nbsp;|&nbsp; AP \u0e2a\u0e39\u0e07\u0e01\u0e27\u0e48\u0e32 AR <strong>'+apRatio+' \u0e40\u0e17\u0e48\u0e32</strong>';
+  document.getElementById('alertBar0').innerHTML='\u26a0\ufe0f <strong>\u0e41\u0e08\u0e49\u0e07\u0e40\u0e15\u0e37\u0e2d\u0e19:</strong> AR \u0e40\u0e01\u0e34\u0e19 90 \u0e27\u0e31\u0e19 = <strong>'+fmtKPI(d.a90p)+'</strong> ('+ar90pct+'%) &nbsp;|&nbsp; '+apCmpTxt;
 
   document.getElementById('kpi0').innerHTML=
     kpi('blue','\ud83c\udfe6','rgba(91,143,249,0.18)','\u0e40\u0e07\u0e34\u0e19\u0e2a\u0e14\u0e2a\u0e38\u0e17\u0e18\u0e34 (NET BANK)',fmtKPI(d.bankNet),d.bankNet<0?'red':'green','\u0e40\u0e07\u0e34\u0e19\u0e1d\u0e32\u0e01 '+fmtM(bPos)+' \u0e25\u0e49\u0e32\u0e19<br>\u0e43\u0e0a\u0e49 OD '+fmtM(bNeg)+' \u0e25\u0e49\u0e32\u0e19'+(bOth>=1000?'<br><span style="color:var(--gold2)">\u26a0 \u0e1a\u0e31\u0e0d\u0e0a\u0e35\u0e2d\u0e37\u0e48\u0e19\u0e15\u0e34\u0e14\u0e25\u0e1a '+fmtM(bOth)+' \u0e25\u0e49\u0e32\u0e19</span>':'')+bExclTxt,'showModalBank()')+
