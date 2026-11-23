@@ -3555,6 +3555,113 @@ var FX={
   amtTol:1,          // ยอดบาทเท่ากันถ้าต่างไม่เกินกี่บาท
   f:'all'
 };
+// ===== อัตรา USD จากตารางอัตราแลกเปลี่ยนของ SAP (ชีต Q29_USD_RATE, คิวรี Q29_USD_RATE.sql) — เพิ่ม 23 พ.ย. 2569 =====
+// ใช้ 2 อย่าง: (1) แปลงยอดบาทของ SAP ในบัญชี USD กลับเป็น USD แบบ "ประมาณการ" (เงินเข้า÷USB, เงินออก÷USS ตามที่ผู้ใช้กำหนด)
+// เพื่อเทียบกับยอดธนาคาร USD  (2) ตรวจว่าเอกสารที่ SAP ลงใช้อัตราตรงกับตารางอัตราของ SAP หรือไม่
+// ไม่มีชีตนี้ = ฟีเจอร์ส่วนนี้ถูกซ่อน ไม่กระทบส่วนอื่น
+var FXR={loaded:false,loading:false,tried:false,fail:'',byDay:{},days:[],n:0,first:'',last:''};
+function fxRDayOf(v){
+  var d;
+  if(v instanceof Date){if(isNaN(v))return NaN;return Math.round(Date.UTC(v.getFullYear(),v.getMonth(),v.getDate())/86400000);}
+  var t=String(v==null?'':v).trim();
+  // วันที่ที่ Apps Script ส่งเป็น ISO UTC (เที่ยงคืนเวลาไทย = 17:00Z ของวันก่อน) — บวก 7 ชม. กลับเป็นวันที่เวลาไทย
+  var iz=t.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}).*Z$/);
+  if(iz){var dz=new Date(Date.UTC(+iz[1],+iz[2]-1,+iz[3],+iz[4],+iz[5])+7*3600*1000);return Math.round(Date.UTC(dz.getUTCFullYear(),dz.getUTCMonth(),dz.getUTCDate())/86400000);}
+  var m=t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m)return Math.round(Date.UTC(+m[1],+m[2]-1,+m[3])/86400000);
+  d=fxDayNum(normDate(t));
+  return d;
+}
+function fxRatesParse(res){
+  var rawCols=(res.cols||[]).map(function(c){return String(c==null?'':c).trim();});
+  var off=rawCols[0]==='#'?1:0;
+  var iD=-1,iC=-1,iR=-1;
+  rawCols.forEach(function(c,i){var l=c.toLowerCase();
+    if(iD<0&&/date/.test(l))iD=i;
+    else if(iC<0&&/code|currency$|^currency\s*code/.test(l)&&!/rate/.test(l))iC=i;
+    else if(iR<0&&/rate/.test(l))iR=i;});
+  if(iD<0)iD=off;if(iC<0)iC=off+1;if(iR<0)iR=off+2;
+  var byDay={},n=0,bad=0;
+  (res.rows||[]).forEach(function(r){
+    var day=fxRDayOf(r[iD]),code=String(r[iC]==null?'':r[iC]).trim().toUpperCase(),rate=parseFloat(String(r[iR]==null?'':r[iR]).replace(/,/g,''));
+    if(isNaN(day)||!code||!(rate>0)){bad++;return;}
+    if(code==='USD')code='USB';   // บางระบบใช้รหัส USD รหัสเดียว — ถือเป็นอัตราซื้อ/ขายเท่ากัน
+    if(!byDay[day])byDay[day]={};
+    byDay[day][code]=rate;
+    if(code==='USB'&&byDay[day].USS===undefined&&String(r[iC]).trim().toUpperCase()==='USD')byDay[day].USS=rate;
+    n++;
+  });
+  FXR.byDay=byDay;FXR.days=Object.keys(byDay).map(Number).sort(function(a,b){return a-b;});FXR.n=n;FXR.bad=bad;
+  var fmt=function(d){var x=new Date(d*86400000);return x.getUTCFullYear()+'-'+String(x.getUTCMonth()+1).padStart(2,'0')+'-'+String(x.getUTCDate()).padStart(2,'0');};
+  FXR.first=FXR.days.length?fmt(FXR.days[0]):'';FXR.last=FXR.days.length?fmt(FXR.days[FXR.days.length-1]):'';
+}
+// อัตราของวันนั้น (code = 'USB' ซื้อ / 'USS' ขาย) — ถ้าวันนั้นไม่มี ใช้วันก่อนหน้าที่ใกล้ที่สุดไม่เกิน 10 วัน (ไม่เดาข้ามช่วงยาว)
+function fxRateAt(day,code){
+  if(!FXR.loaded||isNaN(day))return null;
+  for(var k=0;k<=10;k++){var r=FXR.byDay[day-k];if(r&&r[code]>0)return r[code];}
+  return null;
+}
+async function fxRatesLoad(force){
+  if(FXR.loading)return;
+  if((FXR.tried&&!force)||FXR.loaded&&!force)return;
+  FXR.loading=true;FXR.tried=true;FXR.fail='';
+  try{
+    var res=await fetchSheet('Q29_USD_RATE');
+    fxRatesParse(res);
+    FXR.loaded=FXR.n>0;
+    if(!FXR.loaded)FXR.fail='ชีต Q29_USD_RATE ไม่มีข้อมูลอัตรา';
+  }catch(e){FXR.fail=String((e&&e.message)||e);FXR.loaded=false;}
+  FXR.loading=false;
+  if(FXR.loaded){
+    try{fxRender();}catch(e){console.error(e);}
+    try{if(RECON_CMP)renderRecon();}catch(e){console.error(e);}
+  }
+}
+// ตรวจอัตราที่ SAP ลง เทียบตารางอัตรา SAP — dir 'in' (เงินเข้า ใช้ USB) / 'out' (เงินออก ใช้ USS)
+// ถือว่าถูกต้องเมื่อ: อัตราที่ลงตรง USB หรือ USS ของวันที่ลง (±0.1%) หรือตรงอัตราจริงของธนาคาร (±0.3%) หรือต่างจากอัตราฝั่งที่ควรใช้ไม่เกิน 1%
+function fxRateClear(row){if(row.st==='warn'&&/อัตราที่ลงต่างจากตลาด/.test(row.stTxt||'')){row.st='ok';row.stTxt='✅ ลงแล้ว';row.hint='';}}
+function fxRateCheck(row,legDay,dir,usd,bankRate){
+  if(!FXR.loaded||row.sapThb==null||!(usd>0)||isNaN(legDay))return;
+  var usb=fxRateAt(legDay,'USB'),uss=fxRateAt(legDay,'USS');
+  if(!usb&&!uss)return;
+  var sr=row.sapThb/usd,want=dir==='in'?(usb||uss):(uss||usb),side=dir==='in'?(usb?'USB':'USS'):(uss?'USS':'USB');
+  var near=function(a,b,t){return !!b&&Math.abs(a-b)/b*100<=t;};
+  row.sapRate=sr;row.tblRate=want;row.tblSide=side;
+  var dev=(sr-want)/want*100;row.rateDev=dev;
+  if(near(sr,usb,0.1)||near(sr,uss,0.1)){fxRateClear(row);row.rateOk='table';row.rateTxt=sr.toFixed(4)+' = '+(near(sr,usb,0.1)?'USB':'USS')+' ตาราง';return;}
+  if(bankRate&&near(sr,bankRate,0.3)){fxRateClear(row);row.rateOk='bank';row.rateTxt=sr.toFixed(4)+' = อัตราจริงธนาคาร';return;}
+  if(Math.abs(dev)<=1){fxRateClear(row);row.rateOk='near';row.rateTxt=sr.toFixed(4)+' (ต่างจาก '+side+' '+want.toFixed(4)+' '+(dev>=0?'+':'')+dev.toFixed(2)+'%)';return;}
+  row.rateFlag=true;
+  row.rateImpact=(sr-want)*usd;
+  row.rateTxt=sr.toFixed(4)+' ≠ '+side+' '+want.toFixed(4)+' ('+(dev>=0?'+':'')+dev.toFixed(2)+'%)';
+  var imp=Math.abs(row.rateImpact);
+  var msg='SAP ลงอัตรา '+sr.toFixed(4)+' แต่ตารางอัตรา SAP วันที่ลงคือ '+side+' '+want.toFixed(4)+' → ยอดบาท'+(row.rateImpact>0?'สูงเกิน':'ต่ำไป')+' ≈ '+fmtFull(imp)+' บาท (ตรวจอัตราในเอกสาร)';
+  if(row.st==='ok'||(row.st==='warn'&&/อัตราที่ลงต่างจากตลาด/.test(row.stTxt||''))){row.st='warn';row.stTxt='⚠️ อัตราที่ลงต่างจากตารางอัตรา SAP';row.hint=msg;}
+  else row.hint=(row.hint?row.hint+' · ':'')+msg;
+}
+// ยอด SAP ≈ USD สะสมรายเดือน (เฉพาะตั้งแต่วันเริ่มข้อมูลที่เชื่อถือได้): ยอดยกมา(USD ตามธนาคาร ณ สิ้นเดือนยกมา) + Σ[เงินเข้า÷USB − เงินออก÷USS] ของรายการ SAP (ไม่นับคู่กลับรายการ)
+function fxUsdEq(code,months,bankVals){
+  if(!FXR.loaded)return null;
+  var legs=fxSapLegs(code).filter(function(l){var y=bkYmOf(l.date);return y&&y>=DATA_TRUST_START.ym;});
+  var stmt=fxStmt(code)||[];
+  var openIdx=months.indexOf(DATA_TRUST_START.openYm);
+  var opening=(openIdx>=0&&bankVals[openIdx]!=null)?bankVals[openIdx]:0;
+  var conv=legs.map(function(l){
+    var y=bkYmOf(l.date),r=null,v=0;
+    if(l.debit>0){r=fxRateAt(l.day,'USB')||fxRateAt(l.day,'USS');v=r?l.debit/r:0;}
+    else if(l.credit>0){r=fxRateAt(l.day,'USS')||fxRateAt(l.day,'USB');v=r?-l.credit/r:0;}
+    return {ym:y,v:v,miss:!r&&(l.debit>0||l.credit>0)};
+  });
+  var eq=[],tol=[],miss=[];
+  months.forEach(function(ym){
+    if(ym<DATA_TRUST_START.ym){eq.push(null);tol.push(null);miss.push(0);return;}
+    var cum=opening,m=0;
+    conv.forEach(function(c){if(c.ym<=ym){cum+=c.v;if(c.miss)m++;}});
+    var gross=0;stmt.forEach(function(t){var y=getYM(t.date);if(y&&y<=ym)gross+=(t.debit||0)+(t.credit||0);});
+    eq.push(cum);tol.push(Math.max(500,gross*0.01));miss.push(m);
+  });
+  return {eq:eq,tol:tol,miss:miss,opening:opening};
+}
 function fxIsUsdCode(code){return FX.pairs.some(function(p){return p.usd===code;});}
 function fxDayNum(dmy){var k=dateKey(dmy);if(!k)return NaN;return Math.round(Date.UTC(+k.slice(0,4),+k.slice(4,6)-1,+k.slice(6,8))/86400000);}
 function fxSapLegs(code){
@@ -3623,6 +3730,7 @@ function fxBuildPair(p){
         else{row.st='warn';row.stTxt='⚠️ ยอดบาทไม่ตรง';row.hint='แก้ยอดโอนเป็น '+fmtFull(o.pair.credit)+' ตามที่ธนาคารรับจริง (SAP '+(row.diff>0?'เกิน ':'ขาด ')+fmtFull(Math.abs(row.diff))+')';}
       }
       if(!inBand(o.rate)){row.rateBad=true;}
+      fxRateCheck(row,(lt||lu)?(lt||lu).day:NaN,'out',o.debit,o.rate);
     }else{
       // USD ออกที่ไม่ใช่การแลก (เช่น SWIFT จ่ายต่างประเทศ) — ดูว่า SAP ลงใบจ่ายแล้วหรือยัง (ยอดบาท ÷ USD อยู่ในช่วงอัตรา)
       var ref2=fxRefRate(exchRates,o.day);
@@ -3630,6 +3738,7 @@ function fxBuildPair(p){
       if(ls){ls.used=true;row.sapThb=ls.credit;row.sapRef=ls.docRef||ls.tid;row.sapRate=ls.credit/o.debit;row.st='ok';row.stTxt='✅ ลงใบจ่ายแล้ว';row.hint='';
         if(ref2&&Math.abs(row.sapRate-ref2)/ref2*100>FX.rateTolPct*2){row.st='warn';row.stTxt='⚠️ อัตราที่ลงต่างจากตลาด';row.hint='อัตราที่ SAP ลง '+row.sapRate.toFixed(2)+' เทียบอัตราแลกใกล้เคียง '+ref2.toFixed(2);}
       }else{row.st='miss';row.stTxt='❌ ไม่พบใบจ่ายใน SAP';row.hint='USD ออกจากบัญชีแต่ไม่ใช่การแลกเป็นบาท (เช่น SWIFT) — บันทึกใบจ่าย USD '+fmtFull(o.debit)+' และค่าธรรมเนียม';}
+      if(ls)fxRateCheck(row,ls.day,'out',o.debit,null);
       row.thb=null;
     }
     rows.push(row);
@@ -3645,6 +3754,7 @@ function fxBuildPair(p){
       var dev=ref?Math.abs(row.sapRate-ref)/ref*100:0;
       if(dev>FX.rateTolPct){row.st='warn';row.stTxt='⚠️ อัตราที่ลงต่างจากตลาด';row.hint='SAP ลงอัตรา '+row.sapRate.toFixed(2)+' เทียบอัตราอ้างอิง '+ref.toFixed(2)+' (ต่าง '+dev.toFixed(1)+'%)';}
       else{row.st='ok';row.stTxt='✅ ลงแล้ว';row.hint='';}
+      fxRateCheck(row,l.day,'in',i.credit,null);
       row.expThb=ref?i.credit*ref:null;
     }else{
       var l2=fxFindSap(sU,'debit',i.day,function(x){return x.debit>=i.credit*0.9&&x.debit<=i.credit*1.1?1:null;});
@@ -3681,6 +3791,7 @@ function fxSetF(f){FX.f=f;fxRender();}
 function fxRender(){
   var el=document.getElementById('fxBody'),hd=document.getElementById('fxHeadline');
   if(!el)return;
+  try{fxRatesLoad();}catch(e){console.error(e);}
   var builds=FX.pairs.map(fxBuildPair);
   var cnt={ok:0,warn:0,bad:0,miss:0,chk:0},all=0;
   builds.forEach(function(b){b.rows.forEach(function(r){cnt[r.st]=(cnt[r.st]||0)+1;all++;});});
@@ -3702,17 +3813,18 @@ function fxRender(){
     var body=rows.map(function(r){
       var rateTxt=r.rate!=null?(r.rate.toFixed(4)+(r.rateBad?' ⚠️':'')):(r.sapRate!=null?'<span style="color:var(--muted)" title="อัตราที่ SAP ลง">SAP '+r.sapRate.toFixed(2)+'</span>':'—');
       var thbShow=r.thb!=null?fmtFull(r.thb):(r.expThb!=null?'<span style="color:var(--muted)" title="ประมาณการ USD × อัตราอ้างอิง">≈ '+fmtFull(r.expThb)+'</span>':'—');
-      return '<tr'+((r.st==='bad'||r.st==='miss')?' class="cov-hl"':'')+'><td style="font-size:12px;white-space:nowrap">'+bkDiffEsc(r.date)+'</td><td style="font-size:12px">'+kindTxt[r.kind]+'<div style="font-size:10.5px;color:var(--muted)">'+bkDiffEsc(r.desc)+'</div></td><td class="right" style="font-size:12px">'+(r.usd!=null?fmtFull(r.usd):'—')+'</td><td class="right" style="font-size:12px">'+thbShow+'</td><td class="right" style="font-size:12px">'+rateTxt+'</td><td class="right" style="font-size:12px">'+(r.sapThb!=null?fmtFull(r.sapThb):'—')+(r.sapRef?'<div style="font-size:10.5px;color:var(--muted)">'+bkDiffEsc(r.sapRef)+'</div>':'')+'</td><td class="right" style="font-size:12px">'+(r.diff!=null&&Math.abs(r.diff)>FX.amtTol?fmtFull(r.diff):'—')+'</td><td class="cov-st '+cls[r.st]+'">'+r.stTxt+'</td><td style="font-size:12px">'+bkDiffEsc(r.hint)+'</td></tr>';
-    }).join('')||'<tr><td colspan="9" style="color:var(--muted);padding:14px">— ไม่มีรายการ —</td></tr>';
+      return '<tr'+((r.st==='bad'||r.st==='miss')?' class="cov-hl"':'')+'><td style="font-size:12px;white-space:nowrap">'+bkDiffEsc(r.date)+'</td><td style="font-size:12px">'+kindTxt[r.kind]+'<div style="font-size:10.5px;color:var(--muted)">'+bkDiffEsc(r.desc)+'</div></td><td class="right" style="font-size:12px">'+(r.usd!=null?fmtFull(r.usd):'—')+'</td><td class="right" style="font-size:12px">'+thbShow+'</td><td class="right" style="font-size:12px">'+rateTxt+'</td><td class="right" style="font-size:12px">'+(r.sapThb!=null?fmtFull(r.sapThb):'—')+(r.sapRef?'<div style="font-size:10.5px;color:var(--muted)">'+bkDiffEsc(r.sapRef)+'</div>':'')+'</td><td class="right" style="font-size:11.5px;color:'+(r.rateFlag?'var(--red)':'var(--muted)')+'">'+(r.rateTxt?bkDiffEsc(r.rateTxt):'—')+'</td><td class="right" style="font-size:12px">'+(r.diff!=null&&Math.abs(r.diff)>FX.amtTol?fmtFull(r.diff):'—')+'</td><td class="cov-st '+cls[r.st]+'">'+r.stTxt+'</td><td style="font-size:12px">'+bkDiffEsc(r.hint)+'</td></tr>';
+    }).join('')||'<tr><td colspan="10" style="color:var(--muted);padding:14px">— ไม่มีรายการ —</td></tr>';
     return '<div style="margin-top:16px"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline"><b style="font-size:13px">'+bkDiffEsc(p.label)+' <span style="color:var(--muted);font-weight:400;font-size:11.5px">SAP '+p.usd+' → '+p.thb+'</span></b><span style="font-size:11.5px;color:var(--muted)">USD รับที่ SAP ยังไม่ลง/ลงผิด: <b style="color:'+(sumUsdMiss?'var(--red)':'var(--green)')+'">'+fmtFull(sumUsdMiss)+'</b> · ผลต่างบาทของรายการแลก (SAP−แบงค์): <b style="color:'+(Math.abs(sumThbDiff)>FX.amtTol?'var(--red)':'var(--green)')+'">'+fmtFull(sumThbDiff)+'</b></span></div>'+
-      '<div style="overflow:auto;max-height:460px;margin-top:6px"><table><thead><tr><th>วันที่</th><th>รายการ</th><th style="text-align:right">USD (+รับ/−จ่าย)</th><th style="text-align:right">บาทตามแบงค์</th><th style="text-align:right">อัตรา (บาท/USD)</th><th style="text-align:right">SAP บาท</th><th style="text-align:right">ส่วนต่าง (SAP−แบงค์/ประมาณการ)</th><th>สถานะ</th><th>สิ่งที่ต้องทำ</th></tr></thead><tbody>'+body+'</tbody></table></div></div>';
+      '<div style="overflow:auto;max-height:460px;margin-top:6px"><table><thead><tr><th>วันที่</th><th>รายการ</th><th style="text-align:right">USD (+รับ/−จ่าย)</th><th style="text-align:right">บาทตามแบงค์</th><th style="text-align:right">อัตรา (บาท/USD)</th><th style="text-align:right">SAP บาท</th><th style="text-align:right" title="อัตราที่ SAP ลง (SAP บาท ÷ USD) เทียบตารางอัตรา SAP (ชีต Q29_USD_RATE) — เงินเข้าเทียบ USB เงินออกเทียบ USS">อัตราที่ SAP ลง vs ตาราง</th><th style="text-align:right">ส่วนต่าง (SAP−แบงค์/ประมาณการ)</th><th>สถานะ</th><th>สิ่งที่ต้องทำ</th></tr></thead><tbody>'+body+'</tbody></table></div></div>';
   }).join('');
   el.innerHTML='<div style="font-size:12.5px">เฉพาะรายการตั้งแต่ '+DATA_TRUST_START.label+' · อัตราโดยนัย = บาทที่เข้าบัญชีบาทคู่ ÷ USD ที่ออกจากบัญชี USD (ช่วงยอมรับ '+FX.band[0]+'–'+FX.band[1]+' บาท/USD, จับคู่ ±'+FX.dayTol+' วัน) · เทียบ SAP ±'+FX.sapTol+' วัน</div><div class="cov-chips">'+chipHtml+'</div>'+parts+
-    '<div style="font-size:11px;color:var(--muted);margin-top:10px">หมายเหตุ: ยอดบาทที่ขึ้นเป็น "≈" ในรายการรับ USD เป็นประมาณการ (USD × อัตราแลกจริงที่ใกล้วันที่สุดจากสเตทเมนท์) ใช้เป็นแนวทาง ไม่ใช่ยอดบันทึกบัญชี — ให้ฝ่ายบัญชีใช้อัตราตามนโยบายวันที่รับเงิน · แถว "บาทเข้า (ไม่พบคู่)" แสดงเฉพาะยอด ≥ 1,000,000 บาท</div>';
+    '<div style="font-size:11px;color:var(--muted);margin-top:10px">หมายเหตุ: ยอดบาทที่ขึ้นเป็น "≈" ในรายการรับ USD เป็นประมาณการ (USD × อัตราแลกจริงที่ใกล้วันที่สุดจากสเตทเมนท์) ใช้เป็นแนวทาง ไม่ใช่ยอดบันทึกบัญชี — ให้ฝ่ายบัญชีใช้อัตราตามนโยบายวันที่รับเงิน · แถว "บาทเข้า (ไม่พบคู่)" แสดงเฉพาะยอด ≥ 1,000,000 บาท · '+(FXR.loaded?'ตารางอัตรา SAP: '+FXR.n+' แถว ('+FXR.first+' ถึง '+FXR.last+')':'<span style="color:var(--gold2)">ยังไม่ได้โหลดตารางอัตรา SAP (ชีต Q29_USD_RATE'+(FXR.fail?' — '+bkDiffEsc(FXR.fail):'')+') จึงยังไม่ตรวจอัตราที่ SAP ลง</span>')+'</div>';
 }
 function bkMenuGo(fn){var m=document.getElementById('bkRptMenu');if(m)m.open=false;try{fn();}catch(e){console.error(e);}}
 document.addEventListener('click',function(e){var m=document.getElementById('bkRptMenu');if(m&&m.open&&!m.contains(e.target))m.open=false;});
 function bkPopulate(){
+  try{fxRatesLoad();}catch(e){console.error(e);}
   try{bkCovRender();}catch(e){console.error(e);}
   try{fxRender();}catch(e){console.error(e);}
   var accts=bkAccounts();
@@ -8496,6 +8608,7 @@ function showRpDetail(code, side){
   openModal('🔍 รายละเอียดส่วนต่าง: '+sideLbl, html);
 }
 function renderRecon(){
+  try{fxRatesLoad();}catch(e){console.error(e);}
   var bank=RACTIVE;
   // Expose modal functions globally for KPI onclick handlers
   window._rShowSAP=null;window._rShowBank=null;window._rShowDiff=null;
@@ -9117,6 +9230,9 @@ function renderRecon(){
       document.getElementById('reconSapMonthlySection').style.display='block';
       var MTHAI3={'01':'ม.ค.','02':'ก.พ.','03':'มี.ค.','04':'เม.ย.','05':'พ.ค.','06':'มิ.ย.','07':'ก.ค.','08':'ส.ค.','09':'ก.ย.','10':'ต.ค.','11':'พ.ย.','12':'ธ.ค.'};
       var cmpLbls=cmpMonths.map(function(ym){var mo=ym.slice(5,7),yr=(+ym.slice(0,4)+543);return (MTHAI3[mo]||mo)+' '+String(yr).slice(-2);});
+      // บัญชี USD (FX.pairs): ไม่คำนวณส่วนต่างข้ามสกุล แต่นับ "รายการแลกเงิน/ใบรับ-จ่าย USD ที่ต้องแก้" รายเดือนจากการจับคู่แทน
+      var fxByUsd={};
+      try{FX.pairs.forEach(function(fp){var b=fxBuildPair(fp);if(b.ok)fxByUsd[fp.usd]=b;});}catch(e){console.error('fxBuildPair',e);}
       var acctPairs=sapList.map(function(a){
         var ba=bd.accounts.find(function(x){return acctMatches(x.acctNo,a.name);});
         var sortedTxns=ba?(ba.txns||[]).slice().sort(function(x,y){return dateKey(x.date).localeCompare(dateKey(y.date));}):[];
@@ -9133,10 +9249,22 @@ function renderRecon(){
           return upTo.length?(upTo[upTo.length-1].bal||0):null;
         });
         var diffVals=cmpMonths.map(function(ym,i){return sapVals[i]!==null&&bankVals[i]!==null?bankVals[i]-sapVals[i]:null;});
-        return {code:a.code,name:a.name,sapVals:sapVals,sapCarry:sapCarry,bankVals:bankVals,diffVals:diffVals};
+        var isUsd=fxIsUsdCode(a.code),fxCnt=null,usdEq=null;
+        if(isUsd){
+          diffVals=diffVals.map(function(){return null;});
+          var fb=fxByUsd[a.code];
+          usdEq=fxUsdEq(a.code,cmpMonths,bankVals);
+          fxCnt=cmpMonths.map(function(ym){
+            if(!fb)return null;
+            var inM=fb.rows.filter(function(r){return bkYmOf(r.date)===ym;});
+            if(!inM.length)return null;
+            return {n:inM.filter(function(r){return r.st==='warn'||r.st==='bad'||r.st==='miss';}).length,all:inM.length};
+          });
+        }
+        return {code:a.code,name:a.name,sapVals:sapVals,sapCarry:sapCarry,bankVals:bankVals,diffVals:diffVals,usd:isUsd,fxCnt:fxCnt,usdEq:usdEq};
       }).filter(function(p){return p.sapVals.some(function(v){return v!==null;})||p.bankVals.some(function(v){return v!==null;});});
-      var totSap=cmpMonths.map(function(ym,i){var any=false,t=0;acctPairs.forEach(function(p){if(p.sapVals[i]!==null){t+=p.sapVals[i];any=true;}});return any?t:null;});
-      var totBank=cmpMonths.map(function(ym,i){var any=false,t=0;acctPairs.forEach(function(p){if(p.bankVals[i]!==null){t+=p.bankVals[i];any=true;}});return any?t:null;});
+      var totSap=cmpMonths.map(function(ym,i){var any=false,t=0;acctPairs.forEach(function(p){if(p.usd)return;if(p.sapVals[i]!==null){t+=p.sapVals[i];any=true;}});return any?t:null;});
+      var totBank=cmpMonths.map(function(ym,i){var any=false,t=0;acctPairs.forEach(function(p){if(p.usd)return;if(p.bankVals[i]!==null){t+=p.bankVals[i];any=true;}});return any?t:null;});
       var totDiff=cmpMonths.map(function(ym,i){return totSap[i]!==null&&totBank[i]!==null?totBank[i]-totSap[i]:null;});
       function sapCellC(carry){return function(v,i){return (carry&&carry[i]&&v!==null)?'<td class="right" style="opacity:.6;font-style:italic" title="เดือนนี้ไม่มีรายการเคลื่อนไหวใน SAP — ยกยอดจากเดือนก่อน">'+fmtFull(v)+'</td>':sapCell(v);};}
       function sapCell(v){return v===null?'<td class="right" style="color:var(--muted)">—</td>':'<td class="right">'+fmtFull(v)+'</td>';}
@@ -9233,6 +9361,30 @@ function reconCmpDraw(){
     });
     calc[p.code]={exp:expArr,un:unArr,tips:tips,any:any};
   });
+  function fxUsdRows(p){
+    var q=p.usdEq;
+    var eqCells=q.eq.map(function(v,i){
+      if(trialIdx[i]||v===null)return '<td class="right" style="color:var(--muted)">—</td>';
+      return '<td class="right" style="color:var(--blue)" title="ประมาณการ: ยอดยกมา USD '+fmtFull(q.opening)+' + Σ(เงินเข้า÷USB − เงินออก÷USS) ของรายการ SAP ถึงสิ้นเดือน'+(q.miss[i]?' · ⚠️ '+q.miss[i]+' รายการไม่พบอัตราในตาราง จึงไม่ถูกแปลง':'')+'">'+fmtFull(v)+(q.miss[i]?' ⚠️':'')+'</td>';
+    }).join('');
+    var dfCells=q.eq.map(function(v,i){
+      var b=p.bankVals[i];
+      if(trialIdx[i]||v===null||b===null)return '<td class="right" style="color:var(--muted)">—</td>';
+      var d=b-v,t=q.tol[i];
+      if(Math.abs(d)<=t)return '<td class="right" style="color:var(--gold2)" title="ต่าง '+fmtFull(d)+' USD อยู่ในช่วงคลาดเคลื่อนจากอัตราแลกเปลี่ยน (±'+fmtFull(t)+' USD = 1% ของยอดเข้า-ออกสะสม) — ถือว่าประมาณตรง">≈ ตรง</td>';
+      return '<td class="right red" title="ต่าง '+fmtFull(d)+' USD เกินช่วงคลาดเคลื่อน ±'+fmtFull(t)+' USD — น่าจะมีรายการขาด/ลงผิด ดูส่วน จับคู่รายการแลกเงิน หน้าสมุดบัญชีธนาคาร (บวก = ธนาคารมากกว่า SAP)">'+fmtFull(d)+'</td>';
+    }).join('');
+    return '<tr><td style="font-size:11px;color:var(--blue)" title="ยอด SAP แปลงกลับเป็น USD แบบประมาณการด้วยตารางอัตรา SAP (ชีต Q29_USD_RATE): เงินเข้า÷USB เงินออก÷USS ของวันที่ SAP ลง — ไม่ใช่ยอดทางบัญชี">SAP (≈USD)</td>'+eqCells+'</tr>'+
+      '<tr><td style="font-size:11px;color:var(--gold2);font-weight:600" title="Bank USD − SAP ≈USD (ประมาณการ ±1% ของยอดเข้า-ออกสะสม)">ส่วนต่าง (≈USD)</td>'+dfCells+'</tr>';
+  }
+  function fxCells(p){
+    return p.fxCnt.map(function(c,i){
+      if(trialIdx[i])return trialCell(null);
+      if(!c)return '<td class="right" style="color:var(--muted)">—</td>';
+      if(c.n===0)return '<td class="right green" title="รายการแลกเงิน/ใบรับ-จ่าย USD เดือนนี้ '+c.all+' รายการ ตรงกับ SAP ครบ">✅ '+c.all+' รายการ</td>';
+      return '<td class="right red" title="เดือนนี้มี '+c.n+' จาก '+c.all+' รายการที่ SAP ยังไม่ลง/ลงไม่ตรง — ดูส่วน จับคู่รายการแลกเงิน หน้าสมุดบัญชีธนาคาร">'+c.n+' ต้องแก้</td>';
+    }).join('');
+  }
   function goCell(code,v,i,cls,title){
     if(v===null)return '<td class="right" style="color:var(--muted)">—</td>';
     if(Math.abs(v)<1)return '<td class="right green"'+(title?' title="'+bkAttr(title)+'"':'')+'>'+fmtFull(v)+'</td>';
@@ -9253,10 +9405,10 @@ function reconCmpDraw(){
       if(withExp&&Math.abs(k.un[i])<1)return '<td class="right" style="color:var(--gold2);cursor:pointer;text-decoration:underline dotted" title="อธิบายครบแล้วด้วยรายการที่ตรวจ/ยืนยัน/จับคู่แล้ว — กดเพื่อเปิดสมุดบัญชี" onclick="bkOpenFromRecon(\''+p.code+'\',\''+months[i]+'\')">'+fmtFull(v)+'</td>';
       return goCell(p.code,v,i,'red');
     }).join('');
-    var rs=withExp?5:3;
-    var out='<tr><td rowspan="'+rs+'" style="font-size:11px;color:var(--muted);vertical-align:top;padding-top:8px">'+p.name+'</td><td style="font-size:11px;color:var(--blue)">SAP</td>'+p.sapVals.map(C.sapCellC(p.sapCarry)).join('')+'</tr>'+
-      '<tr><td style="font-size:11px;color:var(--teal)">Bank</td>'+p.bankVals.map(C.sapCell).join('')+'</tr>'+
-      '<tr'+(withExp?'':' style="border-bottom:1px solid var(--border)"')+'><td style="font-size:11px;color:var(--gold2);font-weight:600">ส่วนต่าง</td>'+rawCells+'</tr>';
+    var rs=p.usd?(p.usdEq?5:3):(withExp?5:3);
+    var out='<tr><td rowspan="'+rs+'" style="font-size:11px;color:var(--muted);vertical-align:top;padding-top:8px">'+p.name+'</td><td style="font-size:11px;color:var(--blue)">SAP'+(p.usd?' (บาท)':'')+'</td>'+p.sapVals.map(C.sapCellC(p.sapCarry)).join('')+'</tr>'+
+      '<tr><td style="font-size:11px;color:var(--teal)">Bank'+(p.usd?' (USD)':'')+'</td>'+p.bankVals.map(C.sapCell).join('')+'</tr>'+(p.usd&&p.usdEq?fxUsdRows(p):'')+
+      '<tr'+(withExp?'':' style="border-bottom:1px solid var(--border)"')+'><td style="font-size:11px;color:var(--gold2);font-weight:600"'+(p.usd?' title="บัญชี USD: ยอดแบงค์เป็น USD แต่ SAP เป็นบาท จึงไม่เทียบข้ามสกุล — แสดงจำนวนรายการแลกเงิน/ใบรับ-จ่าย USD ที่ต้องแก้ในเดือนนั้น (ดูรายละเอียดที่ส่วน จับคู่รายการแลกเงิน หน้าสมุดบัญชีธนาคาร)"':'')+'>'+(p.usd?'💱 ตรวจแลกเงิน':'ส่วนต่าง')+'</td>'+(p.usd?fxCells(p):rawCells)+'</tr>';
     if(withExp){
       out+='<tr><td style="font-size:11px;color:var(--muted)" title="ส่วนต่างสะสมที่อธิบายได้ด้วยรายการที่ตรวจ/ยืนยัน/จับคู่แล้ว และรอแก้ไขวันที่ (ตรรกะเดียวกับการ์ด KPI ในสมุดบัญชี)">อธิบายแล้ว</td>'+k.exp.map(function(v,i){return (v===null||trialIdx[i])?'<td class="right" style="color:var(--muted)">—</td>':'<td class="right" style="color:var(--muted)" title="'+bkAttr(k.tips[i])+'">'+(Math.abs(v)<0.005?'—':fmtFull(v))+'</td>';}).join('')+'</tr>'+
         '<tr style="border-bottom:1px solid var(--border)"><td style="font-size:11px;color:var(--gold2);font-weight:700">ยังอธิบายไม่ได้</td>'+k.un.map(function(v,i){if(trialIdx[i])return trialCell(null);return goCell(p.code,v,i,'red','ส่วนต่าง − อธิบายแล้ว · กดเพื่อเปิดสมุดบัญชีเดือน '+months[i]);}).join('')+'</tr>';
@@ -9264,7 +9416,7 @@ function reconCmpDraw(){
     return out;
   }).join('');
   var rsT=anyExp?5:3;
-  html+='<tr style="border-top:2px solid var(--border)"><td rowspan="'+rsT+'" style="font-weight:700;padding-top:8px">รวมทุกบัญชี</td><td style="font-size:11px;color:var(--blue);font-weight:700">SAP</td>'+C.totSap.map(C.sapCell).join('')+'</tr>'+
+  html+='<tr style="border-top:2px solid var(--border)"><td rowspan="'+rsT+'" style="font-weight:700;padding-top:8px">รวมทุกบัญชี'+(C.pairs.some(function(p){return p.usd;})?'<div style="font-size:10px;font-weight:400;color:var(--muted)">ไม่รวมบัญชี USD</div>':'')+'</td><td style="font-size:11px;color:var(--blue);font-weight:700">SAP</td>'+C.totSap.map(C.sapCell).join('')+'</tr>'+
     '<tr><td style="font-size:11px;color:var(--teal);font-weight:700">Bank</td>'+C.totBank.map(C.sapCell).join('')+'</tr>'+
     '<tr><td style="font-size:11px;color:var(--gold2);font-weight:700">ส่วนต่าง</td>'+C.totDiff.map(function(v,i){return trialIdx[i]?trialCell(v):C.diffCell(v);}).join('')+'</tr>';
   if(anyExp){
