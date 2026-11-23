@@ -3869,6 +3869,11 @@ function bkRender(){
     var resolvedNetIn=bkDiffResolvedNet('in');
     var resolvedNetOut=bkDiffResolvedNet('out');
     var brIn=bkDiffBreak('in'),brOut=bkDiffBreak('out');
+    var fxUsdAcct=fxIsUsdCode(acctCode)&&bankStats;
+    if(fxUsdAcct){
+      // บัญชี USD: สเตทเมนท์เป็น USD แต่ SAP บันทึกเป็นบาท — ส่วนต่าง "SAP สุทธิ − แบงค์" จะเป็นการลบกันข้ามสกุล (ไม่มีความหมาย) จึงไม่แสดงการ์ดส่วนต่าง
+      diffKpiEl.innerHTML='<div style="flex:0 0 100%;width:100%;max-width:900px;background:rgba(212,168,67,0.12);border:1px solid var(--gold2);border-radius:10px;padding:12px 16px;font-size:13px;line-height:1.7">💱 <b>บัญชี USD — ไม่แสดงส่วนต่างข้ามสกุล</b><br>ตัวเลข "ตามแบงค์ (CSV)" ด้านบนเป็น <b>USD</b> ส่วน "ตาม SAP" เป็น <b>บาท</b> จึงนำมาลบกันไม่ได้ · ตรวจรายการแลกเงิน/ใบรับ USD ได้ที่ส่วน <b>"จับคู่รายการแลกเงิน USD → บาท"</b> ด้านบนของหน้านี้ (ยอดเงินเข้า-ออกตามแบงค์ ณ เดือนนี้ = USD '+fmtFull(bankStats.moneyIn)+' / USD '+fmtFull(bankStats.moneyOut)+')</div>';
+    }else
     diffKpiEl.innerHTML =
       bkDiffKpi('⬆️','ส่วนต่างเงินเข้า (SAP สุทธิ − แบงค์)',diffIn,netDebit,bankStats?bankStats.moneyIn:0,"bkShowDiffDetail('in',"+(diffIn===null?0:diffIn)+")",resolvedNetIn,brIn)+
       bkDiffKpi('⬇️','ส่วนต่างเงินออก (SAP สุทธิ − แบงค์)',diffOut,netCredit,bankStats?bankStats.moneyOut:0,"bkShowDiffDetail('out',"+(diffOut===null?0:diffOut)+")",resolvedNetOut,brOut)+
