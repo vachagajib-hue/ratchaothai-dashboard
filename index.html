@@ -389,6 +389,7 @@ body.viewer-mode a[href*="docs.google.com/spreadsheets"]{display:none!important;
 <div id="tbBadge0"></div>
 <div id="preBadge0"></div>
 <div class="kpi-row" id="kpi0"></div>
+<div id="liqBox0"></div>
 <div class="section-sep" id="plSep0" style="display:none;margin-top:4px"></div>
 <div class="kpi-row" id="kpiPL0" style="display:none"></div>
 <div class="chart-row">
@@ -3758,6 +3759,14 @@ function fxStmt(code){
   var f=bkFindBankAccount(a.name||'');if(!f)return null;
   return (f.account.txns||[]).map(function(t){return {date:t.date,day:fxDayNum(t.date),desc:t.desc||'',debit:t.debit||0,credit:t.credit||0};}).filter(function(t){return !isNaN(t.day)&&trustDateOk(t.date);});
 }
+function fxDocOf(l,acct){return l?{acct:acct,ref:l.docRef||'',tid:l.tid||'',date:l.date||''}:null;}
+function fxDocsHtml(docs){
+  // รวมเอกสารที่เป็น JE เดียวกัน (เช่น แลกเงินที่ลงบัญชีบาท+บัญชี USD ในเอกสารเดียว) ให้แสดงครั้งเดียวพร้อมรายชื่อบัญชี
+  var g=[],seen={};
+  (docs||[]).forEach(function(d){if(!d)return;var k=(d.tid||'')+'|'+(d.ref||'');if(seen[k]){if(seen[k].accts.indexOf(d.acct)<0)seen[k].accts.push(d.acct);return;}seen[k]={ref:d.ref,tid:d.tid,date:d.date,accts:[d.acct]};g.push(seen[k]);});
+  if(!g.length)return '<span style="color:var(--muted)">—</span>';
+  return g.map(function(x){return '<div><b>'+bkDiffEsc(x.ref||('JE '+x.tid))+'</b><div style="font-size:10.5px;color:var(--muted)">'+(x.ref&&x.tid?'JE '+bkDiffEsc(x.tid)+' · ':'')+bkDiffEsc(x.accts.join(' / '))+(x.date?' · ลง '+bkDiffEsc(x.date):'')+'</div></div>';}).join('');
+}
 function fxFindSap(legs,side,day,pred){
   // หารายการ SAP ที่ยังไม่ถูกใช้ ใกล้วันที่สุดใน ±sapTol วัน ตามเงื่อนไข pred (รับ leg คืนค่า score — น้อยดี หรือ null = ไม่ผ่าน)
   var best=null,bs=1e18;
@@ -3800,7 +3809,7 @@ function fxBuildPair(p){
       if(lt)lt.used=true;if(lu)lu.used=true;
       var sapAmt=lt?lt.debit:(lu?lu.credit:null);
       var ref=(lt&&(lt.docRef||lt.tid))||(lu&&(lu.docRef||lu.tid))||'';
-      row.sapThb=lt?lt.debit:null;row.sapUsdLeg=lu?lu.credit:null;row.sapRef=ref;
+      row.sapThb=lt?lt.debit:null;row.sapUsdLeg=lu?lu.credit:null;row.sapRef=ref;row.sapDocs=[fxDocOf(lt,p.thb),fxDocOf(lu,p.usd)];
       if(sapAmt==null){row.st='miss';row.stTxt='❌ ไม่พบการแลกใน SAP';row.hint='บันทึกการแลก: เดบิต '+p.thb+' '+fmtFull(o.pair.credit)+' · เครดิต '+p.usd+' ตามยอด USD';}
       else{
         row.diff=sapAmt-o.pair.credit;
@@ -3815,7 +3824,7 @@ function fxBuildPair(p){
       // USD ออกที่ไม่ใช่การแลก (เช่น SWIFT จ่ายต่างประเทศ) — ดูว่า SAP ลงใบจ่ายแล้วหรือยัง (ยอดบาท ÷ USD อยู่ในช่วงอัตรา)
       var ref2=fxRefRate(exchRates,o.day);
       var ls=fxFindSap(sU,'credit',o.day,function(l){var r=l.credit/o.debit;if(!inBand(r))return null;return ref2?Math.abs(r-ref2)/ref2*100:1;});
-      if(ls){ls.used=true;row.sapThb=ls.credit;row.sapRef=ls.docRef||ls.tid;row.sapRate=ls.credit/o.debit;row.st='ok';row.stTxt='✅ ลงใบจ่ายแล้ว';row.hint='';
+      if(ls){ls.used=true;row.sapThb=ls.credit;row.sapRef=ls.docRef||ls.tid;row.sapDocs=[fxDocOf(ls,p.usd)];row.sapRate=ls.credit/o.debit;row.st='ok';row.stTxt='✅ ลงใบจ่ายแล้ว';row.hint='';
         if(ref2&&Math.abs(row.sapRate-ref2)/ref2*100>FX.rateTolPct*2){row.st='warn';row.stTxt='⚠️ อัตราที่ลงต่างจากตลาด';row.hint='อัตราที่ SAP ลง '+row.sapRate.toFixed(2)+' เทียบอัตราแลกใกล้เคียง '+ref2.toFixed(2);}
       }else{row.st='miss';row.stTxt='❌ ไม่พบใบจ่ายใน SAP';row.hint='USD ออกจากบัญชีแต่ไม่ใช่การแลกเป็นบาท (เช่น SWIFT) — บันทึกใบจ่าย USD '+fmtFull(o.debit)+' และค่าธรรมเนียม';}
       if(ls)fxRateCheck(row,ls.day,'out',o.debit,null);
@@ -3830,7 +3839,7 @@ function fxBuildPair(p){
     // 1) ลงเป็นบาทตามอัตราจริง (อัตราอยู่ในช่วง) — ใกล้อัตราอ้างอิงที่สุดก่อน  2) ลงเป็น "บาทล้วน" (ยอดบาท ≈ ยอด USD)
     var l=fxFindSap(sU,'debit',i.day,function(x){var r=x.debit/i.credit;if(!inBand(r))return null;return ref?Math.abs(r-ref)/ref*100:1;});
     if(l){
-      l.used=true;row.sapThb=l.debit;row.sapRate=l.debit/i.credit;row.sapRef=l.docRef||l.tid;
+      l.used=true;row.sapThb=l.debit;row.sapRate=l.debit/i.credit;row.sapRef=l.docRef||l.tid;row.sapDocs=[fxDocOf(l,p.usd)];
       var dev=ref?Math.abs(row.sapRate-ref)/ref*100:0;
       if(dev>FX.rateTolPct){row.st='warn';row.stTxt='⚠️ อัตราที่ลงต่างจากตลาด';row.hint='SAP ลงอัตรา '+row.sapRate.toFixed(2)+' เทียบอัตราอ้างอิง '+ref.toFixed(2)+' (ต่าง '+dev.toFixed(1)+'%)';}
       else{row.st='ok';row.stTxt='✅ ลงแล้ว';row.hint='';}
@@ -3839,7 +3848,7 @@ function fxBuildPair(p){
     }else{
       var l2=fxFindSap(sU,'debit',i.day,function(x){return x.debit>=i.credit*0.9&&x.debit<=i.credit*1.1?1:null;});
       if(l2){
-        l2.used=true;row.sapThb=l2.debit;row.sapRate=l2.debit/i.credit;row.sapRef=l2.docRef||l2.tid;
+        l2.used=true;row.sapThb=l2.debit;row.sapRate=l2.debit/i.credit;row.sapRef=l2.docRef||l2.tid;row.sapDocs=[fxDocOf(l2,p.usd)];
         row.st='bad';row.stTxt='❌ ลงเป็นบาทล้วน (อัตรา '+row.sapRate.toFixed(2)+')';
         row.expThb=ref?i.credit*ref:null;
         row.hint='แก้เป็น USD '+fmtFull(i.credit)+(ref?' (≈ '+fmtFull(i.credit*ref)+' บาท ที่อัตรา '+ref.toFixed(2)+')':'');
@@ -3893,10 +3902,10 @@ function fxRender(){
     var body=rows.map(function(r){
       var rateTxt=r.rate!=null?(r.rate.toFixed(4)+(r.rateBad?' ⚠️':'')):(r.sapRate!=null?'<span style="color:var(--muted)" title="อัตราที่ SAP ลง">SAP '+r.sapRate.toFixed(2)+'</span>':'—');
       var thbShow=r.thb!=null?fmtFull(r.thb):(r.expThb!=null?'<span style="color:var(--muted)" title="ประมาณการ USD × อัตราอ้างอิง">≈ '+fmtFull(r.expThb)+'</span>':'—');
-      return '<tr'+((r.st==='bad'||r.st==='miss')?' class="cov-hl"':'')+'><td style="font-size:12px;white-space:nowrap">'+bkDiffEsc(r.date)+'</td><td style="font-size:12px">'+kindTxt[r.kind]+'<div style="font-size:10.5px;color:var(--muted)">'+bkDiffEsc(r.desc)+'</div></td><td class="right" style="font-size:12px">'+(r.usd!=null?fmtFull(r.usd):'—')+'</td><td class="right" style="font-size:12px">'+thbShow+'</td><td class="right" style="font-size:12px">'+rateTxt+'</td><td class="right" style="font-size:12px">'+(r.sapThb!=null?fmtFull(r.sapThb):'—')+(r.sapRef?'<div style="font-size:10.5px;color:var(--muted)">'+bkDiffEsc(r.sapRef)+'</div>':'')+'</td><td class="right" style="font-size:11.5px;color:'+(r.rateFlag?'var(--red)':'var(--muted)')+'">'+(r.rateTxt?bkDiffEsc(r.rateTxt):'—')+'</td><td class="right" style="font-size:12px">'+(r.diff!=null&&Math.abs(r.diff)>FX.amtTol?fmtFull(r.diff):'—')+'</td><td class="cov-st '+cls[r.st]+'">'+r.stTxt+'</td><td style="font-size:12px">'+bkDiffEsc(r.hint)+'</td></tr>';
-    }).join('')||'<tr><td colspan="10" style="color:var(--muted);padding:14px">— ไม่มีรายการ —</td></tr>';
+      return '<tr'+((r.st==='bad'||r.st==='miss')?' class="cov-hl"':'')+'><td style="font-size:12px;white-space:nowrap">'+bkDiffEsc(r.date)+'</td><td style="font-size:12px">'+kindTxt[r.kind]+'<div style="font-size:10.5px;color:var(--muted)">'+bkDiffEsc(r.desc)+'</div></td><td class="right" style="font-size:12px">'+(r.usd!=null?fmtFull(r.usd):'—')+'</td><td class="right" style="font-size:12px">'+thbShow+'</td><td class="right" style="font-size:12px">'+rateTxt+'</td><td class="right" style="font-size:12px">'+(r.sapThb!=null?fmtFull(r.sapThb):'—')+'</td><td style="font-size:12px">'+fxDocsHtml(r.sapDocs)+'</td><td class="right" style="font-size:11.5px;color:'+(r.rateFlag?'var(--red)':'var(--muted)')+'">'+(r.rateTxt?bkDiffEsc(r.rateTxt):'—')+'</td><td class="right" style="font-size:12px">'+(r.diff!=null&&Math.abs(r.diff)>FX.amtTol?fmtFull(r.diff):'—')+'</td><td class="cov-st '+cls[r.st]+'">'+r.stTxt+'</td><td style="font-size:12px">'+bkDiffEsc(r.hint)+'</td></tr>';
+    }).join('')||'<tr><td colspan="11" style="color:var(--muted);padding:14px">— ไม่มีรายการ —</td></tr>';
     return '<div style="margin-top:16px"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline"><b style="font-size:13px">'+bkDiffEsc(p.label)+' <span style="color:var(--muted);font-weight:400;font-size:11.5px">SAP '+p.usd+' → '+p.thb+'</span></b><span style="font-size:11.5px;color:var(--muted)">USD รับที่ SAP ยังไม่ลง/ลงผิด: <b style="color:'+(sumUsdMiss?'var(--red)':'var(--green)')+'">'+fmtFull(sumUsdMiss)+'</b> · ผลต่างบาทของรายการแลก (SAP−แบงค์): <b style="color:'+(Math.abs(sumThbDiff)>FX.amtTol?'var(--red)':'var(--green)')+'">'+fmtFull(sumThbDiff)+'</b></span></div>'+
-      '<div style="overflow:auto;max-height:460px;margin-top:6px"><table><thead><tr><th>วันที่</th><th>รายการ</th><th style="text-align:right">USD (+รับ/−จ่าย)</th><th style="text-align:right">บาทตามแบงค์</th><th style="text-align:right">อัตรา (บาท/USD)</th><th style="text-align:right">SAP บาท</th><th style="text-align:right" title="อัตราที่ SAP ลง (SAP บาท ÷ USD) เทียบตารางอัตรา SAP (ชีต Q29_USD_RATE) — เงินเข้าเทียบ USB เงินออกเทียบ USS">อัตราที่ SAP ลง vs ตาราง</th><th style="text-align:right">ส่วนต่าง (SAP−แบงค์/ประมาณการ)</th><th>สถานะ</th><th>สิ่งที่ต้องทำ</th></tr></thead><tbody>'+body+'</tbody></table></div></div>';
+      '<div style="overflow:auto;max-height:460px;margin-top:6px"><table><thead><tr><th>วันที่</th><th>รายการ</th><th style="text-align:right">USD (+รับ/−จ่าย)</th><th style="text-align:right">บาทตามแบงค์</th><th style="text-align:right">อัตรา (บาท/USD)</th><th style="text-align:right">SAP บาท</th><th title="เลขที่เอกสาร SAP ที่จับคู่กับรายการนี้ (และเลข JE / บัญชี / วันที่ลง)">เลขที่เอกสาร SAP</th><th style="text-align:right" title="อัตราที่ SAP ลง (SAP บาท ÷ USD) เทียบตารางอัตรา SAP (ชีต Q29_USD_RATE) — เงินเข้าเทียบ USB เงินออกเทียบ USS">อัตราที่ SAP ลง vs ตาราง</th><th style="text-align:right">ส่วนต่าง (SAP−แบงค์/ประมาณการ)</th><th>สถานะ</th><th>สิ่งที่ต้องทำ</th></tr></thead><tbody>'+body+'</tbody></table></div></div>';
   }).join('');
   el.innerHTML='<div style="font-size:12.5px">เฉพาะรายการตั้งแต่ '+DATA_TRUST_START.label+' · อัตราโดยนัย = บาทที่เข้าบัญชีบาทคู่ ÷ USD ที่ออกจากบัญชี USD (ช่วงยอมรับ '+FX.band[0]+'–'+FX.band[1]+' บาท/USD, จับคู่ ±'+FX.dayTol+' วัน) · เทียบ SAP ±'+FX.sapTol+' วัน</div><div class="cov-chips">'+chipHtml+'</div>'+parts+
     '<div style="font-size:11px;color:var(--muted);margin-top:10px">หมายเหตุ: ยอดบาทที่ขึ้นเป็น "≈" ในรายการรับ USD เป็นประมาณการ (USD × อัตราแลกจริงที่ใกล้วันที่สุดจากสเตทเมนท์) ใช้เป็นแนวทาง ไม่ใช่ยอดบันทึกบัญชี — ให้ฝ่ายบัญชีใช้อัตราตามนโยบายวันที่รับเงิน · แถว "บาทเข้า (ไม่พบคู่)" แสดงเฉพาะยอด ≥ 1,000,000 บาท · '+(FXR.loaded?'ตารางอัตรา SAP: '+FXR.n+' แถว ('+FXR.first+' ถึง '+FXR.last+')':'<span style="color:var(--gold2)">ยังไม่ได้โหลดตารางอัตรา SAP (ชีต Q29_USD_RATE'+(FXR.fail?' — '+bkDiffEsc(FXR.fail):'')+') จึงยังไม่ตรวจอัตราที่ SAP ลง</span>')+'</div>';
@@ -7837,6 +7846,208 @@ function showApCatDetail(category){
     rows.map(function(r){return '<tr><td>'+r.name+'</td><td style="color:var(--muted);font-size:12px">'+r.docNum+'</td><td style="font-size:12px;color:var(--text2)">'+fmtD(r.dueDate)+'</td><td class="right red">'+fmtFull(r.amount)+'</td></tr>';}).join('')+
     '</tbody></table>');
 }
+// ============================================================================
+// สภาพคล่องหน้าภาพรวม: วงเงิน OD + Cash Forecast ตามวันครบกำหนดรายเอกสาร (เพิ่ม 23 พ.ย. 2569)
+// วงเงิน OD: อ่านจากชีต OD_LIMIT (AccountCode, Bank, AccountNo, Limit, Note) — ถ้ายังไม่มีชีตใช้วงเงินที่ผู้ใช้แจ้งไว้ (OD_DEFAULT)
+// Cash Forecast: เอกสาร AR/AP ค้าง (Q04/Q05) ตามวันครบกำหนดรายใบ + เช็คจ่ายรอผ่าน (Q28) ตามวันที่ในเช็ค + วงเงิน OD คงเหลือ
+// ไม่ใช่ยอดทางบัญชี เป็นประมาณการจากเอกสารที่มีใน SAP — ไม่รวมเงินเดือน/ภาษี/ค่างวดลีสซิ่ง (ไม่มีวันครบกำหนดรายเอกสาร) ให้กรอกเองในช่อง "จ่ายอื่น"
+// ============================================================================
+var OD_DEFAULT=[
+  {code:'1112-06',bank:'ทหารไทย',acctNo:'242-1-00749-9',limit:33000000,note:''},
+  {code:'1112-09',bank:'กสิกรไทย',acctNo:'039-1-87485-9',limit:20000000,note:''},
+  {code:'1112-10',bank:'กสิกรไทย',acctNo:'054-3-72482-3',limit:2720000,note:''}];
+var ODL={src:'default',rows:OD_DEFAULT,fail:'',tried:false,loading:false};
+var LIQ={h:30,arPct:100,arOv:0,apOv:0,other:0,busy:false};
+function odlParse(res){
+  var cols=(res.cols||[]).map(function(c){return String(c==null?'':c).trim().toLowerCase().replace(/[^a-z0-9]/g,'');});
+  var off=cols[0]==='#'?1:0;
+  var ix=function(n,i){var p=cols.indexOf(n);return p>=0?p:(i+off);};
+  var iC=ix('accountcode',0),iB=ix('bank',1),iN=ix('accountno',2),iL=ix('limit',3),iT=ix('note',4);
+  var out=[];
+  (res.rows||[]).forEach(function(r){
+    var code=String(r[iC]==null?'':r[iC]).trim();try{code=repairAcctCode(code)||code;}catch(e){}
+    var lim=parseFloat(String(r[iL]==null?'':r[iL]).replace(/,/g,''));
+    if(!code||!(lim>0))return;
+    out.push({code:code,bank:String(r[iB]==null?'':r[iB]).trim(),acctNo:String(r[iN]==null?'':r[iN]).trim(),limit:lim,note:String(r[iT]==null?'':r[iT]).trim()});
+  });
+  return out;
+}
+async function odlLoad(){
+  if(ODL.loading||ODL.tried)return;
+  ODL.loading=true;ODL.tried=true;
+  try{
+    var res=await fetchSheet('OD_LIMIT');
+    var rows=odlParse(res);
+    if(rows.length){ODL.rows=rows;ODL.src='sheet';ODL.fail='';}else ODL.fail='ชีต OD_LIMIT ไม่มีข้อมูลที่อ่านได้';
+  }catch(e){ODL.fail=String((e&&e.message)||e);}
+  ODL.loading=false;
+}
+async function liqEnsure(){
+  if(LIQ.busy)return;LIQ.busy=true;
+  try{await Promise.all([odlLoad(),(typeof chqLoad==='function'?chqLoad():null)]);}catch(e){console.error('liqEnsure',e);}
+  LIQ.busy=false;
+  try{liqRender(G);}catch(e){console.error(e);}
+  if(typeof CHQ!=='undefined'&&CHQ.loading)setTimeout(function(){try{liqRender(G);}catch(e){}},2500);
+}
+function liqSet(k,v){
+  var n=parseFloat(String(v).replace(/,/g,''));if(isNaN(n))n=0;
+  if(k==='h')n=[30,60,90].indexOf(n)>=0?n:30;
+  else if(k==='arPct'||k==='arOv'||k==='apOv')n=Math.max(0,Math.min(100,n));
+  else n=Math.max(0,n);
+  LIQ[k]=n;try{liqRender(G);}catch(e){console.error(e);}
+}
+function liqCash(d){
+  var rows=d.bankRows||[];
+  var fxCodes=[];try{FX.pairs.forEach(function(p){fxCodes.push(p.usd,p.thb);});}catch(e){}
+  var dep=0,odUsed=0,oth=0,fx=0;
+  rows.forEach(function(r){
+    if(r.bal>0){dep+=r.bal;return;}
+    if(r.bal<0){
+      if(BANK_OD_CODES.indexOf(r.code)>=0)odUsed+=-r.bal;
+      else{oth+=-r.bal;if(fxCodes.indexOf(r.code)>=0)fx+=-r.bal;}
+    }
+  });
+  return {dep:dep,odUsed:odUsed,oth:oth,fx:fx};
+}
+function liqOdRows(d){
+  var bal={};(d.bankRows||[]).forEach(function(r){bal[r.code]=r;});
+  return ODL.rows.map(function(o){
+    var b=bal[o.code],sap=b?b.bal:null;
+    var used=sap==null?null:Math.max(0,-sap);
+    var st=null;
+    try{
+      var f=b?bkFindBankAccount(b.name):null;
+      if(f){var tx=(f.account.txns||[]).slice().sort(function(x,y){return dateKey(x.date).localeCompare(dateKey(y.date));});var last=tx.length?tx[tx.length-1]:null;if(last&&last.bal!=null&&!isNaN(last.bal))st={bal:last.bal,date:last.date,used:Math.max(0,-last.bal)};}
+    }catch(e){}
+    return {code:o.code,bank:o.bank,acctNo:o.acctNo,name:b?b.name:'',limit:o.limit,sap:sap,used:used,left:used==null?null:o.limit-used,pct:used==null?null:used/o.limit*100,st:st,stPct:st?st.used/o.limit*100:null,stLeft:st?o.limit-st.used:null};
+  });
+}
+function liqLvl(p){return p==null?'muted':(p>100?'red':(p>=90?'gold':'green'));}
+function liqCol(p){var l=liqLvl(p);return l==='red'?'var(--red)':(l==='gold'?'var(--gold2)':(l==='green'?'var(--green)':'var(--muted)'));}
+function liqNum(n){return n==null||isNaN(n)?'—':fmtFull(n);}
+function liqDay(dk){return String(dk%100).padStart(2,'0')+'/'+String(Math.floor(dk/100)%100).padStart(2,'0');}
+function liqForecast(d,start,headroom,arOv,apOv){
+  var H=LIQ.h,today=projTodayKey();
+  var t0=Date.UTC(Math.floor(today/10000),Math.floor(today/100)%100-1,today%100);
+  var di=function(dk){return Math.round((Date.UTC(Math.floor(dk/10000),Math.floor(dk/100)%100-1,dk%100)-t0)/86400000);};
+  var nb=Math.ceil(H/7),B=[];
+  for(var i=0;i<nb;i++)B.push({from:7*i,to:Math.min(7*i+6,H-1),ar:0,arN:0,ap:0,apN:0,chq:0,chqN:0,oth:0});
+  var ov={ar:0,arN:0,ap:0,apN:0,arNo:0,apNo:0,chqNo:0,chqOv:0,chqOvN:0};
+  var addDoc=function(r,side){
+    if(r.pre)return;
+    var dk=dueKeyDate(r.dueDate);
+    if(!dk){ov[side+'No']++;return;}
+    var k=di(dk);
+    if(k<0){ov[side]+=r.bal;ov[side+'N']++;return;}
+    if(k>=H)return;
+    var b=B[Math.floor(k/7)];b[side]+=r.bal;b[side+'N']++;
+  };
+  (d.arRows2||[]).forEach(function(r){addDoc(r,'ar');});
+  (d.apRows2||[]).forEach(function(r){addDoc(r,'ap');});
+  var chqOk=(typeof CHQ!=='undefined'&&CHQ.loaded);
+  if(chqOk)CHQ.rows.forEach(function(r){
+    if(!chqIsThb(r.cur))return;
+    if(!r.dd){ov.chqNo++;return;}
+    var k=di(r.dd);
+    if(k>=H)return;
+    var b=B[k<=0?0:Math.floor(k/7)];b.chq+=r.amt;b.chqN++;
+    if(k<0){ov.chqOv+=r.amt;ov.chqOvN++;}
+  });
+  var calc=function(arO,apO){
+    var bal=start,minB=1e18,minA=1e18,minI=0,rows=[];
+    B.forEach(function(b,i){
+      var days=b.to-b.from+1;
+      var ar=b.ar*LIQ.arPct/100+(i===0?ov.ar*arO/100:0);
+      var ap=b.ap+(i===0?ov.ap*apO/100:0);
+      var oth=LIQ.other*days/7;
+      var net=ar-b.chq-ap-oth;
+      bal+=net;
+      var avail=bal+headroom;
+      if(avail<minA){minA=avail;minI=i;}
+      if(bal<minB)minB=bal;
+      rows.push({b:b,ar:ar,ap:ap,chq:b.chq,oth:oth,net:net,bal:bal,avail:avail});
+    });
+    return {rows:rows,minBal:minB,minAvail:minA,minIdx:minI};
+  };
+  var base=calc(arOv,apOv),worst=calc(0,100);
+  return {B:B,ov:ov,base:base,worst:worst,today:today,H:H,chqOk:chqOk};
+}
+function liqRender(d){
+  var el=document.getElementById('liqBox0');if(!el||!d)return;
+  var cash=liqCash(d),od=liqOdRows(d);
+  var odUsedSap=od.reduce(function(s,r){return s+(r.used||0);},0);
+  var odLimit=od.reduce(function(s,r){return s+r.limit;},0);
+  var head=od.reduce(function(s,r){return s+Math.max(0,r.left==null?0:r.left);},0);
+  var odPct=odLimit>0?odUsedSap/odLimit*100:null;
+  var netBefore=cash.dep-cash.odUsed;
+  var cards=
+    kpi('green','💵','rgba(76,175,125,0.18)','เงินฝากพร้อมใช้ (บัญชียอดบวกตาม SAP)',fmtKPI(cash.dep),'green','ไม่รวม OD และบัญชีติดลบ')+
+    kpi('gold','🏦','rgba(212,168,67,0.18)','OD ใช้แล้ว / วงเงิน',fmtKPI(odUsedSap),liqLvl(odPct)==='red'?'red':(liqLvl(odPct)==='gold'?'gold':'green'),'วงเงินรวม '+fmtM(odLimit)+' ล้าน · ใช้ '+(odPct==null?'—':odPct.toFixed(1))+'% · คงเหลือ '+fmtM(head)+' ล้าน')+
+    kpi('blue','⚖️','rgba(91,143,249,0.18)','เงินสดสุทธิ ก่อนผลต่างรอตรวจ',fmtKPI(netBefore),netBefore<0?'red':'green','เงินฝาก − OD ใช้แล้ว')+
+    kpi('red','🔎','rgba(224,92,92,0.18)','ผลต่างรอตรวจ (บัญชีติดลบที่ไม่ใช่ OD)',fmtKPI(-cash.oth),cash.oth>=1000?'red':'muted','ในนี้บัญชี USD/บัญชีแลกเงิน '+fmtM(cash.fx)+' ล้าน — ใบรับ/รายการแลก USD ที่ยังไม่ลง SAP (ดูหน้า สมุดบัญชีธนาคาร)')+
+    kpi('teal','💧','rgba(43,191,179,0.18)','ความสามารถจ่าย (เงินฝาก + วงเงิน OD คงเหลือ)',fmtKPI(cash.dep+head),'teal','ยังไม่หักเช็ค/เจ้าหนี้ที่ถึงกำหนด');
+  // ตาราง OD
+  var odRows=od.map(function(r){
+    var c=liqCol(r.pct),cs=liqCol(r.stPct);
+    var bar=r.pct==null?'':'<div style="height:7px;min-width:90px;background:rgba(255,255,255,0.09);border-radius:4px;overflow:hidden;margin-top:4px"><div style="width:'+Math.min(100,Math.max(0,r.pct)).toFixed(1)+'%;height:100%;background:'+c+'"></div></div>';
+    var lvl=r.pct==null?'ไม่พบบัญชีใน Q03':(r.pct>100?'เกินวงเงิน':(r.pct>=90?'ใกล้เต็มวงเงิน':'ปกติ'));
+    return '<tr><td style="font-size:12px"><b>'+bkDiffEsc(r.bank)+'</b> '+bkDiffEsc(r.acctNo)+'<div style="font-size:10.5px;color:var(--muted)">'+bkDiffEsc(r.code)+'</div></td>'+
+      '<td class="right" style="font-size:12px">'+liqNum(r.limit)+'</td>'+
+      '<td class="right" style="font-size:12px">'+liqNum(r.used)+bar+'</td>'+
+      '<td class="right" style="font-size:12px;color:'+c+';font-weight:700">'+(r.pct==null?'—':r.pct.toFixed(1)+'%')+'</td>'+
+      '<td class="right" style="font-size:12px;color:'+(r.left!=null&&r.left<0?'var(--red)':'inherit')+'">'+liqNum(r.left)+'</td>'+
+      '<td style="font-size:12px;color:'+c+'">'+lvl+'</td>'+
+      '<td class="right" style="font-size:12px;color:'+cs+'">'+(r.st?liqNum(r.st.used)+' ('+r.stPct.toFixed(1)+'%)<div style="font-size:10.5px;color:var(--muted)">ณ '+bkDiffEsc(r.st.date)+' · คงเหลือ '+liqNum(r.stLeft)+'</div>':'<span style="color:var(--muted)">—</span>')+'</td></tr>';
+  }).join('');
+  var odTotal='<tr style="font-weight:700"><td style="font-size:12px">รวม</td><td class="right" style="font-size:12px">'+liqNum(odLimit)+'</td><td class="right" style="font-size:12px">'+liqNum(odUsedSap)+'</td><td class="right" style="font-size:12px;color:'+liqCol(odPct)+'">'+(odPct==null?'—':odPct.toFixed(1)+'%')+'</td><td class="right" style="font-size:12px">'+liqNum(od.reduce(function(s,r){return s+(r.left||0);},0))+'</td><td></td><td></td></tr>';
+  var odNote=ODL.src==='sheet'?'วงเงินจากชีต OD_LIMIT':'วงเงินตามที่ผู้ใช้แจ้ง (ยังไม่มีชีต OD_LIMIT — เพิ่มชีตเพื่อแก้วงเงินได้: AccountCode, Bank, AccountNo, Limit, Note)';
+  var odHtml='<div class="chart-card" style="margin-bottom:14px"><div class="chart-title">🏦 วงเงิน OD <span class="chart-sub">ใช้ไปตามยอดคงเหลือ SAP (Q03) · เทียบสเตทเมนท์ล่าสุดที่อัปโหลด · เตือนเมื่อ ≥ 90% และแดงเมื่อเกิน 100%</span></div>'+
+    '<div style="overflow:auto"><table><thead><tr><th>บัญชี</th><th style="text-align:right">วงเงิน</th><th style="text-align:right">ใช้ไป (SAP)</th><th style="text-align:right">% ใช้</th><th style="text-align:right">คงเหลือ</th><th>สถานะ</th><th style="text-align:right">ใช้ไปตามสเตทเมนท์ล่าสุด</th></tr></thead><tbody>'+odRows+odTotal+'</tbody></table></div>'+
+    '<div style="font-size:11px;color:var(--muted);margin-top:6px">'+odNote+' · ยอด SAP และสเตทเมนท์เป็นคนละวันที่ เทียบกันตรง ๆ ไม่ได้</div></div>';
+  // Forecast
+  var F=liqForecast(d,cash.dep,head,LIQ.arOv,LIQ.apOv);
+  var inp=function(k,w,ph){return '<input type="number" min="0" step="'+(k==='h'?1:1000)+'" value="'+LIQ[k]+'" onchange="liqSet(\''+k+'\',this.value)" class="filter-select" style="width:'+w+'px" placeholder="'+(ph||'')+'">';};
+  var pctInp=function(k){return '<input type="number" min="0" max="100" step="5" value="'+LIQ[k]+'" onchange="liqSet(\''+k+'\',this.value)" class="filter-select" style="width:68px">';};
+  var lab=function(t){return '<span style="font-size:12px;color:var(--muted);font-weight:600">'+t+'</span>';};
+  var hSel='<select class="filter-select" onchange="liqSet(\'h\',this.value)">'+[30,60,90].map(function(x){return '<option value="'+x+'"'+(LIQ.h===x?' selected':'')+'>'+x+' วัน</option>';}).join('')+'</select>';
+  var ctl='<div style="display:flex;gap:10px 14px;flex-wrap:wrap;align-items:center;margin-bottom:10px">'+
+    lab('ช่วงพยากรณ์:')+hSel+
+    lab('ลูกหนี้จ่ายตรงกำหนด (%):')+pctInp('arPct')+
+    lab('AR เลยกำหนด คาดเก็บได้ใน 1 สัปดาห์แรก (%):')+pctInp('arOv')+
+    lab('AP เลยกำหนด จ่ายใน 1 สัปดาห์แรก (%):')+pctInp('apOv')+
+    lab('จ่ายอื่นต่อสัปดาห์ (เงินเดือน/ภาษี/ลีสซิ่ง · บาท):')+inp('other',130,'0')+'</div>';
+  var minA=F.base.minAvail,minRow=F.base.rows[F.base.minIdx];
+  var stTxt,stCol;
+  if(minA<0){stCol='red';stTxt='⚠️ เงินอาจขาด — ความสามารถจ่ายติดลบ '+fmtFull(-minA)+' บาท ในช่วง '+liqDay(chqAddDays(F.today,minRow.b.from))+'–'+liqDay(chqAddDays(F.today,minRow.b.to));}
+  else if(F.base.minBal<0){stCol='gold';stTxt='ต้องใช้วงเงิน OD เพิ่ม — เงินฝากติดลบต่ำสุด '+fmtFull(-F.base.minBal)+' บาท (OD คงเหลือ '+fmtFull(head)+')';}
+  else{stCol='green';stTxt='✅ เงินฝากพอจ่ายตลอดช่วง (เงินฝากต่ำสุด '+fmtFull(F.base.minBal)+' บาท · รวมวงเงิน OD คงเหลือ '+fmtFull(F.base.minAvail)+' บาท)';}
+  var w=F.worst;
+  var scen='ถ้าจ่าย AP เลยกำหนดทั้งหมด ('+fmtFull(F.ov.ap)+' บาท · '+F.ov.apN+' ใบ) ในสัปดาห์แรก และไม่เก็บ AR เลยกำหนด: เงินฝากต่ำสุด <b style="color:'+(w.minBal<0?'var(--red)':'var(--green)')+'">'+fmtFull(w.minBal)+'</b> บาท · รวมวงเงิน OD คงเหลือ <b style="color:'+(w.minAvail<0?'var(--red)':'var(--green)')+'">'+fmtFull(w.minAvail)+'</b> บาท';
+  var trs=F.base.rows.map(function(r,i){
+    var dtxt=liqDay(chqAddDays(F.today,r.b.from))+(r.b.to>r.b.from?' – '+liqDay(chqAddDays(F.today,r.b.to)):'');
+    var cb=function(v){return v<0?'var(--red)':'inherit';};
+    return '<tr><td style="font-size:12px;white-space:nowrap">'+dtxt+'<div style="font-size:10.5px;color:var(--muted)">สัปดาห์ '+(i+1)+(i===0?' (รวมเลยกำหนดตามสมมติฐาน)':'')+'</div></td>'+
+      '<td class="right green" style="font-size:12px" title="'+r.b.arN+' ใบ">'+(r.ar?fmtFull(r.ar):'—')+'</td>'+
+      '<td class="right red" style="font-size:12px" title="'+r.b.chqN+' ใบ">'+(r.chq?fmtFull(r.chq):'—')+'</td>'+
+      '<td class="right red" style="font-size:12px" title="'+r.b.apN+' ใบ">'+(r.ap?fmtFull(r.ap):'—')+'</td>'+
+      '<td class="right red" style="font-size:12px">'+(r.oth?fmtFull(r.oth):'—')+'</td>'+
+      '<td class="right" style="font-size:12px;color:'+cb(r.net)+'">'+fmtFull(r.net)+'</td>'+
+      '<td class="right" style="font-size:12px;font-weight:700;color:'+cb(r.bal)+'">'+fmtFull(r.bal)+'</td>'+
+      '<td class="right" style="font-size:12px;font-weight:700;color:'+cb(r.avail)+'">'+fmtFull(r.avail)+'</td></tr>';
+  }).join('');
+  var start='<tr style="color:var(--muted)"><td style="font-size:12px">วันนี้ ('+liqDay(F.today)+')</td><td colspan="5" style="font-size:11.5px">เงินฝากพร้อมใช้ต้นงวด + วงเงิน OD คงเหลือ</td><td class="right" style="font-size:12px">'+fmtFull(cash.dep)+'</td><td class="right" style="font-size:12px">'+fmtFull(cash.dep+head)+'</td></tr>';
+  var notes=[];
+  notes.push('ครบกำหนดตามเอกสารรายใบ (Q04/Q05) ไม่รวมเอกสารก่อน '+DATA_TRUST_START.label+' · เอกสารเลยกำหนดแล้ว: AR '+fmtFull(F.ov.ar)+' บาท ('+F.ov.arN+' ใบ) / AP '+fmtFull(F.ov.ap)+' บาท ('+F.ov.apN+' ใบ) ใส่ในสัปดาห์แรกตามเปอร์เซ็นต์ที่ตั้งไว้');
+  if(F.ov.arNo||F.ov.apNo)notes.push('เอกสารที่ไม่มีวันครบกำหนด (ไม่รวม): AR '+F.ov.arNo+' ใบ · AP '+F.ov.apNo+' ใบ');
+  if(F.chqOk)notes.push('เช็คจ่ายรอผ่าน (Q28) หักตามวันที่ในเช็ค เช็คที่ถึงกำหนดแล้วหักในสัปดาห์แรก'+(F.ov.chqOvN?' (ถึงกำหนดแล้ว '+F.ov.chqOvN+' ใบ รวม '+fmtFull(F.ov.chqOv)+' บาท)':'')+' — เอกสาร AP ที่จ่ายด้วยเช็คถูกปิดใน SAP แล้ว จึงไม่นับซ้ำ');
+  else notes.push('<span style="color:var(--gold2)">ยังไม่ได้โหลดชีต Q28_CHEQUE_OUTSTANDING'+(typeof CHQ!=='undefined'&&CHQ.fail?' ('+bkDiffEsc(CHQ.fail)+')':'')+' — พยากรณ์นี้จึงยังไม่หักเช็ค</span>');
+  notes.push('ไม่รวมเงินเดือน ภาษี ค่างวดลีสซิ่ง และรายรับ/รายจ่ายอื่นที่ไม่มีวันครบกำหนดรายเอกสารใน SAP — กรอกยอดเฉลี่ยต่อสัปดาห์ในช่อง "จ่ายอื่น" · เงินฝากพร้อมใช้อิงยอด SAP (Q03) ซึ่งยังไม่ตรงกับธนาคารจนกว่าจะแก้รายการ USD · สมมติว่าลูกหนี้จ่ายตรงกำหนดตาม % ที่ตั้งไว้');
+  var fHtml='<div class="chart-card" style="margin-bottom:14px"><div class="chart-title">📈 Cash Forecast '+F.H+' วัน <span class="chart-sub">ตามวันครบกำหนดรายเอกสาร AR/AP + เช็ครอผ่าน (ประมาณการ ไม่ใช่ยอดทางบัญชี)</span></div>'+ctl+
+    '<div style="padding:10px 14px;border:1px solid var(--'+(stCol==='red'?'red':(stCol==='gold'?'gold2':'green'))+');border-radius:8px;font-size:13px;margin-bottom:10px"><b style="color:var(--'+(stCol==='gold'?'gold2':stCol)+')">'+stTxt+'</b><div style="font-size:12px;color:var(--text2);margin-top:4px">'+scen+'</div></div>'+
+    '<div style="overflow:auto"><table><thead><tr><th>ช่วง</th><th style="text-align:right">AR ครบกำหนด (รับ)</th><th style="text-align:right">เช็คจ่าย</th><th style="text-align:right">AP ครบกำหนด (จ่าย)</th><th style="text-align:right">จ่ายอื่น</th><th style="text-align:right">สุทธิ</th><th style="text-align:right">เงินฝากปลายช่วง</th><th style="text-align:right">รวมวงเงิน OD คงเหลือ</th></tr></thead><tbody>'+start+trs+'</tbody></table></div>'+
+    '<div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.7">'+notes.map(function(x){return '• '+x;}).join('<br>')+'</div></div>';
+  el.innerHTML='<div class="section-sep" style="margin-top:6px">💧 สภาพคล่องและวงเงิน OD</div><div class="kpi-row">'+cards+'</div>'+odHtml+fHtml;
+}
 function renderDashboard(d,opts){
   var fm=ACTIVE_MONTHS.length?ACTIVE_MONTHS:d.allMonths;
   var arF=arApFiltered(d.arRows2||[],fm);
@@ -7878,6 +8089,8 @@ function renderDashboard(d,opts){
     kpi('red','\ud83d\udcdd','rgba(224,92,92,0.18)','\u0e40\u0e08\u0e49\u0e32\u0e2b\u0e19\u0e35\u0e49\u0e04\u0e49\u0e32\u0e07\u0e08\u0e48\u0e32\u0e22 (AP)',fmtKPI(d.pt),'red',d.apRowCount.toLocaleString()+' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23','showModalAP()')+
     kpi('red','\ud83d\udd34','rgba(224,92,92,0.18)','AR \u0e40\u0e01\u0e34\u0e19\u0e01\u0e33\u0e2b\u0e19\u0e14 (>90 \u0e27\u0e31\u0e19)',fmtKPI(d.a90p),'red',ar90pct+'% \u0e02\u0e2d\u0e07 AR','showModalAROver()');
 
+  try{liqRender(d);}catch(e){console.error('liqRender',e);}
+  try{if(!LIQ._started){LIQ._started=true;liqEnsure();}}catch(e){console.error(e);}
   // ป้ายกำกับกราฟรายเดือนให้ตรงกับข้อมูลที่วาดจริง
   var cbs=document.getElementById('cashBarSub'),cls=document.getElementById('cfLineSub');
   var chartRng=last6.length?(mlbl(last6[0])+' \u2013 '+mlbl(last6[last6.length-1])+(fm.length>6?' \u00b7 6 \u0e40\u0e14\u0e37\u0e2d\u0e19\u0e2a\u0e38\u0e14\u0e17\u0e49\u0e32\u0e22\u0e08\u0e32\u0e01\u0e17\u0e31\u0e49\u0e07\u0e0a\u0e48\u0e27\u0e07 '+fm.length+' \u0e40\u0e14\u0e37\u0e2d\u0e19':'')):'';
