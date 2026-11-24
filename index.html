@@ -631,7 +631,7 @@ body.viewer-mode a[href*="docs.google.com/spreadsheets"]{display:none!important;
 <button onclick="bkMenuGo(bkConfirmedReport)">&#128203; รายการที่ยืนยันเอง</button>
 <button onclick="bkMenuGo(kbOpen)">&#127974; ใบโอน KKBIZ</button>
 </div></details>
-<button class="hbtn hbtn-gold" style="margin-left:auto" onclick="bkAllBanksUnmatchedReport()">&#128203; รายงานยังไม่พบใน SAP (ทุกธนาคาร)</button>
+<button class="hbtn hbtn-gold" style="margin-left:auto" onclick="bkAllBanksUnmatchedReport()" title="แสดงทุกเดือนตั้งแต่ ม.ค. 2569 — ถ้าต้องการเลือกบัญชี/เดือนเอง ใช้เมนูรายงาน → ตัวกรองรายงาน">&#128203; รายงานยังไม่พบใน SAP (ทุกธนาคาร · ทุกเดือน)</button>
 </div>
 <div class="kpi-row" id="bkKpiRow"></div>
 <div class="kpi-row-center" id="bkDiffKpiRow"></div>
@@ -3469,7 +3469,33 @@ function bkAvailableYm(acctCode){
   var legs=(G.sapAllBankLegs&&G.sapAllBankLegs[acctCode])||[];
   var set={};
   legs.forEach(function(l){var ym=bkYmOf(l.date);if(ym)set[ym]=true;});
+  // เดือนที่มีรายการในสเตทเมนท์ธนาคาร (CSV) แต่ SAP ยังไม่มีรายการเลย — ต้องเลือกดูได้ ไม่งั้นรายการธนาคารที่ยังไม่ลง SAP
+  // ของเดือนนั้นจะไม่มีที่แสดง (เพิ่ม 24 พ.ย. 2569) · เฉพาะเดือนตั้งแต่วันเริ่มข้อมูลที่เชื่อถือได้
+  try{
+    var inf=bkAccounts().find(function(a){return a.code===acctCode;});
+    var fb=inf?bkFindBankAccount(inf.name||''):null;
+    if(fb)(fb.account.txns||[]).forEach(function(tx){
+      var k=dateKey(tx.date||'');
+      if(k&&k.length===8){var y=k.slice(0,4)+'-'+k.slice(4,6);if(y>=DATA_TRUST_START.ym)set[y]=true;}
+    });
+  }catch(e){}
   return Object.keys(set).sort();
+}
+// แถวรายการธนาคารที่ SAP ไม่มี — แสดงในสมุดบัญชีเมื่อเดือนนั้นไม่มีรายการ SAP เลย
+function bkBankOnlyRowsHtml(isUsdL){
+  var bd=BK_STATE.bankDetail;
+  if(!bd||!bd.txns||!bd.txns.length)return '';
+  var span=isUsdL?10:9;
+  var head='<tr><td colspan="'+span+'" style="padding:10px 12px;font-size:12.5px;color:var(--gold2);background:rgba(212,168,67,0.10)">⚠️ เดือนนี้ไม่มีรายการ SAP ในบัญชีนี้ — รายการด้านล่างมาจากสเตทเมนท์ธนาคาร (CSV) '+bkDiffEsc(bd.bank)+' '+bkDiffEsc(bd.acctNo)+' ที่ SAP ยังไม่ได้บันทึก ('+bd.txns.length+' รายการ)'+(isUsdL?' · ยอดเป็น USD':'')+'</td></tr>';
+  return head+bd.txns.map(function(x){
+    return '<tr><td style="font-size:12px;color:var(--muted)">'+bkDiffEsc(x.date||'—')+'</td><td style="font-size:12px;color:var(--muted)">—</td>'+
+      '<td style="font-size:12px">'+bkDiffEsc(x.desc||'')+'</td><td></td>'+
+      '<td class="right green">'+(x.credit?fmtFull(x.credit):'—')+'</td>'+
+      '<td class="right red">'+(x.debit?fmtFull(x.debit):'—')+'</td>'+
+      '<td class="right" style="font-size:12px;color:var(--muted)" title="ยอดคงเหลือตามสเตทเมนท์ธนาคาร">'+(x.bal!=null&&!isNaN(x.bal)?fmtFull(x.bal)+'<div style="font-size:10px">(ตามแบงค์)</div>':'—')+'</td>'+
+      (isUsdL?'<td></td>':'')+'<td></td>'+
+      '<td><span style="font-size:11px;color:var(--red);font-weight:600">❌ ธนาคารมี SAP ไม่มี</span></td></tr>';
+  }).join('');
 }
 // ===== ความครบถ้วนของสเตทเมนท์แบงค์ (เพิ่ม 17 ต.ค. 2569 ตามคำขอ) — หน้า "สมุดบัญชีธนาคาร" =====
 // ต่อบัญชี+เดือน: เทียบรายการ SAP (Q15, ไม่นับคู่กลับรายการ) กับสเตทเมนท์ที่โหลดแล้ว (BANK_STATEMENTS) บอกว่าบัญชีไหน
@@ -7333,10 +7359,9 @@ function bkAllBanksUnmatchedReport(opts){
     yms=opts.yms.slice().sort();
     if(!yms.length){alert('กรุณาเลือกอย่างน้อย 1 เดือน/ปี');return;}
   } else {
-    var ymSel=document.getElementById('bkYmSel');
-    var ym=ymSel?ymSel.value:'';
-    if(!ym){alert('กรุณาเลือกบัญชีและเดือน/ปีในหน้า "สมุดบัญชีธนาคาร" ก่อน (ต้องมีอย่างน้อย 1 บัญชีที่มีข้อมูล เพื่อให้มีรายการเดือน/ปีให้เลือก)');return;}
-    yms=[ym];
+    // ปุ่มหลัก = ทุกเดือนตั้งแต่วันเริ่มข้อมูลที่เชื่อถือได้ (ม.ค. 2569) ที่มีรายการ SAP หรือสเตทเมนท์ธนาคาร (เปลี่ยน 24 พ.ย. 2569 ตามคำขอ — เดิมแสดงเฉพาะเดือนที่เลือกอยู่)
+    yms=bkAllAvailableYm().filter(function(y){return y>=DATA_TRUST_START.ym;});
+    if(!yms.length){alert('ยังไม่มีข้อมูลเดือนที่ใช้เทียบ (ต้องมีรายการ SAP หรือสเตทเมนท์ธนาคาร)');return;}
   }
   BK_DETAIL_REOPEN={type:'all',opts:opts||null};
   var accts=bkAccounts();
@@ -7391,7 +7416,7 @@ function bkAllBanksUnmatchedReport(opts){
     byBank[bankKey].accounts.push({acctNo:foundBank.account.acctNo,acctName:acctInfo.name,months:monthsForAcct,subIn:subIn,subOut:subOut});
     grandCount+=subCnt;grandIn+=subIn;grandOut+=subOut;
   });
-  var monthLabel=yms.length===1?ymLabelThai(yms[0]):(yms.length+' เดือน: '+yms.map(ymLabelThai).join(', '));
+  var monthLabel=yms.length===1?ymLabelThai(yms[0]):(yms.length>3?('ทุกเดือน '+ymLabelThai(yms[0])+' – '+ymLabelThai(yms[yms.length-1])+' · '+yms.length+' เดือน'):(yms.length+' เดือน: '+yms.map(ymLabelThai).join(', ')));
   var title='รายการยังไม่พบใน SAP — ทุกธนาคาร ('+monthLabel+')';
   var flatRows=[]; // สำหรับ export (PDF/Excel) — แถวเดียวรวมทุกธนาคาร/ทุกเดือน
   var sectionsHtml='';
@@ -7721,7 +7746,7 @@ function bkRecalc(){
         (isUsdL?'<td class="right" style="font-size:12px;white-space:nowrap">'+usdCell+'</td>':'')+
         '<td style="font-size:12px;color:var(--muted)">'+(r.createdByName||'')+'</td>'+
         '<td>'+bankCell+'</td></tr>';
-    }).join('') : '<tr><td colspan="'+(isUsdL?10:9)+'" style="text-align:center;color:var(--muted);padding:20px">— ไม่มีรายการในเดือนนี้ —</td></tr>';
+    }).join('') : (BK_STATE.rows.length===0&&bkBankOnlyRowsHtml(isUsdL))||'<tr><td colspan="'+(isUsdL?10:9)+'" style="text-align:center;color:var(--muted);padding:20px">— ไม่มีรายการในเดือนนี้ —</td></tr>';
   }
   var closing=bal;
   var isCustomOpening=Math.abs(opening-BK_STATE.defaultOpening)>0.005;
@@ -10345,6 +10370,8 @@ async function loadBankFromSheets() {
     console.log('Loaded from Sheets:', total, 'accounts,', txnTotal, 'transactions');
     // วาดบล็อกสภาพคล่องหน้าภาพรวมใหม่ — คอลัมน์ "ใช้ไปตามสเตทเมนท์" และดอกเบี้ย OD ต้องรอสเตทเมนท์โหลดเสร็จก่อน
     try { if (typeof liqRender === 'function' && G) liqRender(G); } catch (e) { console.error('liqRender after bank load', e); }
+    // สมุดบัญชีธนาคาร: รายการเดือน/ปีรวมเดือนที่มีเฉพาะสเตทเมนท์ จึงต้องสร้างใหม่หลังสเตทเมนท์โหลดเสร็จ
+    try { var _as = document.getElementById('bkAcctSel'); if (_as && _as.value && typeof bkPopulateYm === 'function') bkPopulateYm(); } catch (e) { console.error('bkPopulateYm after bank load', e); }
 
     // Show notification
     showBankLoadNotice(total, txnTotal);
