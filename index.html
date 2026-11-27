@@ -2571,6 +2571,7 @@ function dmRender(){
     }
     html+='</div>';
   }
+  if(cfg.agingKind==='AP'&&cfg.groupable&&(s.view==='group'||s.view==='flat'))html+=paySelBarHtml(dmSelCount());
   var dmExp=dmExpandInfo(filtered),dmItm=dmItemsInfo(filtered);
   html+='<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:8px"><div>ช่วงข้อมูล: <strong style="color:var(--gold2)">'+dmRangeLabel()+'</strong> — พบ '+filtered.length+' รายการ, ยอดรวม <strong style="color:var(--text)">'+fmtFull(totalAll)+'</strong> บาท</div>'+
     '<span style="display:flex;gap:8px;flex-wrap:wrap">'+
@@ -2589,7 +2590,7 @@ function dmRender(){
       var exp=!!s.expanded[g.name];
       var lastCell=cfg.matchBank?groupMatchBadge(g,cfg.matchBank):(cfg.agingKind?agingBadge(g.worstDays,cfg.agingKind):'—');
       var isSel=!!(s.selNames&&s.selNames[g.name]);
-      var row='<tr style="background:'+(isSel?'rgba(212,168,67,0.12)':(i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)'))+';cursor:pointer" onclick="dmToggleGroupIdx('+i+')"><td onclick="event.stopPropagation()" style="text-align:center"><input type="checkbox" '+(isSel?'checked ':'')+'onclick="event.stopPropagation()" onchange="dmToggleSelIdx('+i+')" style="cursor:pointer;width:15px;height:15px"></td><td class="right" style="color:var(--gold2);font-weight:700">'+(exp?'−':'+')+'</td><td>'+g.name+'</td><td class="right gold">'+fmtFull(g.total)+'</td><td class="right" style="color:var(--muted)">'+pct+'%</td><td class="right">'+g.count+'</td><td style="font-size:12px;color:var(--text2)">'+(g.earliestDisplay||'—')+'</td><td>'+lastCell+'</td></tr>';
+      var row='<tr style="background:'+(isSel?'rgba(212,168,67,0.12)':(i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)'))+';cursor:pointer" onclick="dmToggleGroupIdx('+i+')"><td onclick="event.stopPropagation()" style="text-align:center"><input type="checkbox" '+(isSel?'checked ':'')+'onclick="event.stopPropagation()" onchange="dmToggleSelIdx('+i+')" style="cursor:pointer;width:15px;height:15px"></td><td class="right" style="color:var(--gold2);font-weight:700">'+(exp?'−':'+')+'</td><td>'+g.name+(cfg.agingKind==='AP'?paySelGroupTag(g):'')+'</td><td class="right gold">'+fmtFull(g.total)+'</td><td class="right" style="color:var(--muted)">'+pct+'%</td><td class="right">'+g.count+'</td><td style="font-size:12px;color:var(--text2)">'+(g.earliestDisplay||'—')+'</td><td>'+lastCell+'</td></tr>';
       if(exp){
         row+=g.rows.slice().sort(function(a,b){return (dateKey(a.dateStr)||'').localeCompare(dateKey(b.dateStr)||'');}).map(function(r){
           var items=cfg.itemsByDoc&&cfg.itemsByDoc[r.docNo];
@@ -2599,7 +2600,8 @@ function dmRender(){
             ?'<td style="padding-left:22px;color:var(--teal);font-size:12px;cursor:pointer;font-weight:600" onclick="dmToggleItems(\''+r.docNo+'\')">'+(itemsExp?'▾':'▸')+' ↳ '+r.docNo+dmItemDetailSub(r)+dmItemDetails2Sub(r)+dmDocCreatorSub(r)+dmRemarksSub(r)+'</td>'
             :'<td style="padding-left:22px;color:var(--muted);font-size:12px">↳ '+(r.docNo||'—')+dmItemDetailSub(r)+dmItemDetails2Sub(r)+dmDocCreatorSub(r)+dmRemarksSub(r)+'</td>';
           var subLastCell=cfg.matchBank?renderMatchBadge(cfg.matchBank,r.docNo,rowMatchCached(r,cfg.matchBank)):((cfg.agingKind&&r.days!==null&&r.days!==undefined)?agingBadge(r.days,cfg.agingKind):'');
-          var sub='<tr style="background:rgba(255,255,255,0.015)"><td></td><td></td>'+docCell+'<td class="right" style="font-size:12px;color:var(--text2)">'+fmtFull(r.amount)+'</td><td></td><td></td><td style="font-size:12px;color:var(--muted)">'+(r.dateDisplay||'—')+'</td><td>'+subLastCell+'</td></tr>';
+          if(cfg.agingKind==='AP')docCell=docCell.replace(/<\/td>$/,paySelRowSub(r)+'</td>');
+          var sub='<tr style="background:rgba(255,255,255,0.015)">'+(cfg.agingKind==='AP'?paySelRowCb(r):'<td></td>')+'<td></td>'+docCell+'<td class="right" style="font-size:12px;color:var(--text2)">'+fmtFull(r.amount)+'</td><td></td><td></td><td style="font-size:12px;color:var(--muted)">'+(r.dateDisplay||'—')+'</td><td>'+subLastCell+'</td></tr>';
           if(itemsExp)sub+=dmItemsRowHtml(items,8);
           return sub;
         }).join('');
@@ -2642,10 +2644,10 @@ function dmRender(){
       return row;
     }).join('');
   } else {
-    html+='<th>ชื่อ</th><th>เลขที่เอกสาร</th><th style="text-align:right">'+cfg.amountLabel+'</th>'+(cfg.agingKind?'<th style="text-align:right">อายุ (วัน)</th>':'')+(cfg.matchBank?'<th>ตรงกับแบงค์</th>':'')+(cfg.agingKind?'<th>วันที่เอกสาร</th>':'')+'<th>'+(cfg.agingKind?'กำหนดชำระ':'วันที่')+'</th></tr></thead><tbody>';
+    html+=(cfg.agingKind==='AP'?'<th style="width:26px" title="ติ๊กเพื่อใส่ใบเข้าแผนจ่าย">📌</th>':'')+'<th>ชื่อ</th><th>เลขที่เอกสาร</th><th style="text-align:right">'+cfg.amountLabel+'</th>'+(cfg.agingKind?'<th style="text-align:right">อายุ (วัน)</th>':'')+(cfg.matchBank?'<th>ตรงกับแบงค์</th>':'')+(cfg.agingKind?'<th>วันที่เอกสาร</th>':'')+'<th>'+(cfg.agingKind?'กำหนดชำระ':'วันที่')+'</th></tr></thead><tbody>';
     var flat=filtered.slice();
     flat.sort(function(a,b){return s.sort==='name'?(dateKey(a.dateStr)||'99999999').localeCompare(dateKey(b.dateStr)||'99999999'):(b.amount||0)-(a.amount||0);});
-    var flatCols=4+(cfg.agingKind?2:0)+(cfg.matchBank?1:0);
+    var flatCols=4+(cfg.agingKind?2:0)+(cfg.matchBank?1:0)+(cfg.agingKind==='AP'?1:0);
     html+=flat.map(function(r,i){
       var items=cfg.itemsByDoc&&cfg.itemsByDoc[r.docNo];
       var hasItems=items&&items.length;
@@ -2655,7 +2657,8 @@ function dmRender(){
         :'<td style="color:var(--muted);font-size:12px">'+(r.docNo||'—')+dmItemDetailSub(r)+dmItemDetails2Sub(r)+dmDocCreatorSub(r)+dmRemarksSub(r)+'</td>';
       var matchCell=cfg.matchBank?'<td>'+renderMatchBadge(cfg.matchBank,r.docNo,rowMatchCached(r,cfg.matchBank))+'</td>':'';
       var docDateCell=cfg.agingKind?'<td style="font-size:12px;color:var(--muted)">'+(r.docDateDisplay||'—')+'</td>':'';
-      var row='<tr style="background:'+(i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)')+'"><td>'+r.name+'</td>'+docCell+'<td class="right gold">'+fmtFull(r.amount)+'</td>'+(cfg.agingKind?'<td class="right">'+(r.days!==null&&r.days!==undefined?Math.round(r.days).toLocaleString('th-TH'):'—')+'</td>':'')+matchCell+docDateCell+'<td style="font-size:12px;color:var(--muted)">'+(r.dateDisplay||'—')+'</td></tr>';
+      if(cfg.agingKind==='AP')docCell=docCell.replace(/<\/td>$/,paySelRowSub(r)+'</td>');
+      var row='<tr style="background:'+(i%2===0?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.01)')+'">'+(cfg.agingKind==='AP'?paySelRowCb(r):'')+'<td>'+r.name+'</td>'+docCell+'<td class="right gold">'+fmtFull(r.amount)+'</td>'+(cfg.agingKind?'<td class="right">'+(r.days!==null&&r.days!==undefined?Math.round(r.days).toLocaleString('th-TH'):'—')+'</td>':'')+matchCell+docDateCell+'<td style="font-size:12px;color:var(--muted)">'+(r.dateDisplay||'—')+'</td></tr>';
       if(itemsExp)row+=dmItemsRowHtml(items,flatCols);
       return row;
     }).join('');
@@ -7966,21 +7969,471 @@ function liqLvl(p){return p==null?'muted':(p>100?'red':(p>=90?'gold':'green'));}
 function liqCol(p){var l=liqLvl(p);return l==='red'?'var(--red)':(l==='gold'?'var(--gold2)':(l==='green'?'var(--green)':'var(--muted)'));}
 function liqNum(n){return n==null||isNaN(n)?'—':fmtFull(n);}
 function liqDay(dk){return String(dk%100).padStart(2,'0')+'/'+String(Math.floor(dk/100)%100).padStart(2,'0');}
+// ============================================================================
+// แผนจ่ายรายใบ (PAYSEL) — ติ๊กเลือกใบเจ้าหนี้ + กำหนดวันจ่าย + ใบเสนออนุมัติจ่ายรายวัน (เพิ่ม 27 พ.ย. 2569)
+// · เก็บในเบราว์เซอร์เครื่องนี้ (localStorage 'ratchaoPaySelV1') ไม่เขียนกลับ SAP ไม่แชร์ข้ามเครื่อง
+// · คีย์ของใบ = เลขที่เอกสาร|วันครบกำหนด (YYYYMMDD) — ตรงกับแถว Q05 (G.apRows2)
+// · ใบที่ไม่พบในเจ้าหนี้ค้างแล้ว (SAP ตัดจ่ายแล้ว) = "จ่ายแล้ว" ไม่นับในยอดแผน/Forecast
+// · วันที่จ่ายที่ "อนุมัติ/จ่ายแล้ว" ถูกล็อก: เพิ่ม/ลบ/ย้ายวัน/แก้ยอดไม่ได้จนกว่าจะยกเลิกอนุมัติ
+// ============================================================================
+var PAYSEL_LS='ratchaoPaySelV1';
+var PAYSEL={docs:{},runs:{},useFc:true,prep:'',appr:'',pick:0,loaded:false,runSel:0,msg:'',backCfg:null};
+var PAYSEL_MAP={src:null,map:{}};
+function paySelLoad(){
+  if(PAYSEL.loaded)return;
+  PAYSEL.loaded=true;
+  try{
+    var s=JSON.parse(localStorage.getItem(PAYSEL_LS)||'null');
+    if(s&&typeof s==='object'){
+      PAYSEL.docs=s.docs||{};PAYSEL.runs=s.runs||{};PAYSEL.useFc=s.useFc!==false;
+      PAYSEL.prep=s.prep||'';PAYSEL.appr=s.appr||'';PAYSEL.pick=+s.pick||0;
+    }
+  }catch(e){}
+}
+function paySelSave(){
+  try{localStorage.setItem(PAYSEL_LS,JSON.stringify({docs:PAYSEL.docs,runs:PAYSEL.runs,useFc:PAYSEL.useFc,prep:PAYSEL.prep,appr:PAYSEL.appr,pick:PAYSEL.pick}));}catch(e){}
+}
+function paySelEsc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function paySelKey(docNo,dk){return String(docNo||'')+'|'+(dk||'');}
+function paySelMap(){
+  var rows=(typeof G!=='undefined'&&G&&G.apRows2)||[];
+  if(PAYSEL_MAP.src===rows)return PAYSEL_MAP.map;
+  var m={};
+  rows.forEach(function(r){m[paySelKey(r.docNo,dueKeyDate(r.dueDate)||'')]=r;});
+  PAYSEL_MAP.src=rows;PAYSEL_MAP.map=m;
+  return m;
+}
+function paySelApLoaded(){return !!(typeof G!=='undefined'&&G&&G.apRows2&&G.apRows2.length);}
+function paySelIso(dk){dk=+dk;if(!dk)return '';var s=String(dk);return s.slice(0,4)+'-'+s.slice(4,6)+'-'+s.slice(6,8);}
+function paySelFromIso(iso){var m=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?(+m[1])*10000+(+m[2])*100+(+m[3]):0;}
+function paySelFmt(dk){dk=+dk;if(!dk)return '—';return String(dk%100).padStart(2,'0')+'/'+String(Math.floor(dk/100)%100).padStart(2,'0')+'/'+Math.floor(dk/10000);}
+function paySelOffset(dk){
+  var t=projTodayKey();
+  var a=Date.UTC(Math.floor(t/10000),Math.floor(t/100)%100-1,t%100),b=Date.UTC(Math.floor(dk/10000),Math.floor(dk/100)%100-1,dk%100);
+  return Math.round((b-a)/86400000);
+}
+function paySelDefDate(){paySelLoad();return PAYSEL.pick||projTodayKey();}
+function paySelDateLocked(dk){var r=PAYSEL.runs[dk];return !!(r&&(r.status==='approved'||r.status==='paid'));}
+function paySelInfo(key){
+  paySelLoad();
+  var e=PAYSEL.docs[key];if(!e)return null;
+  var row=paySelMap()[key],ld=paySelApLoaded();
+  var open=ld?!!row:true;
+  var bal=row?row.bal:(open?e.amt:0);
+  var eff=open?Math.round(Math.min(e.amt,bal)*100)/100:0;
+  return {key:key,e:e,row:row||null,open:open,bal:bal,eff:eff,locked:paySelDateLocked(e.date)};
+}
+function paySelAdd(key,dk){
+  paySelLoad();
+  var row=paySelMap()[key];
+  if(!row||PAYSEL.docs[key])return false;
+  dk=dk||paySelDefDate();
+  if(paySelDateLocked(dk))return false;
+  PAYSEL.docs[key]={docNo:row.docNo,name:row.name,amt:Math.round(row.bal*100)/100,date:dk,due:dueKeyDate(row.dueDate)||0,added:Date.now()};
+  return true;
+}
+function paySelRefresh(){
+  try{liqRender(G);}catch(e){console.error(e);}
+  if(document.getElementById('payRunBox'))payRunRender();
+  else if(document.getElementById('dmDynamic')&&typeof DM!=='undefined'&&DM.cfg)dmRender();
+}
+function paySelToggle(key){
+  paySelLoad();
+  var inf=paySelInfo(key);
+  if(inf){
+    if(inf.locked){PAYSEL.msg='ใบนี้อยู่ในชุดจ่ายวันที่ '+paySelFmt(inf.e.date)+' ที่อนุมัติแล้ว — ยกเลิกอนุมัติของวันนั้นก่อนจึงจะเอาออกได้';paySelRefresh();return;}
+    delete PAYSEL.docs[key];
+  }else{
+    var dk=paySelDefDate();
+    if(paySelDateLocked(dk)){PAYSEL.msg='วันที่จ่าย '+paySelFmt(dk)+' อนุมัติแล้ว — เลือกวันอื่น หรือยกเลิกอนุมัติของวันนั้นก่อน';paySelRefresh();return;}
+    if(!paySelAdd(key,dk)){PAYSEL.msg='ไม่พบใบนี้ในเจ้าหนี้ค้างจ่าย';paySelRefresh();return;}
+  }
+  paySelSave();paySelRefresh();
+}
+function paySelSetDate(key,iso){
+  var dk=paySelFromIso(iso),inf=paySelInfo(key);
+  if(!dk||!inf)return;
+  if(inf.locked){PAYSEL.msg='ใบนี้อยู่ในชุดจ่ายที่อนุมัติแล้ว — ยกเลิกอนุมัติก่อนจึงย้ายวันได้';paySelRefresh();return;}
+  if(paySelDateLocked(dk)){PAYSEL.msg='วันที่ '+paySelFmt(dk)+' อนุมัติแล้ว ย้ายใบเข้าไม่ได้';paySelRefresh();return;}
+  inf.e.date=dk;paySelSave();paySelRefresh();
+}
+function paySelSetAmt(key,v){
+  var inf=paySelInfo(key);if(!inf)return;
+  if(inf.locked){PAYSEL.msg='ใบนี้อยู่ในชุดจ่ายที่อนุมัติแล้ว — ยกเลิกอนุมัติก่อนจึงแก้ยอดได้';paySelRefresh();return;}
+  var n=parseFloat(String(v).replace(/,/g,''));
+  if(isNaN(n)||n<=0){paySelRefresh();return;}
+  n=Math.round(Math.min(n,inf.bal>0?inf.bal:n)*100)/100;
+  inf.e.amt=n;paySelSave();paySelRefresh();
+}
+function paySelSetPick(iso){
+  var dk=paySelFromIso(iso);if(!dk)return;
+  PAYSEL.pick=dk;paySelSave();
+  if(document.getElementById('dmDynamic')&&!document.getElementById('payRunBox'))dmRender();
+}
+function paySelSetFc(on){PAYSEL.useFc=!!on;paySelSave();paySelRefresh();}
+function paySelShownRows(scope){
+  var rows=(typeof DM!=='undefined'&&DM.state&&DM.state.lastFiltered)||[];
+  if(scope==='sel'){var sn=DM.state.selNames||{};rows=rows.filter(function(r){return !!sn[r.name];});}
+  return rows.map(function(r){return paySelKey(r.docNo,dateKey(r.dateStr)||'');});
+}
+function paySelAddShown(scope){
+  paySelLoad();
+  var dk=paySelDefDate();
+  if(paySelDateLocked(dk)){PAYSEL.msg='วันที่จ่าย '+paySelFmt(dk)+' อนุมัติแล้ว — เลือกวันอื่นก่อน';paySelRefresh();return;}
+  var keys=paySelShownRows(scope),n=0,dup=0;
+  keys.forEach(function(k){if(PAYSEL.docs[k]){dup++;return;}if(paySelAdd(k,dk))n++;});
+  PAYSEL.msg=n?('ใส่เข้าแผนวันที่ '+paySelFmt(dk)+' แล้ว '+n+' ใบ'+(dup?' (มีในแผนอยู่แล้ว '+dup+' ใบ ไม่ซ้ำ)':'')):(keys.length?'ใบที่แสดงอยู่ทั้งหมดอยู่ในแผนแล้ว':'ไม่มีใบที่แสดงอยู่');
+  paySelSave();paySelRefresh();
+}
+function paySelMoveShown(){
+  paySelLoad();
+  var dk=paySelDefDate();
+  if(paySelDateLocked(dk)){PAYSEL.msg='วันที่ '+paySelFmt(dk)+' อนุมัติแล้ว ย้ายใบเข้าไม่ได้';paySelRefresh();return;}
+  var n=0,lk=0;
+  paySelShownRows('all').forEach(function(k){var inf=paySelInfo(k);if(!inf)return;if(inf.locked){lk++;return;}inf.e.date=dk;n++;});
+  PAYSEL.msg=n?('ย้ายวันจ่ายเป็น '+paySelFmt(dk)+' แล้ว '+n+' ใบ'+(lk?' (ข้าม '+lk+' ใบที่อนุมัติแล้ว)':'')):'ไม่มีใบในแผนที่ย้ายได้ในรายการที่แสดง';
+  paySelSave();paySelRefresh();
+}
+function paySelClearShown(){
+  paySelLoad();
+  var n=0,lk=0;
+  paySelShownRows('all').forEach(function(k){var inf=paySelInfo(k);if(!inf)return;if(inf.locked){lk++;return;}delete PAYSEL.docs[k];n++;});
+  PAYSEL.msg=n?('เอาออกจากแผน '+n+' ใบ'+(lk?' (ข้าม '+lk+' ใบที่อนุมัติแล้ว)':'')):'ไม่มีใบในแผนที่เอาออกได้ในรายการที่แสดง';
+  paySelSave();paySelRefresh();
+}
+// ---------- สรุป/จัดกลุ่ม ----------
+function paySelTotals(){
+  paySelLoad();
+  var t={n:0,openN:0,closedN:0,amt:0,dates:0},ds={};
+  Object.keys(PAYSEL.docs).forEach(function(k){
+    var inf=paySelInfo(k);if(!inf)return;
+    t.n++;
+    if(inf.open&&inf.eff>0){t.openN++;t.amt+=inf.eff;ds[inf.e.date]=1;}else t.closedN++;
+  });
+  t.dates=Object.keys(ds).length;
+  return t;
+}
+function paySelDays(){
+  paySelLoad();
+  var by={};
+  Object.keys(PAYSEL.docs).forEach(function(k){
+    var inf=paySelInfo(k);if(!inf)return;
+    var dk=inf.e.date;
+    var g=by[dk]||(by[dk]={dk:dk,docs:[],total:0,openN:0,n:0,names:{}});
+    g.docs.push(inf);g.n++;
+    if(inf.open&&inf.eff>0){g.total+=inf.eff;g.openN++;g.names[inf.e.name]=1;}
+  });
+  var arr=Object.keys(by).map(function(k){return by[k];}).sort(function(a,b){return a.dk-b.dk;});
+  var cum=0;
+  arr.forEach(function(g){cum+=g.total;g.cum=cum;g.nameN=Object.keys(g.names).length;});
+  return arr;
+}
+function paySelRunStatus(g){
+  var r=PAYSEL.runs[g.dk]||{};
+  if(g.n>0&&g.openN===0)return 'closed';
+  return r.status||'draft';
+}
+function paySelStatusLabel(s){return s==='approved'?'✔ อนุมัติแล้ว':(s==='paid'?'💸 จ่ายแล้ว (บันทึกเอง)':(s==='closed'?'✅ จ่ายแล้วใน SAP':'📝 ร่าง'));}
+function paySelStatusColor(s){return s==='approved'?'var(--teal)':(s==='paid'||s==='closed'?'var(--green)':'var(--gold2)');}
+// รายการใบของวันหนึ่ง จัดเป็นกลุ่มตามเจ้าหนี้ (เฉพาะใบที่ยังค้างใน SAP)
+function paySelDayGroups(g){
+  var by={};
+  g.docs.forEach(function(inf){
+    if(!(inf.open&&inf.eff>0))return;
+    var nm=inf.e.name||'—';
+    var s=by[nm]||(by[nm]={name:nm,docs:[],sum:0,bal:0,minDue:99999999});
+    s.docs.push(inf);s.sum+=inf.eff;s.bal+=inf.bal;
+    var due=inf.e.due||99999999;if(due<s.minDue)s.minDue=due;
+  });
+  var arr=Object.keys(by).map(function(k){return by[k];});
+  arr.forEach(function(s){s.docs.sort(function(a,b){return (a.e.due||99999999)-(b.e.due||99999999)||String(a.e.docNo).localeCompare(String(b.e.docNo));});});
+  arr.sort(function(a,b){return a.minDue-b.minDue||a.name.localeCompare(b.name);});
+  return arr;
+}
+function paySelCashAvail(){
+  var cash=liqCash(G),od=liqOdRows(G);
+  var head=od.reduce(function(s,r){return s+Math.max(0,r.left==null?0:r.left);},0);
+  return {dep:cash.dep,head:head,avail:cash.dep+head};
+}
+// รายการที่ใช้ใน Cash Forecast: key → {eff,date}
+function paySelForecastList(){
+  paySelLoad();
+  var m={};
+  if(!PAYSEL.useFc)return m;
+  Object.keys(PAYSEL.docs).forEach(function(k){
+    var inf=paySelInfo(k);
+    if(inf&&inf.open&&inf.eff>0)m[k]={eff:inf.eff,date:inf.e.date};
+  });
+  return m;
+}
+// ---------- ส่วนที่แทรกในหน้าต่างรายการ AP (dmRender) ----------
+function paySelRowCb(r){
+  var k=paySelKey(r.docNo,dateKey(r.dateStr)||''),inf=paySelInfo(k),on=!!inf,dis=on&&inf.locked;
+  return '<td onclick="event.stopPropagation()" style="text-align:center"><input type="checkbox" '+(on?'checked ':'')+
+    (dis?'disabled title="อยู่ในชุดจ่ายที่อนุมัติแล้ว" ':'title="ติ๊กเพื่อใส่ใบนี้เข้าแผนจ่าย" ')+
+    'data-k="'+paySelEsc(k)+'" onclick="event.stopPropagation()" onchange="paySelToggle(this.dataset.k)" style="cursor:pointer;width:15px;height:15px;accent-color:#2bbfb3"></td>';
+}
+function paySelRowSub(r){
+  var k=paySelKey(r.docNo,dateKey(r.dateStr)||''),inf=paySelInfo(k);
+  if(!inf)return '';
+  var kk=paySelEsc(k),st=PAYSEL.runs[inf.e.date]||{};
+  var wrap='<div onclick="event.stopPropagation()" style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:11px;color:var(--teal);font-weight:400">';
+  if(!inf.open)return wrap+'✅ ไม่พบในเจ้าหนี้ค้างแล้ว (SAP ตัดจ่ายแล้ว) — เดิมในแผนวันที่ '+paySelFmt(inf.e.date)+'</div>';
+  if(inf.locked)return wrap+'📌 แผนจ่าย '+paySelFmt(inf.e.date)+' · '+fmtFull(inf.eff)+' บาท · '+(st.status==='paid'?'💸 จ่ายแล้ว':'✔ อนุมัติแล้ว')+' 🔒</div>';
+  var inp='width:112px;font-size:11px;padding:2px 4px';
+  return wrap+'📌 แผนจ่ายวันที่ <input type="date" class="filter-select" style="'+inp+'" value="'+paySelIso(inf.e.date)+'" data-k="'+kk+'" onchange="paySelSetDate(this.dataset.k,this.value)"> ยอด <input type="number" step="0.01" min="0.01" class="filter-select" style="'+inp+';width:100px;text-align:right" value="'+inf.e.amt.toFixed(2)+'" data-k="'+kk+'" onchange="paySelSetAmt(this.dataset.k,this.value)">'+
+    (inf.e.amt<inf.bal-0.005?' <span style="color:var(--gold2)">(จ่ายบางส่วน เหลือ '+fmtFull(inf.bal-inf.e.amt)+')</span>':'')+'</div>';
+}
+function paySelGroupTag(g){
+  var n=0,amt=0;
+  (g.rows||[]).forEach(function(r){var inf=paySelInfo(paySelKey(r.docNo,dateKey(r.dateStr)||''));if(inf&&inf.open&&inf.eff>0){n++;amt+=inf.eff;}});
+  return n?' <span style="font-size:11px;color:var(--teal);font-weight:600;white-space:nowrap" title="ใบของเจ้าหนี้รายนี้ที่อยู่ในแผนจ่าย">📌 แผน '+n+' ใบ · '+fmtFull(amt)+'</span>':'';
+}
+function paySelBarHtml(nSel){
+  paySelLoad();
+  var t=paySelTotals(),pk=paySelDefDate();
+  var locked=paySelDateLocked(pk);
+  var h='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;padding:8px 10px;border:1px solid var(--teal);border-radius:8px;background:rgba(43,191,179,0.07)">';
+  h+='<span style="font-size:12px;color:var(--teal);font-weight:700">📌 แผนจ่ายรายใบ</span>';
+  h+='<span style="font-size:11px;color:var(--muted)">วันที่จ่าย:</span><input type="date" class="filter-select" style="font-size:12px" value="'+paySelIso(pk)+'" onchange="paySelSetPick(this.value)">';
+  if(locked)h+='<span style="font-size:11px;color:var(--red)">🔒 วันนี้อนุมัติแล้ว</span>';
+  if(nSel)h+='<button class="recon-bank-btn" onclick="paySelAddShown(\'sel\')" title="ใส่ทุกใบของชื่อที่ติ๊กไว้ (ในรายการที่แสดงอยู่) เข้าแผนวันที่เลือก">➕ ใส่ใบของ '+nSel+' ชื่อที่เลือก</button>';
+  h+='<button class="recon-bank-btn" onclick="paySelAddShown(\'all\')" title="ใส่ทุกใบที่กรองแสดงอยู่เข้าแผนวันที่เลือก">➕ ใส่ทุกใบที่แสดง</button>';
+  h+='<button class="recon-bank-btn" onclick="paySelMoveShown()" title="ย้ายใบที่อยู่ในแผนและแสดงอยู่ ไปวันที่จ่ายที่เลือก">📅 ย้ายที่อยู่ในแผน → วันที่จ่ายที่เลือก</button>';
+  h+='<button class="filter-reset" onclick="paySelClearShown()" title="เอาใบที่แสดงอยู่ออกจากแผน (ข้ามใบที่อนุมัติแล้ว)">✕ เอาที่แสดงออกจากแผน</button>';
+  h+='<span style="flex:1"></span>';
+  h+='<span style="font-size:12px;color:var(--text2)">ในแผนทั้งหมด <b style="color:var(--teal)">'+t.openN+'</b> ใบ · <b style="color:var(--teal)">'+fmtFull(t.amt)+'</b> บาท · '+t.dates+' วัน</span>';
+  h+='<button class="hbtn hbtn-green" onclick="payRunOpen()">📋 แผนรายวัน / ใบเสนออนุมัติ</button>';
+  h+='<div style="flex-basis:100%;font-size:11px;color:var(--muted)">'+(PAYSEL.msg?'<span style="color:var(--gold2);font-weight:700">'+paySelEsc(PAYSEL.msg)+'</span> · ':'')+'วิธีใช้: กด + หน้าชื่อเจ้าหนี้เพื่อขยาย แล้วติ๊กหน้าเลขที่เอกสาร (ใบจะเข้าแผนวันที่ด้านบน แก้วัน/ยอดรายใบได้) · แผนเก็บในเบราว์เซอร์เครื่องนี้ และถูกนำไปใช้ใน Cash Forecast</div>';
+  h+='</div>';
+  PAYSEL.msg='';
+  return h;
+}
+// ---------- หน้าจอแผนรายวัน / ใบเสนออนุมัติ ----------
+function payRunOpen(dk){
+  paySelLoad();
+  var hasDm=!!(document.getElementById('dmDynamic')&&typeof DM!=='undefined'&&DM.cfg&&DM.cfg.agingKind==='AP');
+  PAYSEL.backCfg=hasDm?DM.cfg:null;
+  PAYSEL.runSel=dk||0;
+  openModal('📋 แผนจ่ายรายวัน / ใบเสนออนุมัติจ่าย','<div id="payRunBox"></div>');
+  payRunRender();
+}
+function payRunBack(){
+  var c=PAYSEL.backCfg;
+  if(c)openDetailModal(c);else if(typeof showModalAP==='function')showModalAP();
+}
+function payRunSel(dk){PAYSEL.runSel=dk;payRunRender();}
+function payRunSetName(which,v){paySelLoad();PAYSEL[which]=String(v||'').trim();paySelSave();}
+function payRunApprove(dk){
+  var days=paySelDays(),g=days.filter(function(x){return x.dk===dk;})[0];
+  if(!g||!g.openN)return;
+  if(!confirm('อนุมัติใบเสนอจ่ายวันที่ '+paySelFmt(dk)+'\n'+g.openN+' ใบ · '+g.nameN+' เจ้าหนี้ · รวม '+fmtFull(g.total)+' บาท\n\nเมื่ออนุมัติแล้วจะล็อกรายการของวันนี้ (แก้ไม่ได้จนกว่าจะยกเลิกอนุมัติ)'))return;
+  PAYSEL.runs[dk]={status:'approved',preparedBy:PAYSEL.prep,approvedBy:PAYSEL.appr,approvedAt:new Date().toISOString(),total:g.total,n:g.openN};
+  paySelSave();paySelRefresh();
+}
+function payRunUnapprove(dk){
+  if(!confirm('ยกเลิกอนุมัติของวันที่ '+paySelFmt(dk)+' ? (กลับเป็นร่าง แก้ไขรายการได้อีก)'))return;
+  PAYSEL.runs[dk]={status:'draft',unapprovedAt:new Date().toISOString()};
+  paySelSave();paySelRefresh();
+}
+function payRunMarkPaid(dk){
+  if(!confirm('บันทึกว่าจ่ายแล้วของวันที่ '+paySelFmt(dk)+' ?\n(เป็นการบันทึกในแดชบอร์ดเท่านั้น ใบจะหายจากแผนจริงเมื่อ SAP ตัดจ่ายและชีตรีเฟรช)'))return;
+  var r=PAYSEL.runs[dk]||{};
+  r.status='paid';r.paidAt=new Date().toISOString();
+  PAYSEL.runs[dk]=r;paySelSave();paySelRefresh();
+}
+function payRunPurgeClosed(){
+  paySelLoad();
+  var ks=Object.keys(PAYSEL.docs).filter(function(k){var i=paySelInfo(k);return i&&!i.open;});
+  if(!ks.length)return;
+  if(!confirm('เอาใบที่ SAP ตัดจ่ายแล้ว '+ks.length+' ใบ ออกจากรายการแผน (ล้างประวัติในแดชบอร์ดเท่านั้น ไม่กระทบ SAP) ?'))return;
+  ks.forEach(function(k){delete PAYSEL.docs[k];});
+  paySelSave();paySelRefresh();
+}
+function payRunRender(){
+  var box=document.getElementById('payRunBox');if(!box)return;
+  paySelLoad();
+  var days=paySelDays(),t=paySelTotals();
+  var ca=null,F=null;
+  try{ca=paySelCashAvail();}catch(e){console.error(e);}
+  if(ca&&PAYSEL.useFc){try{F=liqForecast(G,ca.dep,ca.head,LIQ.arOv,LIQ.apOv);}catch(e){console.error(e);}}
+  var th=function(a,r){return '<th'+(r?' style="text-align:right"':'')+'>'+a+'</th>';};
+  var h='';
+  h+='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">'+
+    '<button class="recon-bank-btn" onclick="payRunBack()">↩ กลับไปเลือกใบ (AP ค้างจ่าย)</button><span style="flex:1"></span>'+
+    '<button class="hbtn hbtn-green" onclick="payRunExcel(PAYSEL.runSel)">📊 Excel (สรุป + รายใบ + ใบเสนอวันที่เลือก)</button></div>';
+  h+='<div class="modal-summary">'+mStat('ใบในแผน (ยังค้างใน SAP)',t.openN.toLocaleString()+' ใบ','var(--teal)')+mStat('ยอดรวมตามแผน',fmtKPI(t.amt),'var(--gold2)')+mStat('จำนวนวันที่จ่าย',t.dates+' วัน','var(--blue)')+
+    (ca?mStat('เงินพร้อมใช้ + OD คงเหลือ (วันนี้)',fmtKPI(ca.avail),ca.avail>=t.amt?'var(--green)':'var(--red)'):'')+'</div>';
+  if(!days.length){
+    h+='<div style="padding:18px;text-align:center;color:var(--muted);font-size:13px;border:1px dashed var(--border);border-radius:8px">ยังไม่มีใบในแผน — ไปที่ "AP เจ้าหนี้ค้างจ่าย" ขยายชื่อเจ้าหนี้ แล้วติ๊กหน้าเลขที่เอกสาร</div>';
+    box.innerHTML=h;return;
+  }
+  if(!PAYSEL.runSel||!days.some(function(g){return g.dk===PAYSEL.runSel;})){
+    var td=projTodayKey(),nx=days.filter(function(g){return g.dk>=td&&g.openN>0;})[0]||days.filter(function(g){return g.openN>0;})[0]||days[0];
+    PAYSEL.runSel=nx.dk;
+  }
+  // ตารางรายวัน
+  h+='<div style="overflow:auto;margin-bottom:12px"><table><thead><tr>'+th('วันที่จ่าย')+th('จำนวนใบ',1)+th('เจ้าหนี้',1)+th('ยอดเสนอจ่าย',1)+th('ยอดสะสม',1)+
+    (ca?th('เงินพร้อมใช้ − สะสม (ยังไม่นับรับ/เช็ค)',1):'')+(F?th('Forecast สิ้นสัปดาห์ (ความสามารถจ่าย รวมแผนนี้)',1):'')+th('สถานะ')+'<th></th></tr></thead><tbody>';
+  days.forEach(function(g){
+    var st=paySelRunStatus(g),sel=g.dk===PAYSEL.runSel;
+    var after=ca?ca.avail-g.cum:null;
+    var fav=null,fwk='';
+    if(F){var off=paySelOffset(g.dk),wi=Math.floor(Math.max(0,off)/7);if(wi<F.base.rows.length){fav=F.base.rows[wi].avail;fwk='สัปดาห์ '+(wi+1);}}
+    var past=paySelOffset(g.dk)<0&&st!=='closed'&&st!=='paid';
+    h+='<tr style="cursor:pointer;background:'+(sel?'rgba(43,191,179,0.13)':'transparent')+'" onclick="payRunSel('+g.dk+')"><td style="font-weight:700">'+paySelFmt(g.dk)+(past?' <span style="font-size:10.5px;color:var(--red)">(เลยวันแล้ว)</span>':'')+'</td>'+
+      '<td class="right">'+g.openN+(g.n>g.openN?' <span style="font-size:10.5px;color:var(--muted)">(+'+(g.n-g.openN)+' จ่ายแล้ว)</span>':'')+'</td><td class="right">'+g.nameN+'</td><td class="right gold">'+fmtFull(g.total)+'</td><td class="right">'+fmtFull(g.cum)+'</td>'+
+      (ca?'<td class="right" style="color:'+(after<0?'var(--red)':'var(--green)')+';font-weight:700">'+fmtFull(after)+'</td>':'')+
+      (F?'<td class="right" style="color:'+(fav==null?'var(--muted)':(fav<0?'var(--red)':'var(--green)'))+'">'+(fav==null?'— (นอกช่วงพยากรณ์)':fmtFull(fav)+' <span style="font-size:10.5px;color:var(--muted)">'+fwk+'</span>')+'</td>':'')+
+      '<td style="color:'+paySelStatusColor(st)+';font-size:12px;font-weight:600">'+paySelStatusLabel(st)+'</td><td>'+(sel?'👈':'')+'</td></tr>';
+  });
+  h+='</tbody></table></div>';
+  // รายละเอียดวันที่เลือก
+  var g=days.filter(function(x){return x.dk===PAYSEL.runSel;})[0];
+  var st=paySelRunStatus(g),run=PAYSEL.runs[g.dk]||{},locked=paySelDateLocked(g.dk);
+  var groups=paySelDayGroups(g);
+  h+='<div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px">';
+  h+='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><b style="font-size:14px">ใบเสนอจ่ายวันที่ '+paySelFmt(g.dk)+'</b><span style="color:'+paySelStatusColor(st)+';font-size:12px;font-weight:700">'+paySelStatusLabel(st)+'</span>'+
+    (run.approvedAt&&st==='approved'?'<span style="font-size:11px;color:var(--muted)">อนุมัติเมื่อ '+paySelEsc(new Date(run.approvedAt).toLocaleString('th-TH'))+(run.approvedBy?' โดย '+paySelEsc(run.approvedBy):'')+'</span>':'')+
+    '<span style="flex:1"></span>'+
+    '<button class="hbtn hbtn-muted" onclick="payRunPrint('+g.dk+')">🖨️ พิมพ์ใบเสนออนุมัติ / PDF</button>'+
+    '<button class="hbtn hbtn-green" onclick="payRunExcel('+g.dk+')">📊 Excel</button></div>';
+  h+='<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;font-size:12px;color:var(--muted)">ผู้เสนอ: <input class="filter-select" style="width:170px" placeholder="ชื่อผู้เสนอ" value="'+paySelEsc(PAYSEL.prep)+'" onchange="payRunSetName(\'prep\',this.value)"> ผู้อนุมัติ: <input class="filter-select" style="width:170px" placeholder="ชื่อผู้อนุมัติ" value="'+paySelEsc(PAYSEL.appr)+'" onchange="payRunSetName(\'appr\',this.value)">'+
+    (st==='draft'?'<button class="hbtn hbtn-green" onclick="payRunApprove('+g.dk+')">✔ อนุมัติใบเสนอจ่ายวันนี้</button>':'')+
+    (st==='approved'?'<button class="hbtn hbtn-muted" onclick="payRunMarkPaid('+g.dk+')">💸 บันทึกว่าจ่ายแล้ว</button><button class="filter-reset" onclick="payRunUnapprove('+g.dk+')">↩ ยกเลิกอนุมัติ</button>':'')+
+    (st==='paid'?'<button class="filter-reset" onclick="payRunUnapprove('+g.dk+')">↩ ยกเลิกสถานะ (กลับเป็นร่าง)</button>':'')+'</div>';
+  if(!groups.length){
+    h+='<div style="padding:10px;color:var(--muted);font-size:12.5px">ใบของวันนี้ทั้งหมดถูกตัดจ่ายใน SAP แล้ว (ไม่มียอดค้างให้เสนอจ่าย)</div>';
+  }else{
+    var td2=projTodayKey();
+    h+='<div style="overflow:auto;max-height:340px;overflow-y:auto"><table><thead style="position:sticky;top:0;background:#0b1626;z-index:2"><tr><th>เจ้าหนี้ / เลขที่เอกสาร</th><th>ครบกำหนด</th><th style="text-align:right">เลยกำหนด (วัน)</th><th style="text-align:right">ยอดค้าง</th><th style="text-align:right">เสนอจ่าย</th><th>ย้ายวันจ่าย</th><th></th></tr></thead><tbody>';
+    groups.forEach(function(s){
+      h+='<tr style="background:rgba(255,255,255,0.04);font-weight:700"><td>'+paySelEsc(s.name)+' <span style="font-size:11px;color:var(--muted);font-weight:400">('+s.docs.length+' ใบ)</span></td><td></td><td></td><td class="right">'+fmtFull(s.bal)+'</td><td class="right gold">'+fmtFull(s.sum)+'</td><td></td><td></td></tr>';
+      s.docs.forEach(function(inf){
+        var kk=paySelEsc(inf.key),od=inf.e.due?-paySelOffset(inf.e.due):null;
+        var rm=inf.row&&inf.row.remarks?'<div style="font-size:11px;color:var(--gold2)">📝 '+paySelEsc(inf.row.remarks)+'</div>':'';
+        h+='<tr><td style="padding-left:22px;font-size:12px;color:var(--teal)">↳ '+paySelEsc(inf.e.docNo)+rm+'</td><td style="font-size:12px">'+paySelFmt(inf.e.due)+'</td><td class="right" style="font-size:12px;color:'+(od!=null&&od>0?'var(--red)':'var(--muted)')+'">'+(od==null?'—':(od>0?od.toLocaleString():'ยังไม่ถึง'))+'</td>'+
+          '<td class="right" style="font-size:12px">'+fmtFull(inf.bal)+'</td><td class="right" style="font-size:12px">'+
+          (locked?fmtFull(inf.eff):'<input type="number" step="0.01" min="0.01" class="filter-select" style="width:104px;font-size:11.5px;padding:2px 4px;text-align:right" value="'+inf.e.amt.toFixed(2)+'" data-k="'+kk+'" onchange="paySelSetAmt(this.dataset.k,this.value)">')+'</td>'+
+          '<td>'+(locked?'<span style="font-size:11px;color:var(--muted)">🔒</span>':'<input type="date" class="filter-select" style="width:128px;font-size:11.5px;padding:2px 4px" value="'+paySelIso(inf.e.date)+'" data-k="'+kk+'" onchange="paySelSetDate(this.dataset.k,this.value)">')+'</td>'+
+          '<td>'+(locked?'':'<button class="filter-reset" title="เอาออกจากแผน" data-k="'+kk+'" onclick="paySelToggle(this.dataset.k)">✕</button>')+'</td></tr>';
+      });
+    });
+    h+='<tr style="font-weight:700;border-top:2px solid var(--border)"><td>รวมวันนี้ ('+g.openN+' ใบ · '+g.nameN+' เจ้าหนี้)</td><td></td><td></td><td></td><td class="right gold">'+fmtFull(g.total)+'</td><td></td><td></td></tr></tbody></table></div>';
+  }
+  if(ca){
+    var cumAfter=ca.avail-g.cum;
+    h+='<div style="margin-top:8px;font-size:12px;color:var(--text2);line-height:1.7">💧 เงินฝากพร้อมใช้ '+fmtFull(ca.dep)+' + วงเงิน OD คงเหลือ '+fmtFull(ca.head)+' = <b>'+fmtFull(ca.avail)+'</b> บาท · ยอดแผนสะสมถึงวันนี้ '+fmtFull(g.cum)+' → คงเหลือ <b style="color:'+(cumAfter<0?'var(--red)':'var(--green)')+'">'+fmtFull(cumAfter)+'</b> บาท'+(cumAfter<0?' <b style="color:var(--red)">⚠ เกินความสามารถจ่ายปัจจุบัน — ต้องมีเงินเข้า/ปรับแผนก่อนอนุมัติ</b>':'')+
+      '<div style="font-size:11px;color:var(--muted)">ตัวเลขนี้เทียบกับเงินพร้อมใช้ ณ วันนี้เท่านั้น ยังไม่รวมเงินรับ/เช็คจ่ายที่จะเกิดก่อนวันที่จ่าย — ดูภาพรวมได้ที่ตาราง Cash Forecast</div></div>';
+  }
+  h+='</div>';
+  if(t.closedN)h+='<div style="font-size:11.5px;color:var(--muted);margin-top:6px">✅ มีใบในแผนที่ SAP ตัดจ่ายแล้ว '+t.closedN+' ใบ (ไม่นับในยอด) <button class="filter-reset" onclick="payRunPurgeClosed()">ล้างรายการที่จ่ายแล้วออกจากแผน</button></div>';
+  box.innerHTML=h;
+}
+function payRunHeadLines(g){
+  var ca=null;try{ca=paySelCashAvail();}catch(e){}
+  var run=PAYSEL.runs[g.dk]||{},st=paySelRunStatus(g);
+  return {ca:ca,run:run,st:st};
+}
+function payRunPrint(dk){
+  var days=paySelDays(),g=days.filter(function(x){return x.dk===dk;})[0];
+  if(!g)return;
+  var groups=paySelDayGroups(g);
+  if(!groups.length){alert('ไม่มีใบค้างจ่ายในวันนี้ให้พิมพ์');return;}
+  var x=payRunHeadLines(g),n=0,fm=function(v){return fmtFull(v);};
+  var rows='';
+  groups.forEach(function(s){
+    rows+='<tr class="pr-sub"><td colspan="3"><b>'+paySelEsc(s.name)+'</b> ('+s.docs.length+' ใบ)</td><td class="pr-right">'+fm(s.bal)+'</td><td class="pr-right"><b>'+fm(s.sum)+'</b></td></tr>';
+    s.docs.forEach(function(inf){
+      n++;
+      var od=inf.e.due?-paySelOffset(inf.e.due):null;
+      rows+='<tr><td>'+n+'</td><td>'+paySelEsc(inf.e.docNo)+(inf.row&&inf.row.remarks?'<div class="pr-itemdetail">หมายเหตุ: '+paySelEsc(inf.row.remarks)+'</div>':'')+'</td><td>'+paySelFmt(inf.e.due)+(od!=null&&od>0?'<div class="pr-itemdetail">เลยกำหนด '+od.toLocaleString()+' วัน</div>':'')+'</td><td class="pr-right">'+fm(inf.bal)+'</td><td class="pr-right">'+fm(inf.eff)+(inf.eff<inf.bal-0.005?'<div class="pr-itemdetail">จ่ายบางส่วน</div>':'')+'</td></tr>';
+    });
+  });
+  rows+='<tr class="pr-sub"><td colspan="3"><b>รวมทั้งหมด '+g.openN+' ใบ · '+g.nameN+' เจ้าหนี้</b></td><td class="pr-right"></td><td class="pr-right"><b>'+fm(g.total)+'</b></td></tr>';
+  var info='<div style="margin:6px 0 10px;font-size:12px;line-height:1.7"><b>วันที่เสนอจ่าย:</b> '+paySelFmt(g.dk)+' &nbsp;·&nbsp; <b>สถานะ:</b> '+paySelStatusLabel(x.st).replace(/^[^ ]+ /,'')+
+    (x.ca?'<br><b>เงินพร้อมใช้ ณ วันที่พิมพ์:</b> เงินฝาก '+fm(x.ca.dep)+' + วงเงิน OD คงเหลือ '+fm(x.ca.head)+' = '+fm(x.ca.avail)+' บาท &nbsp;·&nbsp; <b>ยอดเสนอจ่ายสะสมถึงวันนี้:</b> '+fm(g.cum)+' → <b>คงเหลือ '+fm(x.ca.avail-g.cum)+'</b> บาท':'')+'</div>';
+  var sign=function(role,name){return '<div class="pr-signcol"><div class="pr-signrole">'+role+'</div><div class="pr-signline">- - - - - - - - - - - - - - - - - - - -</div><div class="pr-signname">( &nbsp;'+(name?paySelEsc(name):'.......................................')+'&nbsp; )</div><div class="pr-signdate">วันที่ ....... / ....... / .......</div></div>';};
+  document.getElementById('printArea').innerHTML=
+    prHeaderHtml('ใบเสนออนุมัติจ่ายเจ้าหนี้ประจำวันที่ '+paySelFmt(g.dk),'พิมพ์เมื่อ '+printTimestamp())+info+
+    '<table><thead><tr><th>ที่</th><th>เลขที่เอกสาร</th><th>ครบกำหนด</th><th class="pr-right">ยอดค้าง</th><th class="pr-right">ยอดเสนอจ่าย</th></tr></thead><tbody>'+rows+'</tbody></table>'+
+    '<div class="pr-signwrap">'+sign('ผู้เสนอ',PAYSEL.prep)+sign('หัวหน้าแผนกการเงิน','')+sign('ผู้อนุมัติ',PAYSEL.appr)+'</div>';
+  prPrint({orient:'portrait'});
+}
+function payRunExcel(dk){
+  var days=paySelDays();
+  if(!days.length){alert('ยังไม่มีใบในแผน');return;}
+  var wb=XLSX.utils.book_new(),co='บริษัท รถเจาะไทย จำกัด',now=paySelFmt(projTodayKey());
+  var ca=null;try{ca=paySelCashAvail();}catch(e){}
+  var addSheet=function(name,aoa,cols){var ws=XLSX.utils.aoa_to_sheet(aoa);if(cols)ws['!cols']=cols.map(function(w){return {wch:w};});XLSX.utils.book_append_sheet(wb,ws,name);};
+  // 1) สรุปรายวัน
+  var s=[[co],['สรุปแผนจ่ายเจ้าหนี้รายวัน · ณ วันที่ '+now],[],['วันที่จ่าย','จำนวนใบ','จำนวนเจ้าหนี้','ยอดเสนอจ่าย','ยอดสะสม','เงินพร้อมใช้ − สะสม','สถานะ']];
+  days.forEach(function(g){s.push([paySelFmt(g.dk),g.openN,g.nameN,Math.round(g.total*100)/100,Math.round(g.cum*100)/100,ca?Math.round((ca.avail-g.cum)*100)/100:'',paySelStatusLabel(paySelRunStatus(g)).replace(/^[^ ]+ /,'')]);});
+  if(ca){s.push([]);s.push(['เงินฝากพร้อมใช้',Math.round(ca.dep*100)/100]);s.push(['วงเงิน OD คงเหลือ',Math.round(ca.head*100)/100]);s.push(['รวมความสามารถจ่าย ณ วันนี้',Math.round(ca.avail*100)/100]);}
+  addSheet('สรุปรายวัน',s,[14,10,12,16,16,18,24]);
+  // 2) รายใบทั้งแผน
+  var a=[[co],['รายใบในแผนจ่ายทั้งหมด · ณ วันที่ '+now],[],['วันที่จ่าย','เจ้าหนี้','เลขที่เอกสาร','วันครบกำหนด','ยอดค้าง (ปัจจุบัน)','ยอดเสนอจ่าย','หมายเหตุเอกสาร','สถานะวัน','สถานะใบ']];
+  days.forEach(function(g){
+    var stl=paySelStatusLabel(paySelRunStatus(g)).replace(/^[^ ]+ /,'');
+    g.docs.slice().sort(function(p,q){return String(p.e.name).localeCompare(String(q.e.name))||(p.e.due||0)-(q.e.due||0);}).forEach(function(inf){
+      a.push([paySelFmt(g.dk),inf.e.name,inf.e.docNo,paySelFmt(inf.e.due),Math.round(inf.bal*100)/100,Math.round(inf.eff*100)/100,(inf.row&&inf.row.remarks)||'',stl,inf.open?'ค้างอยู่':'จ่ายแล้วใน SAP']);
+    });
+  });
+  addSheet('รายใบทั้งแผน',a,[13,34,16,13,17,16,38,20,16]);
+  // 3) ใบเสนอของวันที่เลือก
+  var g=days.filter(function(x){return x.dk===dk;})[0];
+  if(g){
+    var groups=paySelDayGroups(g),run=PAYSEL.runs[g.dk]||{},o=[[co],['ใบเสนออนุมัติจ่ายเจ้าหนี้ประจำวันที่ '+paySelFmt(g.dk)],['สถานะ: '+paySelStatusLabel(paySelRunStatus(g)).replace(/^[^ ]+ /,'')+' · พิมพ์ ณ วันที่ '+now],[],['ที่','เจ้าหนี้','เลขที่เอกสาร','วันครบกำหนด','เลยกำหนด (วัน)','ยอดค้าง','ยอดเสนอจ่าย','หมายเหตุ']],n=0;
+    groups.forEach(function(sg){
+      o.push(['',sg.name+' ('+sg.docs.length+' ใบ)','','','',Math.round(sg.bal*100)/100,Math.round(sg.sum*100)/100,'']);
+      sg.docs.forEach(function(inf){n++;var od=inf.e.due?-paySelOffset(inf.e.due):null;o.push([n,'  '+inf.e.name,inf.e.docNo,paySelFmt(inf.e.due),od!=null&&od>0?od:0,Math.round(inf.bal*100)/100,Math.round(inf.eff*100)/100,(inf.row&&inf.row.remarks)||'']);});
+    });
+    o.push([]);o.push(['','รวมทั้งหมด '+g.openN+' ใบ · '+g.nameN+' เจ้าหนี้','','','','',Math.round(g.total*100)/100,'']);
+    if(ca){o.push([]);o.push(['','เงินฝากพร้อมใช้ + วงเงิน OD คงเหลือ (วันนี้)','','','','',Math.round(ca.avail*100)/100,'']);o.push(['','ยอดเสนอจ่ายสะสมถึงวันนี้','','','','',Math.round(g.cum*100)/100,'']);o.push(['','คงเหลือหลังจ่าย','','','','',Math.round((ca.avail-g.cum)*100)/100,'']);}
+    o.push([]);o.push(['','ผู้เสนอ: '+(PAYSEL.prep||'.........................'),'','','ผู้อนุมัติ: '+(PAYSEL.appr||'.........................')]);
+    addSheet('ใบเสนอ '+paySelFmt(g.dk).slice(0,5).replace('/','-'),o,[6,38,16,13,13,17,16,38]);
+  }
+  XLSX.writeFile(wb,('แผนจ่ายเจ้าหนี้_'+now.replace(/\//g,'-')+'.xlsx'));
+}
+
 function liqForecast(d,start,headroom,arOv,apOv){
   var H=LIQ.h,today=projTodayKey();
   var t0=Date.UTC(Math.floor(today/10000),Math.floor(today/100)%100-1,today%100);
   var di=function(dk){return Math.round((Date.UTC(Math.floor(dk/10000),Math.floor(dk/100)%100-1,dk%100)-t0)/86400000);};
   var nb=Math.ceil(H/7),B=[];
-  for(var i=0;i<nb;i++)B.push({from:7*i,to:Math.min(7*i+6,H-1),ar:0,arN:0,ap:0,apN:0,chq:0,chqN:0,oth:0});
+  for(var i=0;i<nb;i++)B.push({from:7*i,to:Math.min(7*i+6,H-1),ar:0,arN:0,ap:0,apN:0,apPlan:0,apPlanN:0,chq:0,chqN:0,oth:0});
+  var plan=paySelForecastList(),planDone={},tot0={ap:0},planUsed={n:0,amt:0};
   var ov={ar:0,arN:0,ap:0,apN:0,arNo:0,apNo:0,chqNo:0,chqOv:0,chqOvN:0};
   var addDoc=function(r,side){
-    if(r.pre)return;
     var dk=dueKeyDate(r.dueDate);
+    var bal=r.bal;
+    // แผนจ่ายรายใบ (PAYSEL): ใบที่ติ๊กไว้ใช้ "วันจ่ายตามแผน" แทนวันครบกำหนด (ยอดที่เหลือจากการจ่ายบางส่วนยังเป็นไปตามวันครบกำหนดเดิม)
+    if(side==='ap'){
+      var pkey=paySelKey(r.docNo,dk||''),pl=plan[pkey];
+      if(pl&&!planDone[pkey]){
+        planDone[pkey]=1;
+        var pk=di(pl.date);if(pk<0)pk=0;
+        if(pk<H){var pb=B[Math.floor(pk/7)];pb.ap+=pl.eff;pb.apN++;pb.apPlan+=pl.eff;pb.apPlanN++;}
+        planUsed.n++;planUsed.amt+=pl.eff;
+        // ใบนอกเกณฑ์ (ก่อน 2569) ที่ผู้ใช้ตั้งแผนเอง นับเฉพาะส่วนในแผน
+        if(!r.pre&&dk){var k0=di(dk);if(k0>=0&&k0<H)tot0.ap+=r.bal;}
+        bal=r.bal-pl.eff;if(bal<0.005)return;
+        if(r.pre)return;
+        if(!dk){ov.apNo++;return;}
+        var k1=di(dk);
+        if(k1<0){ov.ap+=bal;ov.apN++;return;}
+        if(k1>=H)return;
+        var b1=B[Math.floor(k1/7)];b1.ap+=bal;b1.apN++;
+        return;
+      }
+    }
+    if(r.pre)return;
     if(!dk){ov[side+'No']++;return;}
     var k=di(dk);
-    if(k<0){ov[side]+=r.bal;ov[side+'N']++;return;}
+    if(k<0){ov[side]+=bal;ov[side+'N']++;return;}
     if(k>=H)return;
-    var b=B[Math.floor(k/7)];b[side]+=r.bal;b[side+'N']++;
+    if(side==='ap')tot0.ap+=bal;
+    var b=B[Math.floor(k/7)];b[side]+=bal;b[side+'N']++;
   };
   (d.arRows2||[]).forEach(function(r){addDoc(r,'ar');});
   (d.apRows2||[]).forEach(function(r){addDoc(r,'ap');});
@@ -7994,7 +8447,8 @@ function liqForecast(d,start,headroom,arOv,apOv){
     if(k<0){ov.chqOv+=r.amt;ov.chqOvN++;}
   });
   var tot={ar:0,ap:0,chq:0};
-  B.forEach(function(b){tot.ar+=b.ar;tot.ap+=b.ap;tot.chq+=b.chq;});
+  B.forEach(function(b){tot.ar+=b.ar;tot.chq+=b.chq;});
+  tot.ap=tot0.ap; // ค่าฐานของ "จ่ายอื่น" = ใบที่ครบกำหนดในช่วงตามวันครบกำหนดเดิม (ไม่นับแผนจ่ายที่ผู้ใช้ติ๊ก เพื่อไม่ให้แผนหักล้างกับค่าเฉลี่ยย้อนหลัง)
   var calc=function(arO,apO,withRcv){
     var bal=start,minB=1e18,minA=1e18,minI=0,rows=[];
     B.forEach(function(b,i){
@@ -8013,7 +8467,7 @@ function liqForecast(d,start,headroom,arOv,apOv){
     return {rows:rows,minBal:minB,minAvail:minA,minIdx:minI};
   };
   var base=calc(arOv,apOv,true),worst=calc(0,100,false);
-  return {B:B,ov:ov,tot:tot,base:base,worst:worst,today:today,H:H,chqOk:chqOk};
+  return {B:B,ov:ov,tot:tot,base:base,worst:worst,today:today,H:H,chqOk:chqOk,planUsed:planUsed};
 }
 // ดอกเบี้ย OD ตามสเตทเมนท์ (รายการหักดอกเบี้ยในบัญชี OD ปีปัจจุบัน) — ประมาณการจากรายการที่อัปโหลดไว้เท่านั้น
 function liqInterest(d){
@@ -8131,6 +8585,11 @@ function liqRender(d){
     lab('AP เลยกำหนด จ่ายใน 1 สัปดาห์แรก (%):')+pctInp('apOv')+
     lab('รับอื่นต่อสัปดาห์ (บาท):')+inp('recOther',120,'0')+
     lab('จ่ายอื่นต่อสัปดาห์ (เงินเดือน/ภาษี/ลีสซิ่ง/อื่น ๆ · บาท):')+inp('other',130,'0')+histBtn+'</div>';
+  var psT=paySelTotals();
+  var psCtl='<div style="display:flex;gap:10px 14px;flex-wrap:wrap;align-items:center;margin-bottom:10px;padding:7px 10px;border:1px solid var(--teal);border-radius:8px;background:rgba(43,191,179,0.06)">'+
+    '<label style="font-size:12px;color:var(--text2);cursor:pointer;display:flex;gap:6px;align-items:center"><input type="checkbox" '+(PAYSEL.useFc?'checked ':'')+'onchange="paySelSetFc(this.checked)" style="accent-color:#2bbfb3;width:15px;height:15px"> ใช้วันจ่ายตามแผนที่ติ๊กไว้แทนวันครบกำหนด'+(psT.openN?' <b style="color:var(--teal)">('+psT.openN+' ใบ · '+fmtFull(psT.amt)+' บาท · '+psT.dates+' วัน)</b>':' <span style="color:var(--muted)">(ยังไม่มีใบในแผน)</span>')+'</label>'+
+    '<button class="hbtn hbtn-muted" onclick="showModalAP()" title="เปิดรายการ AP ขยายชื่อเจ้าหนี้แล้วติ๊กหน้าเลขที่เอกสาร">📝 เลือกใบเข้าแผนจ่าย</button>'+
+    '<button class="hbtn hbtn-green" onclick="payRunOpen()">📋 แผนรายวัน / ใบเสนออนุมัติจ่าย</button></div>';
   var minA=F.base.minAvail,minRow=F.base.rows[F.base.minIdx];
   var w=F.worst;
   var stTxt,stCol;
@@ -8146,7 +8605,7 @@ function liqRender(d){
       '<td class="right green" style="font-size:12px" title="'+r.b.arN+' ใบ">'+(r.ar?fmtFull(r.ar):'—')+'</td>'+
       '<td class="right green" style="font-size:12px">'+(r.rcv?fmtFull(r.rcv):'—')+'</td>'+
       '<td class="right red" style="font-size:12px" title="'+r.b.chqN+' ใบ">'+(r.chq?fmtFull(r.chq):'—')+'</td>'+
-      '<td class="right red" style="font-size:12px" title="'+r.b.apN+' ใบ">'+(r.ap?fmtFull(r.ap):'—')+'</td>'+
+      '<td class="right red" style="font-size:12px" title="'+r.b.apN+' ใบ">'+(r.ap?fmtFull(r.ap):'—')+(r.b.apPlan>0?'<div style="font-size:10px;color:var(--teal)">📌 แผนจ่าย '+fmtFull(r.b.apPlan)+' · '+r.b.apPlanN+' ใบ</div>':'')+'</td>'+
       '<td class="right red" style="font-size:12px">'+(r.oth?fmtFull(r.oth):'—')+'</td>'+
       '<td class="right" style="font-size:12px;color:'+cb(r.net)+'">'+fmtFull(r.net)+'</td>'+
       '<td class="right" style="font-size:12px;font-weight:700;color:'+cb(r.bal)+'">'+fmtFull(r.bal)+'</td>'+
@@ -8160,11 +8619,12 @@ function liqRender(d){
     notes.push('<b>เทียบกับพฤติกรรมจริง</b> (เฉลี่ย '+hist.months.length+' เดือนที่ปิดแล้ว: '+ml+'): รับจริง '+fmtFull(hist.recW)+' · จ่ายจริง '+fmtFull(hist.payW)+' บาท/สัปดาห์ — Forecast ตามเอกสาร: รับ '+fmtFull(F.tot.ar*LIQ.arPct/100/wk)+' · จ่าย '+fmtFull((F.tot.ap+F.tot.chq)/wk)+' บาท/สัปดาห์');
     notes.push('ค่าตั้งต้น "รับอื่น/จ่ายอื่น" = ค่าเฉลี่ยจริงย้อนหลัง หักส่วนที่เอกสารรายใบอธิบายแล้ว (รับอื่น '+fmtFull(sugg.rec)+' · จ่ายอื่น '+fmtFull(sugg.pay)+' บาท/สัปดาห์) — ส่วนนี้รวมการเก็บ/จ่ายหนี้เก่าที่เลยกำหนดไว้แล้ว จึงอย่าตั้ง % เลยกำหนดซ้ำถ้าไม่ต้องการนับสองรอบ · แก้ตัวเลขเองได้ทุกช่อง');
   }
+  if(PAYSEL.useFc&&F.planUsed&&F.planUsed.n)notes.push('<span style="color:var(--teal)">📌 แผนจ่ายรายใบ '+F.planUsed.n+' ใบ รวม '+fmtFull(F.planUsed.amt)+' บาท ใช้วันจ่ายตามแผนแทนวันครบกำหนด (ใบเลยกำหนดที่ตั้งแผนไว้นับ 100% ตามวันที่แผน ไม่ถูกคูณด้วย % เลยกำหนดข้างบน · แผนที่เลยวันแล้วนับในสัปดาห์แรก) — ปิดได้ที่ช่องติ๊กด้านบนตาราง</span>');
   if(F.ov.arNo||F.ov.apNo)notes.push('เอกสารที่ไม่มีวันครบกำหนด (ไม่รวม): AR '+F.ov.arNo+' ใบ · AP '+F.ov.apNo+' ใบ');
   if(F.chqOk)notes.push('เช็คจ่ายรอผ่าน (Q28) หักตามวันที่ในเช็ค เช็คที่ถึงกำหนดแล้วหักในสัปดาห์แรก'+(F.ov.chqOvN?' (ถึงกำหนดแล้ว '+F.ov.chqOvN+' ใบ รวม '+fmtFull(F.ov.chqOv)+' บาท)':'')+' — เอกสาร AP ที่จ่ายด้วยเช็คถูกปิดใน SAP แล้ว จึงไม่นับซ้ำ');
   else notes.push('<span style="color:var(--gold2)">ยังไม่ได้โหลดชีต Q28_CHEQUE_OUTSTANDING'+(typeof CHQ!=='undefined'&&CHQ.fail?' ('+bkDiffEsc(CHQ.fail)+')':'')+' — พยากรณ์นี้จึงยังไม่หักเช็ค</span>');
   notes.push('ประมาณการจากเอกสารใน SAP ไม่ใช่ยอดทางบัญชี · เงินฝากพร้อมใช้อิงยอด SAP (Q03) ซึ่งยังไม่ตรงกับธนาคารจนกว่าจะแก้รายการ USD · สมมติว่าลูกหนี้จ่ายตรงกำหนดตาม % ที่ตั้งไว้');
-  var fHtml='<div class="chart-card" style="margin-bottom:14px"><div class="chart-title">📈 Cash Forecast '+F.H+' วัน <span class="chart-sub">ตามวันครบกำหนดรายเอกสาร AR/AP + เช็ครอผ่าน + ค่าเฉลี่ยจริงย้อนหลัง (ประมาณการ ไม่ใช่ยอดทางบัญชี)</span></div>'+ctl+
+  var fHtml='<div class="chart-card" style="margin-bottom:14px"><div class="chart-title">📈 Cash Forecast '+F.H+' วัน <span class="chart-sub">ตามวันครบกำหนดรายเอกสาร AR/AP + เช็ครอผ่าน + ค่าเฉลี่ยจริงย้อนหลัง (ประมาณการ ไม่ใช่ยอดทางบัญชี)</span></div>'+ctl+psCtl+
     '<div style="padding:10px 14px;border:1px solid var(--'+(stCol==='red'?'red':(stCol==='gold'?'gold2':'green'))+');border-radius:8px;font-size:13px;margin-bottom:10px"><b style="color:var(--'+(stCol==='gold'?'gold2':stCol)+')">'+stTxt+'</b><div style="font-size:12px;color:var(--text2);margin-top:4px">'+scen+'</div></div>'+
     '<div style="overflow:auto"><table><thead><tr><th>ช่วง</th><th style="text-align:right">AR ครบกำหนด (รับ)</th><th style="text-align:right">รับอื่น</th><th style="text-align:right">เช็คจ่าย</th><th style="text-align:right">AP ครบกำหนด (จ่าย)</th><th style="text-align:right">จ่ายอื่น</th><th style="text-align:right">สุทธิ</th><th style="text-align:right">เงินฝากปลายช่วง</th><th style="text-align:right">รวมวงเงิน OD คงเหลือ</th></tr></thead><tbody>'+start+trs+'</tbody></table></div>'+
     '<div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.7">'+notes.map(function(x){return '• '+x;}).join('<br>')+'</div></div>';
